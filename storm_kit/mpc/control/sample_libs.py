@@ -72,11 +72,9 @@ class SampleLib:
         if(samples.shape[0] == 0):
             return samples
 
-        # fit bspline:
 
         filter_samples = (
             self.stomp_matrix[:self.horizon, :self.horizon] @ samples)
-        #print(filter_samples.shape)
         filter_samples = filter_samples / torch.max(torch.abs(filter_samples))
         return filter_samples
 
@@ -192,7 +190,6 @@ class RandomSampleLib(SampleLib):
 
         if(base_seed is not None and base_seed != self.seed_val):
             self.seed_val = base_seed
-            #print(self.seed_val)
             torch.manual_seed(self.seed_val)
         if(self.sample_shape != sample_shape or not self.fixed_samples):
             self.sample_shape = sample_shape
@@ -296,25 +293,28 @@ class StompSampleLib(SampleLib):
 class MultipleSampleLib(SampleLib):
     def __init__(self, horizon=0, d_action=0, seed=0, mean=None, covariance_matrix=None,
                  tensor_args={'device': "cpu", 'dtype': torch.float32}, fixed_samples=False,
-                 sample_ratio={'halton': 0.2, 'halton-knot': 0.2, 'random': 0.2, 'random-knot': 0.2}, knot_scale=10, **kwargs):
+                 sample_ratio={'halton': 0.2, 'halton-knot': 0.2, 'random': 0.2, 'random-knot': 0.2}, 
+                 knot_scale=10, bspline_degree=3, filter_coeffs=None, **kwargs):
 
         # sample from a mix of possibilities:
         # halton
         self.halton_sample_lib = HaltonSampleLib(horizon=horizon, d_action=d_action, seed=seed,
                                                  tensor_args=tensor_args,
                                                  fixed_samples=fixed_samples,
-                                                 filter_coeffs=kwargs['filter_coeffs'])
+                                                 filter_coeffs=filter_coeffs)
 
         self.knot_halton_sample_lib = KnotSampleLib(
-            horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=2, sample_method='halton', tensor_args=tensor_args)
+            horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='halton', tensor_args=tensor_args)
 
         #random
         self.random_sample_lib = RandomSampleLib(horizon=horizon, d_action=d_action, seed=seed,
                                                  tensor_args=tensor_args,
                                                  fixed_samples=fixed_samples,
-                                                 filter_coeffs=kwargs['filter_coeffs'])
-        self.knot_random_sample_lib = KnotSampleLib(horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale,
-                                                    degree=2, sample_method='random', covariance_matrix=covariance_matrix, tensor_args=tensor_args)
+                                                 filter_coeffs=filter_coeffs)
+
+        self.knot_random_sample_lib = KnotSampleLib(
+            horizon=horizon, d_action=d_action, n_knots=horizon//knot_scale, degree=bspline_degree, sample_method='random', covariance_matrix=covariance_matrix, tensor_args=tensor_args)
+
 
         self.sample_ratio = sample_ratio
         self.sample_fns = []
