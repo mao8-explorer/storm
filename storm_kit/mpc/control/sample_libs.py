@@ -60,7 +60,6 @@ class SampleLib:
     def filter_samples(self, eps):
         if self.filter_coeffs is not None:
             beta_0, beta_1, beta_2 = self.filter_coeffs
-
             # This could be tensorized:
             for i in range(2, eps.shape[1]):
                 eps[:, i, :] = beta_0 * eps[:, i, :] + beta_1 * \
