@@ -189,6 +189,7 @@ class World(object):
         asset_options = gymapi.AssetOptions()
         asset_options.armature = 0.001
         asset_options.fix_base_link = True
+        asset_options.disable_gravity = True
         #pose = gymapi.Transform()
         #pose.p = gymapi.Vec3(pose[0], pose[1], pose[2])
         #pose.r = gymapi.Quat(pose[3], pose[4], pose[5], pose[6])
