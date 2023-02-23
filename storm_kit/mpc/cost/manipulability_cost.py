@@ -51,6 +51,7 @@ class ManipulabilityCost(nn.Module):
             
             J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1))
             score = torch.sqrt(torch.det(J_J_t))
+
         score[score != score] = 0.0
         
         

@@ -76,7 +76,7 @@ model:
 cost:
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    weight: [15.0, 100.0]
+    weight: [1.0, 30.0]
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     hinge_val: -1
@@ -107,12 +107,13 @@ cost:
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     
   null_space:
-    weight: 1.0 #0.01 #0.05 #0.5 #1.0
+    weight: 0.0 #0.01 #0.05 #0.5 #1.0
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':1.0}
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5]
     #retract_state : [-1.57, -1.2, 1.9, -1.383, -1.57, 0.00]
+  
   manipulability:
-    weight: 30.0 #100.0 #0.05 #0.5 #1.0
+    weight: 10.0 #100.0 #0.05 #0.5 #1.0
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     thresh: 0.03
 
@@ -131,7 +132,7 @@ cost:
     #threshold: 0.35
     
   stop_cost:
-    weight: 100.0
+    weight: 100.0 #100.0
     max_nlimit: 1.5 #0.2
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':1.0}
 
@@ -150,6 +151,7 @@ cost:
     weight: 0.0 
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
     order: 1
+    
   state_bound:
     weight: 1000.0 
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
@@ -160,8 +162,8 @@ cost:
 
 mppi:
   horizon           : 30
-  init_cov          : 0.005 #.5 #.5
-  gamma             : 0.98
+  init_cov          : 0.01 #0.005 #.5 #.5
+  gamma             : 0.999
   n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.7
