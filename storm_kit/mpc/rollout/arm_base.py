@@ -72,7 +72,8 @@ class ArmBase(RolloutBase):
         self.traj_dt = self.dynamics_model.traj_dt
         #print(self.traj_dt)
         
-        self.fd_matrix = build_fd_matrix(10 - self.exp_params['cost']['smooth']['order'], device=self.tensor_args['device'], dtype=self.tensor_args['dtype'], PREV_STATE=True, order=self.exp_params['cost']['smooth']['order'])
+        if 'smooth' in self.exp_params['cost']:
+            self.fd_matrix = build_fd_matrix(10 - self.exp_params['cost']['smooth']['order'], device=self.tensor_args['device'], dtype=self.tensor_args['dtype'], PREV_STATE=True, order=self.exp_params['cost']['smooth']['order'])
         self.goal_state = None
         self.goal_ee_pos = None
         self.goal_ee_rot = None

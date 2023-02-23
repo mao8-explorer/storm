@@ -43,7 +43,7 @@ class RobotDataset(torch.utils.data.Dataset):
         return sample
 def create_dataset(robot_name):
     checkpoints_dir = get_weights_path()+'/robot_self'
-    num_particles = 5000
+    num_particles = 15000
     task_file = robot_name+'_reacher.yml'
     # load robot model:
     device = torch.device('cuda', 0) 
@@ -158,7 +158,7 @@ def create_dataset(robot_name):
     #optimizer = torch.optim.SGD(model.parameters(),lr=1e-3)#,momentum=0.97)
 
     #print(model)
-    epochs = 100
+    epochs = 200
     min_loss = 100.0
     # training:
     for e in range(epochs):
