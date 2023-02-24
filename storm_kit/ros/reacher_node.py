@@ -10,11 +10,10 @@ torch.backends.cudnn.allow_tf32 = True
 
 #ROS Imports
 import rospy
-from geometry_msgs.msg import PoseStamped, Point
-from sensor_msgs.msg import JointState, PointCloud2
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from visualization_msgs.msg import Marker, MarkerArray
-from std_msgs.msg import String, Header
+from geometry_msgs.msg import PoseStamped 
+from sensor_msgs.msg import JointState
+# from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+# from std_msgs.msg import String, Header
 
 #STORM imports
 from storm_kit.mpc.task.reacher_task import ReacherTask
@@ -25,55 +24,68 @@ class MPCReacherNode():
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
-        self.pointcloud_topic = rospy.get_param('~pointcloud_topic', '/camera/depth/color/points_filtered')
-        self.diagnostics_topic = rospy.get_param('~diagnostics_topic', 'mpc_diagnostics')
-        self.fixed_frame = rospy.get_param('~fixed_frame', 'panda_link0')
-        self.pointcloud_frame = rospy.get_param('~pointcloud_frame', '/camera/depth/color/points_filtered')
-        self.joint_names = rospy.get_param('robot_joint_names', None)
+        # self.joint_names = rospy.get_param('robot_joint_names', None)
         self.world_description = rospy.get_param('world_description', os.path.abspath('../../content/configs/gym/collision_table.yml'))
         self.mpc_config = rospy.get_param('mpc_config', os.path.abspath('../../content/configs/mpc/franka_reacher_real_robot.yml'))
         self.device = torch.device('cuda', 0)
         self.tensor_args = {'device': self.device, 'dtype': torch.float32}
+        self.joint_names = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
 
         #STORM Initialization
         self.robot_coll_description = os.path.abspath('../../content/configs/robot/franka_real_robot.yml')
         self.policy = ReacherTask(self.mpc_config, self.robot_coll_description, self.world_description, self.tensor_args)
-
-        #ROS Initialization
-        self.command_pub = rospy.Publisher(self.joint_command_topic, JointState, queue_size=1, tcp_nodelay=True, latch=False)
-        self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
-        self.ee_goal_sub = rospy.Subscriber(self.ee_goal_topic, PoseStamped, self.ee_goal_callback, queue_size=1)
-        self.control_freq = 50.0
-        self.rate = rospy.Rate(self.control_freq)
+        self.control_dt = 0.02 #TODO: this needs to be read from somewhere
 
         #buffers for different messages
         self.mpc_command = JointState()
         self.mpc_command.name = self.joint_names
         self.mpc_command.effort = np.zeros(7)
-        self.gripper_state = JointState()
-        self.robot_state = JointState()
+        # self.gripper_state = JointState()
+        # self.robot_state = JointState()
+        self.command_header = None
+        self.gripper_state = {
+            'position': np.zeros(2),
+            'velocity': np.zeros(2),
+            'acceleration': np.zeros(2)}
+        self.robot_state = {
+            'position': np.zeros(7),
+            'velocity': np.zeros(7),
+            'acceleration': np.zeros(7)}
         self.ee_goal_pos = None
         self.ee_goal_quat = None
+
+        #ROS Initialization
+        self.command_pub = rospy.Publisher(self.joint_command_topic, JointState, queue_size=1, tcp_nodelay=True, latch=False)
+        self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
+        self.ee_goal_sub = rospy.Subscriber(self.ee_goal_topic, PoseStamped, self.ee_goal_callback, queue_size=1)
+        self.control_freq = float(1.0/self.control_dt)
+        self.rate = rospy.Rate(self.control_freq)
 
         self.state_sub_on = False
         self.goal_sub_on = False
         self.tstep = 0
         self.start_t = None
+        self.first_iter = True
 
     def robot_state_callback(self, msg):
         self.state_sub_on = True
-
+        self.command_header = msg.header
         #save gripper state
-        self.gripper_state.header = msg.header
-        self.gripper_state.position = msg.position[0:2]
-        self.gripper_state.velocity = msg.velocity[0:2]
-        self.gripper_state.effort = msg.effort[0:2]
+        # self.gripper_state.header = msg.header
+        # self.gripper_state.position = msg.position[0:2]
+        # self.gripper_state.velocity = msg.velocity[0:2]
+        # self.gripper_state.effort = msg.effort[0:2]
+        self.gripper_state['position'] = np.array(msg.position[0:2])
+        self.gripper_state['velocity'] = np.array(msg.velocity[0:2])
+        # #save robot state
+        # self.robot_state.header = msg.header
+        # self.robot_state.position = msg.position[2:]
+        # self.robot_state.velocity = msg.velocity[2:]
+        # self.robot_state.effort = msg.effort[2:]
+        self.robot_state['position'] = np.array(msg.position[2:])
+        self.robot_state['velocity'] = np.array(msg.velocity[2:])
+        self.robot_state['acceleration'] = np.zeros_like(self.robot_state['velocity'])
 
-        #save robot state
-        self.robot_state.header = msg.header
-        self.robot_state.position = msg.position[2:]
-        self.robot_state.velocity = msg.velocity[2:]
-        self.robot_state.effort = msg.effort[2:]
 
     def ee_goal_callback(self, msg):
         self.goal_sub_on = True
@@ -98,16 +110,38 @@ class MPCReacherNode():
                     self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
                         goal_ee_quat = self.ee_goal_quat)
                     self.new_ee_goal = False
-                    pass
 
+                #get mpc command
+                command = self.policy.get_command(
+                    self.tstep, self.robot_state, control_dt=self.control_dt, WAIT=True)
+
+                #publish mpc command
+                self.mpc_command.header = self.command_header
+                self.mpc_command.header.stamp = rospy.Time.now()
+                self.mpc_command.position = command['position']
+                self.mpc_command.velocity = command['velocity']
+                self.mpc_command.effort =  command['acceleration']
+                self.command_pub.publish(self.mpc_command)
+
+                #update tstep
                 if self.tstep == 0:
+                    rospy.loginfo('[MPCPoseReacher]: Controller running')
                     self.start_t = rospy.get_time()
                 self.tstep = rospy.get_time() - self.start_t
 
+            else:
+                if (not self.state_sub_on) and (self.first_iter):
+                    rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
+                if (not self.goal_sub_on) and (self.first_iter):
+                    rospy.loginfo('[MPCPoseReacher]: Waiting for ee goal.')
+            
+            self.first_iter = False
             self.rate.sleep()
     
     def close(self):
-        pass
+        self.command_pub.unregister()
+        self.state_sub.unregister()
+        self.ee_goal_sub.unregister()
 
 
 if __name__ == "__main__":

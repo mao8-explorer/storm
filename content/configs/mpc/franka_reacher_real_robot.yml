@@ -152,7 +152,7 @@ cost:
 mppi:
   horizon           : 20
   init_cov          : 0.05 #.5 #.5
-  gamma             : 0.98
+  gamma             : 0.999
   n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.01 #0.7
