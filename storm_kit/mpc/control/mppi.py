@@ -147,8 +147,8 @@ class MPPI(OLGaussianMPC):
         #print(w, top_idx)
         #new_mean = sum_seq.T
         #matplotlib.use('tkagg')
-        self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
-            self.step_size_mean * new_mean
+        # self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
+            # self.step_size_mean * new_mean
         #c = self.mean_action.cpu().numpy()
         #plt.plot(a[:,0])
         #plt.plot(b[:,0])
@@ -200,6 +200,9 @@ class MPPI(OLGaussianMPC):
             #if(cov_update == 'diag_AxA'):
             #    self.scale_tril = torch.sqrt(self.cov_action)
             # self.scale_tril = torch.cholesky(self.cov_action)
+        print(torch.norm(self.cov_action))
+        self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
+            self.step_size_mean * new_mean
 
         
     def _shift(self, shift_steps):

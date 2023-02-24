@@ -76,7 +76,7 @@ model:
 cost:
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    weight: [1.0, 30.0]
+    weight: [10.0, 30.0]
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     hinge_val: -1
@@ -162,17 +162,17 @@ cost:
 
 mppi:
   horizon           : 30
-  init_cov          : 0.01 #0.005 #.5 #.5
+  init_cov          : 0.1 #0.005 #.5 #.5
   gamma             : 0.999
   n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.7
-  beta              : 1.0
+  beta              : 0.1 #1.0
   alpha             : 1
-  num_particles     : 500 #10000
-  update_cov        : False
+  num_particles     : 1000 #10000
+  update_cov        : True
   cov_type          : 'diag_AxA' # 
-  kappa             : 0.005
+  kappa             : 0.001
   null_act_frac     : 0.01
   sample_mode       : 'mean'
   base_action       : 'repeat'
