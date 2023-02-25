@@ -74,7 +74,7 @@ model:
 cost:
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    weight: [15.0, 100.0]
+    weight: [10.0, 30.0]
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     hinge_val: -1
@@ -150,13 +150,13 @@ cost:
   retract_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0]
 
 mppi:
-  horizon           : 20
+  horizon           : 30
   init_cov          : 0.05 #.5 #.5
   gamma             : 0.999
   n_iters           : 1
   step_size_mean    : 0.98
   step_size_cov     : 0.01 #0.7
-  beta              : 0.01 #1.0
+  beta              : 0.1 #0.01 #1.0
   alpha             : 1
   num_particles     : 1000 #10000
   update_cov        : False
@@ -174,5 +174,5 @@ mppi:
     sample_ratio: {'halton':0.3, 'halton-knot':0.7, 'random':0.0, 'random-knot':0.0}
     seed: 0
     filter_coeffs: null #[0.3, 0.3, 0.4]
-    knot_scale: 3
-    bspline_degree: 2
+    knot_scale: 4
+    bspline_degree: 3

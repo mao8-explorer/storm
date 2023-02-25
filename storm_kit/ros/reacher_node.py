@@ -25,7 +25,7 @@ class MPCReacherNode():
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         # self.joint_names = rospy.get_param('robot_joint_names', None)
-        self.world_description = rospy.get_param('world_description', os.path.abspath('../../content/configs/gym/collision_table.yml'))
+        self.world_description = rospy.get_param('world_description', os.path.abspath('../../content/configs/gym/collision_single_box.yml'))
         self.mpc_config = rospy.get_param('mpc_config', os.path.abspath('../../content/configs/mpc/franka_reacher_real_robot.yml'))
         self.device = torch.device('cuda', 0)
         self.tensor_args = {'device': self.device, 'dtype': torch.float32}

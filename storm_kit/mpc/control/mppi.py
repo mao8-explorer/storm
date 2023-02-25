@@ -133,28 +133,7 @@ class MPPI(OLGaussianMPC):
         sum_seq = torch.sum(weighted_seq.T, dim=0)
 
         new_mean = sum_seq
-        #print(self.stomp_matrix.shape, self.full_scale_tril.shape)
-        #cov = self.stomp_matrix #torch.matmul(self.full_scale_tril, self.stomp_matrix)
-        #m_matrix = (1.0 / self.horizon) * cov # f_norm(cov,dim=0)
-        #sum_seq = sum_seq.transpose(0,1)
         
-        #new_mean = torch.matmul(m_matrix,sum_seq.reshape(self.horizon * self.d_action,1)).view(self.d_action, self.horizon).transpose(0,1)
-        
-        
-        # plot mean:
-        # = new_mean.cpu().numpy()
-        #b = sum_seq.cpu().numpy()#.T
-        #print(w, top_idx)
-        #new_mean = sum_seq.T
-        #matplotlib.use('tkagg')
-        # self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
-            # self.step_size_mean * new_mean
-        #c = self.mean_action.cpu().numpy()
-        #plt.plot(a[:,0])
-        #plt.plot(b[:,0])
-        #plt.plot(actions[top_idx[0],:,0].cpu().numpy())
-        #plt.show()
-
         delta = actions - self.mean_action.unsqueeze(0)
 
         #Update Covariance
@@ -200,7 +179,7 @@ class MPPI(OLGaussianMPC):
             #if(cov_update == 'diag_AxA'):
             #    self.scale_tril = torch.sqrt(self.cov_action)
             # self.scale_tril = torch.cholesky(self.cov_action)
-        print(torch.norm(self.cov_action))
+        # print(torch.norm(self.cov_action))
         self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
             self.step_size_mean * new_mean
 
