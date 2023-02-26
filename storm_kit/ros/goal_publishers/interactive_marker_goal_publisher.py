@@ -17,9 +17,9 @@ class InteractiveMarkerGoalPub():
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 10)
-        self.fixed_frame = rospy.get_param('~fixed_frame', 'panda_link0')
-        self.robot_urdf = '../../../content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'
-        self.ee_frame = rospy.get_param('~ee_frame', 'ee_link')
+        self.fixed_frame = rospy.get_param('~fixed_frame', 'base_link')
+        self.robot_urdf = '../../../content/assets/urdf/franka_description/franka_panda_tray.urdf'
+        self.ee_frame = rospy.get_param('~ee_frame', 'tray_link')
         
 
         #ROS Initialization
@@ -167,16 +167,16 @@ class InteractiveMarkerGoalPub():
     def robot_state_callback(self, msg):
         self.state_received = True
         # save gripper state
-        self.gripper_state.header = msg.header
-        self.gripper_state.position = msg.position[0:2]
-        self.gripper_state.velocity = msg.velocity[0:2]
-        self.gripper_state.effort = msg.effort[0:2]
+        # self.gripper_state.header = msg.header
+        # self.gripper_state.position = msg.position[0:2]
+        # self.gripper_state.velocity = msg.velocity[0:2]
+        # self.gripper_state.effort = msg.effort[0:2]
 
         #save robot state
         self.robot_state.header = msg.header
-        self.robot_state.position = msg.position[2:]
-        self.robot_state.velocity = msg.velocity[2:]
-        self.robot_state.effort = msg.effort[2:]
+        self.robot_state.position = msg.position#[2:]
+        self.robot_state.velocity = msg.velocity#[2:]
+        self.robot_state.effort = msg.effort#[2:]
 
 
     def update_ee_goal_to_current(self):

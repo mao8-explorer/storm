@@ -8,6 +8,7 @@ Panels:
         - /Status1
         - /TF1
         - /TF1/Frames1
+        - /MarkerArray1
       Splitter Ratio: 0.5
     Tree Height: 839
   - Class: rviz/Selection
@@ -197,6 +198,14 @@ Visualization Manager:
       Show Visual Aids: false
       Update Topic: /goal_marker/update
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /goal_marker
+      Name: MarkerArray
+      Namespaces:
+        "": true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -225,7 +234,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 3.5963454246520996
+      Distance: 3.287677049636841
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -241,9 +250,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.3553985357284546
+      Pitch: 0.15020231902599335
       Target Frame: <Fixed Frame>
-      Yaw: 6.238584995269775
+      Yaw: 5.958590507507324
     Saved: ~
 Window Geometry:
   Displays:

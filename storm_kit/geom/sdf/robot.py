@@ -419,7 +419,7 @@ class RobotSphereCollision:
         b, n, _ = links_pos.shape
         
         for i in range(n):
-            link_pts = self._batch_link_spheres[i][:,:,:3]
+            # link_pts = self._batch_link_spheres[i][:,:,:3]
             self.w_batch_link_spheres[i][:,:,:3] = transform_point(self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
 
     def check_self_collisions_nn(self, q):

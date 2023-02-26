@@ -25,8 +25,8 @@ class MPCReacherNode():
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         # self.joint_names = rospy.get_param('robot_joint_names', None)
-        self.world_description = rospy.get_param('world_description', os.path.abspath('../../content/configs/gym/collision_single_box.yml'))
-        self.mpc_config = rospy.get_param('mpc_config', os.path.abspath('../../content/configs/mpc/franka_reacher_real_robot.yml'))
+        self.world_description = rospy.get_param('world_description', os.path.abspath('../../content/configs/gym/collision_wall_of_boxes.yml'))
+        self.mpc_config = rospy.get_param('mpc_config', os.path.abspath('../../content/configs/mpc/franka_reacher_real_robot_tray.yml'))
         self.device = torch.device('cuda', 0)
         self.tensor_args = {'device': self.device, 'dtype': torch.float32}
         self.joint_names = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
@@ -75,15 +75,17 @@ class MPCReacherNode():
         # self.gripper_state.position = msg.position[0:2]
         # self.gripper_state.velocity = msg.velocity[0:2]
         # self.gripper_state.effort = msg.effort[0:2]
-        self.gripper_state['position'] = np.array(msg.position[0:2])
-        self.gripper_state['velocity'] = np.array(msg.velocity[0:2])
+
+        # self.gripper_state['position'] = np.array(msg.position[0:2])
+        # self.gripper_state['velocity'] = np.array(msg.velocity[0:2])
+
         # #save robot state
         # self.robot_state.header = msg.header
         # self.robot_state.position = msg.position[2:]
         # self.robot_state.velocity = msg.velocity[2:]
         # self.robot_state.effort = msg.effort[2:]
-        self.robot_state['position'] = np.array(msg.position[2:])
-        self.robot_state['velocity'] = np.array(msg.velocity[2:])
+        self.robot_state['position'] = np.array(msg.position)
+        self.robot_state['velocity'] = np.array(msg.velocity)
         self.robot_state['acceleration'] = np.zeros_like(self.robot_state['velocity'])
 
 
