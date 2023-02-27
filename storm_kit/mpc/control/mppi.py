@@ -232,7 +232,7 @@ class MPPI(OLGaussianMPC):
                 #set bottom right AxA block to init_cov value
                 self.cov_action[-shift_dim:, -shift_dim:] = self.init_cov*I2 
                 #update cholesky decomp
-                self.scale_tril = torch.cholesky(self.cov_action)
+                self.scale_tril = torch.linalg.cholesky(self.cov_action)
                 # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
 
 

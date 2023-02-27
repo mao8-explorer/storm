@@ -1,5 +1,6 @@
 from copy import deepcopy
 import numpy as np
+import os
 import torch
 
 import rospy
@@ -18,7 +19,7 @@ class InteractiveMarkerGoalPub():
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 10)
         self.fixed_frame = rospy.get_param('~fixed_frame', 'base_link')
-        self.robot_urdf = '../../../content/assets/urdf/franka_description/franka_panda_tray.urdf'
+        self.robot_urdf = os.path.abspath(rospy.get_param('~robot_urdf', '../../../content/assets/urdf/franka_description/franka_panda_tray.urdf'))
         self.ee_frame = rospy.get_param('~ee_frame', 'tray_link')
         
 

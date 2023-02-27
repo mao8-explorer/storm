@@ -43,8 +43,9 @@ class RobotDataset(torch.utils.data.Dataset):
         return sample
 def create_dataset(robot_name):
     checkpoints_dir = get_weights_path()+'/robot_self'
-    num_particles = 15000
+    num_particles = 50000 #15000
     task_file = robot_name+'_reacher.yml'
+
     # load robot model:
     device = torch.device('cuda', 0) 
     tensor_args = {'device':device, 'dtype':torch.float32}
@@ -233,9 +234,3 @@ def create_dataset(robot_name):
             
 if __name__=='__main__':
     create_dataset('franka')
-    # load robot model
-    
-    # load dataset
-
-
-    # 

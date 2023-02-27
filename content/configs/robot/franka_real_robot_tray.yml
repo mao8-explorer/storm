@@ -152,21 +152,24 @@ collision_spheres:
           "radius": 0.02
     tray_link:
         - "center": [0.1225, 0.0, -0.02]
-          "radius": 0.02
+          "radius": 0.03
         - "center": [0.1225, 0.125, -0.02]
-          "radius": 0.02
+          "radius": 0.03
         - "center": [0.1225, -0.125, -0.02]
-          "radius": 0.02
+          "radius": 0.03
         - "center": [-0.1225, 0.0, -0.02]
-          "radius": 0.02
+          "radius": 0.03
         - "center": [-0.1225, 0.125, -0.02]
-          "radius": 0.02
+          "radius": 0.03
         - "center": [-0.1225, -0.125, -0.02]
-          "radius": 0.02
+          "radius": 0.03
         - "center": [0.0, 0.125, -0.02]
-          "radius": 0.02
+          "radius": 0.03
         - "center": [0.0, -0.125, -0.02]
-          "radius": 0.02
+          "radius": 0.03
+        # - "center": []
+          # "radius": 0.02
+
 
         # - "center": [0.0, 0.0, -0.10]
         #   "radius": 0.15

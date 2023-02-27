@@ -1,0 +1,11 @@
+<launch>
+  <arg name="config" default="$(find storm)/config/config_goal_sequence_tray.yaml" doc="Path to parameter config file"/>
+
+  <node name="goal_sequence_pub" pkg="storm" type="sequence_goal_publisher" output="screen" clear_params="true">
+    <rosparam file="$(arg config)" />
+  </node>
+
+  <node name="reacher_node" pkg="storm" type="reacher_node" output="screen" clear_params="true">
+    <rosparam file="$(arg config)"/>
+  </node>
+</launch>
