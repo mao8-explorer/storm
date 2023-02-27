@@ -16,7 +16,7 @@ from pytransform3d.plot_utils import *
 import matplotlib.pyplot as plt
 
 robot_file = 'franka.yml'
-task_file = 'franka_reacher_real_robot_tray.yml'
+task_file = 'franka_real_robot_tray_reacher.yml'
 world_file = 'collision_wall_of_boxes.yml'
 world_yml = join_path(get_gym_configs_path(), world_file)
 

@@ -1,25 +1,25 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>dope</name>
+  <name>storm_ros</name>
   <version>0.0.0</version>
-  <description>ROS nodes and utilities for using STORM</description>
+  <description>ROS package for STORM</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
   <!-- <maintainer email="jane.doe@example.com">Jane Doe</maintainer> -->
-  <maintainer email="mohakb@cs.washington.edu">mohakbhardwaj</maintainer>
+  <maintainer email="mohak@todo.todo">mohak</maintainer>
 
 
   <!-- One license tag required, multiple allowed, one license per tag -->
   <!-- Commonly used license strings: -->
   <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
-  <license>MIT</license>
+  <license>TODO</license>
 
 
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">https://research.nvidia.com/publication/2018-09_Deep-Object-Pose</url> -->
+  <!-- <url type="website">http://wiki.ros.org/franka_mpc_utils</url> -->
 
 
   <!-- Author tags are optional, multiple are allowed, one per tag -->
@@ -49,25 +49,24 @@
   <!-- Use doc_depend for packages you need only for building documentation: -->
   <!--   <doc_depend>doxygen</doc_depend> -->
   <buildtool_depend>catkin</buildtool_depend>
-  <!-- <depend>camera_info_manager_py</depend> -->
-  <!-- <depend>cv_bridge</depend> -->
-  <depend>geometry_msgs</depend>
-  <depend>message_filters</depend>
-  <depend>python-argparse</depend>
-  <depend>resource_retriever</depend>
-  <depend>rospy</depend>
-  <depend>sensor_msgs</depend>
-  <depend>std_msgs</depend>
-  <depend>tf</depend>
-  <depend>vision_msgs</depend>
-  <depend>visualization_msgs</depend>
-  <!-- <depend>python3-pyrr-pip</depend> -->
-  <depend>python-pytorch-pip</depend>
-  <depend>python3-numpy</depend>
-  <!-- <depend>python3-scipy</depend> -->
-  <!-- <depend>python3-opencv</depend> -->
-  <!-- <depend>python3-pil</depend> -->
-  <depend>python-configparser</depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>std_msgs</build_depend>  
+  <build_depend>message_generation</build_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>rospy</build_export_depend>
+  <build_export_depend>sensor_msgs</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>message_generation</exec_depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>

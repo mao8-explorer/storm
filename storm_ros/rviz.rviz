@@ -65,69 +65,56 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        ee_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
         panda_hand:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
-        panda_leftfinger:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
         panda_link0:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         panda_link1:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         panda_link2:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         panda_link3:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         panda_link4:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         panda_link5:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         panda_link6:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         panda_link7:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
-        panda_link8:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        panda_rightfinger:
+        tray_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        world:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
       Name: RobotModel
       Robot Description: robot_description
       TF Prefix: ""
@@ -139,10 +126,12 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
+        base_link:
+          Value: true
+        ee_link:
+          Value: true
         panda_hand:
           Value: true
-        panda_leftfinger:
-          Value: false
         panda_link0:
           Value: false
         panda_link1:
@@ -159,11 +148,7 @@ Visualization Manager:
           Value: false
         panda_link7:
           Value: false
-        panda_link8:
-          Value: false
-        panda_rightfinger:
-          Value: false
-        world:
+        tray_link:
           Value: true
       Marker Alpha: 1
       Marker Scale: 0.699999988079071
@@ -172,7 +157,7 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        world:
+        base_link:
           panda_link0:
             panda_link1:
               panda_link2:
@@ -181,11 +166,9 @@ Visualization Manager:
                     panda_link5:
                       panda_link6:
                         panda_link7:
-                          panda_link8:
-                            panda_hand:
-                              panda_leftfinger:
-                                {}
-                              panda_rightfinger:
+                          panda_hand:
+                            ee_link:
+                              tray_link:
                                 {}
       Update Interval: 0
       Value: true
@@ -203,14 +186,14 @@ Visualization Manager:
       Marker Topic: /goal_marker
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Default Light: true
-    Fixed Frame: world
+    Fixed Frame: base_link
     Frame Rate: 30
   Name: root
   Tools:
@@ -250,9 +233,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.15020231902599335
+      Pitch: 0.20520232617855072
       Target Frame: <Fixed Frame>
-      Yaw: 5.958590507507324
+      Yaw: 5.833592414855957
     Saved: ~
 Window Geometry:
   Displays:
