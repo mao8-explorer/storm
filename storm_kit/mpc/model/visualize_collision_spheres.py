@@ -68,6 +68,7 @@ urdf = task_params['model']['urdf_path']
 mesh = 'urdf/franka_description/'
 urdf = join_path(get_assets_path(), urdf)
 mesh = join_path(get_assets_path(), mesh)
+print(urdf, mesh)
 with open(urdf, "r") as f:
     tm.load_urdf(f.read(), mesh_path=mesh)
 joint_names = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
@@ -79,13 +80,14 @@ ax = tm.plot_frames_in(
 # ax = tm.plot_connections_in("lower_cone", ax=ax)
 tm.plot_visuals("base_link", ax=ax, convex_hull_of_mesh=True)
 
-for sphere in spheres:
+# for sphere in spheres:
+sphere = spheres[-1]
     # print(sphere)
     # exit()
-    link_spheres = sphere[0]
-    for sp in link_spheres:
-        x, y, z, r = sp
-        plot_sphere(ax, r, [x,y,z], wireframe=False, alpha=0.3, color='g')
+link_spheres = sphere[0]
+for sp in link_spheres:
+    x, y, z, r = sp
+    plot_sphere(ax, r, [x,y,z], wireframe=False, alpha=0.3, color='g')
 
 
 plt.show()

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from copy import deepcopy
 import numpy as np
 import os
@@ -8,6 +9,7 @@ from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import JointState
 from interactive_markers.interactive_marker_server import *
 from visualization_msgs.msg import *
+import rospkg
 
 from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 from storm_kit.differentiable_robot_model.coordinate_transform import matrix_to_quaternion
@@ -15,11 +17,16 @@ from storm_kit.differentiable_robot_model.coordinate_transform import matrix_to_
 
 class InteractiveMarkerGoalPub():
     def __init__(self):
+        rospack = rospkg.RosPack()
+        self.pkg_path = rospack.get_path('storm_ros')
+        self.storm_path = os.path.dirname(self.pkg_path)
+
+
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 10)
         self.fixed_frame = rospy.get_param('~fixed_frame', 'base_link')
-        self.robot_urdf = os.path.abspath(rospy.get_param('~robot_urdf', '../../../content/assets/urdf/franka_description/franka_panda_tray.urdf'))
+        self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_tray.urdf'))
         self.ee_frame = rospy.get_param('~ee_frame', 'tray_link')
         
 

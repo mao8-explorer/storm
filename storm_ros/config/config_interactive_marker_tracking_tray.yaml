@@ -2,11 +2,11 @@ joint_states_topic: 'joint_states'
 joint_command_topic: 'franka_motion_control/joint_command'
 ee_goal_topic: 'ee_goal'
 robot_joint_names: ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
-world_description: '../../content/configs/gym/collision_wall_of_boxes.yml'
-mpc_config: '../../content/configs/mpc/franka_reacher_real_robot_tray.yml'
-robot_coll_description: '../../content/configs/robot/franka_real_robot_tray.yml'
+world_description: 'content/configs/gym/collision_wall_of_boxes.yml'
+mpc_config: 'content/configs/mpc/franka_real_robot_tray_reacher.yml'
+robot_coll_description: 'content/configs/robot/franka_real_robot_tray.yml'
 
 fixed_frame: 'base_link'
 ee_frame: 'tray_link'
 goal_pub_freq: 10
-robot_urdf: '../../../content/assets/urdf/franka_description/franka_panda_tray.urdf'
+robot_urdf: 'content/assets/urdf/franka_description/franka_panda_tray.urdf'

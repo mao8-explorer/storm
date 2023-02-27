@@ -1,11 +1,11 @@
 <launch>
   <arg name="config" default="$(find storm_ros)/config/config_interactive_marker_tracking_tray.yaml" doc="Path to parameter config file"/>
 
-  <node name="interactive_marker_pub" pkg="storm_ros" type="interactive_marker_goal_publisher" output="screen" clear_params="true">
+  <node name="interactive_marker_pub" pkg="storm_ros" type="interactive_marker_goal_publisher.py" output="screen" clear_params="true">
     <rosparam file="$(arg config)" />
   </node>
 
-  <node name="reacher_node" pkg="storm_ros" type="reacher_node" output="screen" clear_params="true">
+  <node name="reacher_node" pkg="storm_ros" type="reacher_node.py" output="screen" clear_params="true">
     <rosparam file="$(arg config)"/>
   </node>
 </launch>

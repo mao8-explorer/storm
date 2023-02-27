@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #General imports
 import os
 import numpy as np
@@ -12,6 +14,7 @@ torch.backends.cudnn.allow_tf32 = True
 import rospy
 from geometry_msgs.msg import PoseStamped 
 from sensor_msgs.msg import JointState
+import rospkg
 # from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 # from std_msgs.msg import String, Header
 
@@ -21,19 +24,25 @@ from storm_kit.mpc.task.reacher_task import ReacherTask
 
 class MPCReacherNode():
     def __init__(self) -> None:
+        rospack = rospkg.RosPack()
+        self.pkg_path = rospack.get_path('storm_ros')
+        self.storm_path = os.path.dirname(self.pkg_path)
+
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
-        self.world_description = os.path.abspath(rospy.get_param('~world_description', '../../content/configs/gym/collision_wall_of_boxes.yml'))
-        self.robot_coll_description = os.path.abspath(rospy.get_param('~robot_coll_description', '../../content/configs/robot/franka_real_robot.yml'))
-        self.mpc_config = os.path.abspath(rospy.get_param('~mpc_config', '../../content/configs/mpc/franka_real_robot_reacher.yml'))
+        self.world_description = os.path.join(self.storm_path, rospy.get_param('~world_description', '../content/configs/gym/collision_wall_of_boxes.yml'))
+        self.robot_coll_description = os.path.join(self.storm_path, rospy.get_param('~robot_coll_description', '../content/configs/robot/franka_real_robot.yml'))
+        self.mpc_config = os.path.join(self.storm_path, rospy.get_param('~mpc_config', '../content/configs/mpc/franka_real_robot_reacher.yml'))
+        self.control_dt = rospy.get_param('~control_dt', 0.02)
+
         self.joint_names = rospy.get_param('~robot_joint_names', None)
+        
         self.device = torch.device('cuda', 0)
         self.tensor_args = {'device': self.device, 'dtype': torch.float32}
 
         #STORM Initialization
         self.policy = ReacherTask(self.mpc_config, self.robot_coll_description, self.world_description, self.tensor_args)
-        self.control_dt = 0.02 #TODO: this needs to be read from somewhere
 
         #buffers for different messages
         self.mpc_command = JointState()

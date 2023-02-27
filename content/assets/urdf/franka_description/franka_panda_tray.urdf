@@ -232,20 +232,20 @@
     <child link="tray_link"/>
     <!-- <origin rpy= "-1.593 0.002 1.529" xyz= "0.0 0.1225 0.106" /> -->
     <!-- <origin rpy= "0.0 0.0 0.0" xyz= "0.0 0.1225 0.106" /> -->
-    <origin rpy= "0.0 0.0 0.0" xyz= "0.0 0.0 0.02" />
+    <origin rpy= "0.0 0.0 0.0" xyz= "0.0 0.125 0.02" />
   </joint>
 
   <link name="tray_link">
     <collision>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <box size="0.245 0.25 0.04"/>
+        <box size="0.25 0.245 0.04"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <box size="0.245 0.25 0.04" />
+        <box size="0.25 0.245 0.04" />
       </geometry>
     </visual>
   </link>
