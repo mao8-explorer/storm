@@ -47,7 +47,7 @@ class ArmReacher(ArmBase):
         float_dtype = self.tensor_args['dtype']
         self.dist_cost = DistCost(**self.exp_params['cost']['joint_l2'], device=device,float_dtype=float_dtype)
 
-        self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
+        self.goal_cost = PoseCost(**exp_params['cost']['goal_pose'],
                                   tensor_args=self.tensor_args)
         
 

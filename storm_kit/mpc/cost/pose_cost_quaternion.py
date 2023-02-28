@@ -98,7 +98,9 @@ class PoseCostQuaternion(nn.Module):
         goal_disp = ee_pos_batch - ee_goal_pos
         goal_dist = torch.norm(self.pos_weight * goal_disp)
         position_err = (torch.sum(torch.square(self.pos_weight * goal_disp),dim=-1))
-        
+
+        print((torch.isnan(ee_rot_batch)))
+
         #compute projection error
         # rot_err = self.I - R_g_ee
         # rot_err = torch.norm(rot_err, dim=-1)
@@ -114,6 +116,7 @@ class PoseCostQuaternion(nn.Module):
         rot_err = 2.0 * torch.acos(rot_err)
         #normalize to -pi,pi
         rot_err = torch.atan2(torch.sin(rot_err), torch.cos(rot_err))
+        # print(torch.sum(torch.isnan(rot_err)))
         # if(self.hinge_val > 0.0):
         #     rot_err = torch.where(goal_dist.squeeze(-1) <= self.hinge_val, rot_err, self.Z) #hard hinge
 

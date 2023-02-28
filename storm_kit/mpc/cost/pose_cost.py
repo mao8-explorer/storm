@@ -75,7 +75,6 @@ class PoseCost(nn.Module):
                                      dtype=self.dtype)
         ee_goal_rot = ee_goal_rot.to(device=self.device,
                                      dtype=self.dtype)
-        
         #Inverse of goal transform
         R_g_t = ee_goal_rot.transpose(-2,-1) # w_R_g -> g_R_w
         R_g_t_d = (-1.0 * R_g_t @ ee_goal_pos.t()).transpose(-2,-1) # -g_R_w * w_d_g -> g_d_g

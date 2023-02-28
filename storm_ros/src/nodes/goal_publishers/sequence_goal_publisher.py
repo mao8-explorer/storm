@@ -32,7 +32,7 @@ class SequenceGoalPublisher():
         self.fixed_frame = rospy.get_param('~fixed_frame', 'base_link')
         self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_tray.urdf'))
         self.ee_frame = rospy.get_param('~ee_frame', 'tray_link')
-        self.goal_file = os.path.join(self.storm_path,rospy.get_param('goal_list_file', 'storm_ros/nodes/goal_publishers/left_right_goal.yaml'))
+        self.goal_file = os.path.join(self.storm_path,rospy.get_param('goal_list_file', 'storm_ros/src/nodes/goal_publishers/left_right_goal.yaml'))
         self.br = tf2_ros.TransformBroadcaster()
 
         
