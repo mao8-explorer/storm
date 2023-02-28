@@ -24,6 +24,7 @@ from .dist_cost import DistCost
 from .finite_difference_cost import FiniteDifferenceCost
 from .jacobian_cost import JacobianCost
 from .pose_cost import PoseCost
+from .pose_cost_quaternion import PoseCostQuaternion
 from .stop_cost import StopCost
 from .projected_dist_cost import ProjectedDistCost
 from .null_costs import get_inv_null_cost, get_transpose_null_cost

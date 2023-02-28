@@ -24,7 +24,7 @@ import torch
 import torch.autograd.profiler as profiler
 
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
-from ..cost import DistCost, PoseCost, ZeroCost, FiniteDifferenceCost
+from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost
 from ...mpc.rollout.arm_base import ArmBase
 
 class ArmReacher(ArmBase):
@@ -47,7 +47,7 @@ class ArmReacher(ArmBase):
         float_dtype = self.tensor_args['dtype']
         self.dist_cost = DistCost(**self.exp_params['cost']['joint_l2'], device=device,float_dtype=float_dtype)
 
-        self.goal_cost = PoseCost(**exp_params['cost']['goal_pose'],
+        self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
                                   tensor_args=self.tensor_args)
         
 
