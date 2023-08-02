@@ -32,3 +32,9 @@ If you use this source code, please cite the below article,
 
 ## Contributing to this code
 Refer to CLA before making contributions.
+
+
+
+```
+export PYTHONPATH=$PYTHONPATH:/home/zm/MotionPolicyNetworks/storm_ws/storm_dev/storm
+```

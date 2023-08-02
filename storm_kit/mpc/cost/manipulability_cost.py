@@ -42,21 +42,33 @@ class ManipulabilityCost(nn.Module):
         self.ndofs = ndofs
         self.thresh = thresh
         self.i_mat = torch.ones((6,1), device=self.device, dtype=self.float_dtype)
+
+        # self.max_score = 0.0
+        # self.min_score = 1.0
     def forward(self, jac_batch):
         inp_device = jac_batch.device
         
-        
+        # Linear algebra methods are usually unstable in reduced precision, so you should use float32 for these kind of operations.
+        # I don’t think float16 support will be added to lu_cuda for the aforementioned stability reasons.
 
         with torch.cuda.amp.autocast(enabled=False):
             
             J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1))
             score = torch.sqrt(torch.det(J_J_t))
+        #  try to find max_of_score  or manipulability
+        # if(score.max().cpu().numpy()>self.max_score):
+        #     self.max_score = score.max().cpu().numpy()
 
+        # if(score.min().cpu().numpy()<self.min_score):
+        #     self.min_score = score.min().cpu().numpy()
+        # print(
+        #       " self_max_score: ","{:.5f}".format(self.max_score), " self_min_score: ","{:.5f}".format(self.min_score)
+        #       )
         score[score != score] = 0.0
         
         
         score[score > self.thresh] = self.thresh #1.0
-        score = (self.thresh - score) / self.thresh
+        score = (self.thresh - score) / self.thresh  # map from 0 ~ score_max|thresh to 1 ~ 0
 
         cost = self.weight * score 
         

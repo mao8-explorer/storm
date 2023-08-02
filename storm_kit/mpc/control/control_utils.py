@@ -119,7 +119,7 @@ def get_stomp_cov(horizon, d_action,
 
     # also compute the cholesky decomposition:
     scale_tril = torch.zeros((d_action * horizon, d_action * horizon), **tensor_args)
-    scale_tril = torch.cholesky(cov)
+    scale_tril = torch.linalg.cholesky(cov)
     '''
     k = 0
     act_cov_matrix = cov[k * horizon:k * horizon + horizon, k * horizon:k * horizon + horizon]

@@ -28,10 +28,12 @@ cuda_device_num: 0
 
 sim_params:
   sim_urdf: "urdf/franka_description/franka_panda_no_gripper.urdf"
-  robot_pose: [0, 1.0, 0, 0.0, -0.707107, -0.707107, 0.0]
+  # robot_pose: [0, 1.0, 0, 0.0, -0.707107, -0.707107, 0.0]
+  robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]
+  # robot_pose: [0, 0.0, 0, 0.0, 0, 0, 0.0]
   init_state: [1.00, -1.0, 0.00, -2.0, 0.00, 1.57, 0.78]
   control_mode: 'torque'
-
+  
   asset_options:
     fix_base_link: True
     flip_visual_attachments: True

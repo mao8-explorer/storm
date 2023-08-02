@@ -23,10 +23,10 @@
 import torch
 import torch.autograd.profiler as profiler
 
-from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost
+from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost,PoseCostQuaternion
 from ..cost.bound_cost import BoundCost
 from ..cost.manipulability_cost import ManipulabilityCost
-from ..cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost
+from ..cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost, ScenecollisionCost
 from ..model import URDFKinematicModel
 from ...util_file import join_path, get_assets_path
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
@@ -124,6 +124,10 @@ class ArmBase(RolloutBase):
         if(exp_params['cost']['primitive_collision']['weight'] > 0.0):
             self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['primitive_collision'])
 
+        if(exp_params['cost']['scene_collision']['weight'] > 0.0):
+            self.scene_collision_cost = ScenecollisionCost(mppi_params = mppi_params, robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['scene_collision'])
+
+
         if(exp_params['cost']['robot_self_collision']['weight'] > 0.0):
             self.robot_self_collision_cost = RobotSelfCollisionCost(robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['robot_self_collision'])
 
@@ -131,6 +135,7 @@ class ArmBase(RolloutBase):
         self.ee_vel_cost = EEVelCost(ndofs=self.n_dofs,device=device, float_dtype=float_dtype,**exp_params['cost']['ee_vel'])
 
         bounds = torch.cat([self.dynamics_model.state_lower_bounds[:self.n_dofs * 3].unsqueeze(0),self.dynamics_model.state_upper_bounds[:self.n_dofs * 3].unsqueeze(0)], dim=0).T
+        print(bounds)
         self.bound_cost = BoundCost(**exp_params['cost']['state_bound'],
                                     tensor_args=self.tensor_args,
                                     bounds=bounds)
@@ -206,6 +211,10 @@ class ArmBase(RolloutBase):
                 cost += coll_cost
             if self.exp_params['cost']['voxel_collision']['weight'] > 0:
                 coll_cost = self.voxel_collision_cost.forward(link_pos_batch, link_rot_batch)
+                cost += coll_cost
+
+            if self.exp_params['cost']['scene_collision']['weight'] > 0:
+                coll_cost = self.scene_collision_cost.forward(state_batch[:,:,:self.n_dofs],link_pos_batch,link_rot_batch)
                 cost += coll_cost
 
         

@@ -20,6 +20,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from isaacgym import gymapi
+from isaacgym import gymutil
 
 import torch
 import torch.nn.functional as F
@@ -43,7 +45,7 @@ class RobotDataset(torch.utils.data.Dataset):
         return sample
 def create_dataset(robot_name):
     checkpoints_dir = get_weights_path()+'/robot_self'
-    num_particles = 50000 #15000
+    num_particles = 10000
     task_file = robot_name+'_reacher.yml'
 
     # load robot model:
@@ -124,7 +126,7 @@ def create_dataset(robot_name):
     #plt.scatter(x_data[:,1], x_data[:,3],c=y_data,vmin=-0.1, vmax=0.1, cmap='coolwarm')
     #plt.show()
 
-    # scale dataset:
+    # scale dataset: 查看数据分布是否合理 对数据进行了缩放，即将输入数据和标签数据归一化到均值为0、标准差为1的分布
     mean_x = torch.mean(x, dim=0)#* 0.0 #+ 1.0
     std_x = torch.mean(x, dim=0)* 0.0 + 1.0
     mean_y = torch.mean(y, dim=0)#* 0.0 #+ 1.0
@@ -159,7 +161,7 @@ def create_dataset(robot_name):
     #optimizer = torch.optim.SGD(model.parameters(),lr=1e-3)#,momentum=0.97)
 
     #print(model)
-    epochs = 200
+    epochs = 500
     min_loss = 100.0
     # training:
     for e in range(epochs):
@@ -233,4 +235,5 @@ def create_dataset(robot_name):
         print(loss.item())
             
 if __name__=='__main__':
-    create_dataset('franka_real_robot_tray')
+    # create_dataset('franka_real_robot_tray')
+    create_dataset('franka_real_robot')

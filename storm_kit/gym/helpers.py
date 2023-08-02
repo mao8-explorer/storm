@@ -20,6 +20,12 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+import os
+
+import numpy as np
+import trimesh.transformations as tra
+from isaacgym import gymapi
+
 
 
 def load_struct_from_dict(struct_instance, dict_instance):
@@ -37,3 +43,12 @@ def load_struct_from_dict(struct_instance, dict_instance):
             else:
                 setattr(struct_instance,key,dict_instance[key])
     return struct_instance
+
+
+def gym_pose_to_matrix(pose):
+    q = [pose["r"][3], pose["r"][0], pose["r"][1], pose["r"][2]]
+    trans = tra.quaternion_matrix(q)
+    trans[:3, 3] = [pose["p"][i] for i in range(3)]
+
+    return trans
+

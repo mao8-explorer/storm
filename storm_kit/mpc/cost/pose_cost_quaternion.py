@@ -22,6 +22,8 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
+
+import math
 # import torch.nn.functional as F
 
 from .gaussian_projection import GaussianProjection
@@ -96,10 +98,9 @@ class PoseCostQuaternion(nn.Module):
         # d_g_ee = term1 + R_g_t_d # g_d_g + g_d_ee
         # goal_dist = torch.norm(self.pos_weight * d_g_ee, p=2, dim=-1, keepdim=True)
         goal_disp = ee_pos_batch - ee_goal_pos
-        goal_dist = torch.norm(self.pos_weight * goal_disp)
-        position_err = (torch.sum(torch.square(self.pos_weight * goal_disp),dim=-1))
+        # goal_dist = torch.norm(self.pos_weight * goal_disp)
+        position_err = torch.sqrt((torch.sum(torch.square(self.pos_weight * goal_disp),dim=-1)))
 
-        print((torch.isnan(ee_rot_batch)))
 
         #compute projection error
         # rot_err = self.I - R_g_ee
@@ -111,21 +112,38 @@ class PoseCostQuaternion(nn.Module):
         quat_w = ee_quat_batch[:,:,3] * ee_goal_quat[0,3]
 
         rot_err = quat_x + quat_y + quat_z + quat_w
-        rot_err_norm = torch.norm(rot_err , p=2, dim=-1, keepdim=True)
+        # rot_err_norm = torch.norm(rot_err , p=2, dim=-1, keepdim=True)
+        rot_err = 2 * torch.square(rot_err) - 1
+        # -1 ~ 1 限幅 因为  matrix_to_quaternion 和 四元数内积都不能保证torch.acos()的正确性
+        rot_err[rot_err > 1] = 1.0
+        rot_err[rot_err < -1] = -1.0
+        rot_err = torch.acos(rot_err)
+        #  0 - pi 区间 表征 quaternion distance
 
-        rot_err = 2.0 * torch.acos(rot_err)
-        #normalize to -pi,pi
-        rot_err = torch.atan2(torch.sin(rot_err), torch.cos(rot_err))
+
+        # rot_err = 2.0 * torch.acos(rot_err)
+
+        # #normalize to -pi/2,pi/2
+        # rot_err = torch.atan2(torch.sin(rot_err), torch.cos(rot_err))
+        # # print(rot_err)
         # print(torch.sum(torch.isnan(rot_err)))
-        # if(self.hinge_val > 0.0):
-        #     rot_err = torch.where(goal_dist.squeeze(-1) <= self.hinge_val, rot_err, self.Z) #hard hinge
+        # # if(self.hinge_val > 0.0):
+        # #     rot_err = torch.where(goal_dist.squeeze(-1) <= self.hinge_val, rot_err, self.Z) #hard hinge
+        #
+        # # rot_err = torch.sqrt(torch.square(rot_err)) # 考虑到负角 修正
+        # rot_err = torch.abs(rot_err)  # 0 ~ pi/2
+
 
         rot_err[rot_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
         # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
+        # cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(position_err)
+        
+
+
         cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(position_err)
-
         # dimension should be bacth * traj_length
-        return cost.to(inp_device), rot_err_norm, goal_dist
+        return cost.to(inp_device), rot_err, position_err
 
 
+        

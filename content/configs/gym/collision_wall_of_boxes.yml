@@ -2,8 +2,8 @@ world_model:
   coll_objs:
     sphere:
       sphere1:
-        radius: 0.001 #5 # meters
-        position: [10.2, -0.0, 0.4]
+        radius: 0.2 #5 # meters
+        position: [0.4, -0.0, 0.4]
     cube:
       table:
         dims: [2.0, 2.0, 0.2] # x, y, z
@@ -11,11 +11,11 @@ world_model:
       box:
         # dims: [0.30, 0.20, 0.30] # x, y, z
         dims: [0.30, 0.25, 0.30] # x, y, z
-        pose: [0.536, -0.02, 0.15, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+        pose: [0.736, -0.02, 0.15, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
       box2:
         # dims: [0.20, 0.20, 0.30] # x, y, z
         dims: [0.20, 0.25, 0.30] # x, y, z
-        pose: [0.28, -0.02, 0.15, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+        pose: [0.48, -0.02, 0.15, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
 
 
 

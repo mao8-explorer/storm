@@ -37,6 +37,12 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+.vscode
+storm_kit.egg-info
+.pytest_cache
+
+docs
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -174,3 +180,9 @@ docs/setup.rst
 # VIM
 *swp
 *swo
+.idea/.gitignore
+.idea/misc.xml
+.idea/modules.xml
+.idea/storm.iml
+.idea/vcs.xml
+.idea/inspectionProfiles/profiles_settings.xml

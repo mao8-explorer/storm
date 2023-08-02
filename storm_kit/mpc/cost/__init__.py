@@ -34,12 +34,12 @@ from .ee_vel_cost import EEVelCost
 from .collision_cost import CollisionCost
 from .primitive_collision_cost import PrimitiveCollisionCost
 from .voxel_collision_cost import VoxelCollisionCost
-
+from .scenecollision_cost import ScenecollisionCost
 try:
     True
-    #from .scene_nn_collision_cost import SceneNNCollisionCost
+    # from .scene_nn_collision_cost import SceneNNCollisionCost
 except ImportError:
     pass
 
-__all__ = ['DistCost', 'FiniteDifferenceCost', 'JacobianCost', 'PoseCost', 'ProjectedDistCost', \
-           'ZeroCost', 'get_inv_null_cost','get_transpose_null_cost']
+__all__ = ['DistCost', 'FiniteDifferenceCost', 'JacobianCost', 'PoseCost', 'ProjectedDistCost','PoseCostQuaternion' \
+           'ZeroCost', 'get_inv_null_cost','get_transpose_null_cost', 'ScenecollisionCost']

@@ -3,6 +3,10 @@
 #General imports
 import os
 import numpy as np
+
+from isaacgym import gymapi
+from isaacgym import gymutil
+
 import torch
 torch.multiprocessing.set_start_method('spawn',force=True)
 torch.set_num_threads(8)
@@ -21,22 +25,41 @@ import rospkg
 #STORM imports
 from storm_kit.mpc.task.reacher_task import ReacherTask
 
+#marker init
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Point
+
+from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path
+import yaml
 
 class MPCReacherNode():
     def __init__(self) -> None:
         rospack = rospkg.RosPack()
-        self.pkg_path = rospack.get_path('storm_ros')
+        # self.pkg_path = rospack.get_path('storm_ros')
+        self.pkg_path = "/home/zm/MotionPolicyNetworks/storm_ws/storm/storm_ros"
         self.storm_path = os.path.dirname(self.pkg_path)
+        rospy.loginfo(self.storm_path)
+
+        world_file = 'collision_primitives_3d.yml'
+        world_yml = join_path(get_gym_configs_path(), world_file)
+
+        with open(world_yml) as file:
+            self.world_params = yaml.load(file, Loader=yaml.FullLoader)  # world_model
 
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
-        self.world_description = os.path.join(self.storm_path, rospy.get_param('~world_description', '../content/configs/gym/collision_wall_of_boxes.yml'))
-        self.robot_coll_description = os.path.join(self.storm_path, rospy.get_param('~robot_coll_description', '../content/configs/robot/franka_real_robot.yml'))
-        self.mpc_config = os.path.join(self.storm_path, rospy.get_param('~mpc_config', '../content/configs/mpc/franka_real_robot_reacher.yml'))
-        self.control_dt = rospy.get_param('~control_dt', 0.02)
 
-        self.joint_names = rospy.get_param('~robot_joint_names', None)
+        self.marker_pub = rospy.Publisher('trajectory_pub', Marker, queue_size=10)
+        self.coll_marker_pub = rospy.Publisher('collision_pub', Marker, queue_size=10)
+
+
+        self.world_description = os.path.join(self.storm_path, rospy.get_param('~world_description', 'content/configs/gym/collision_primitives_3d.yml'))
+        self.robot_coll_description = os.path.join(self.storm_path, rospy.get_param('~robot_coll_description', 'content/configs/robot/franka_real_robot.yml'))
+        self.mpc_config = os.path.join(self.storm_path, rospy.get_param('~mpc_config', 'content/configs/mpc/franka_real_robot_reacher.yml'))
+        self.control_dt = rospy.get_param('~control_dt', 0.05)
+
+        self.joint_names = rospy.get_param('~robot_joint_names', ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'])
         
         self.device = torch.device('cuda', 0)
         self.tensor_args = {'device': self.device, 'dtype': torch.float32}
@@ -75,6 +98,87 @@ class MPCReacherNode():
         self.start_t = None
         self.first_iter = True
 
+        self.marker_msg = Marker()
+        self.marker_init()
+        self.coll_create_init()
+
+    
+    def coll_create_init(self):
+
+        world_objs = self.world_params['world_model']['coll_objs']
+        sphere_objs = world_objs['sphere']
+        if('cube' in world_objs):
+            cube_objs = world_objs['cube']
+        else:
+            cube_objs = []
+
+
+        for j_idx, j in enumerate(sphere_objs):
+            position = sphere_objs[j]['position']
+            
+            r = sphere_objs[j]['radius']
+
+            self.coll_msg_pub("sphere",position,r,j_idx)
+            rospy.sleep(0.1)
+            
+        
+        for j_idx, j in enumerate(cube_objs):
+            pose = cube_objs[j]['pose']
+            dims = cube_objs[j]['dims']
+            self.coll_msg_pub("cube",pose,dims,j_idx)
+            rospy.sleep(0.1)
+
+
+
+    def coll_msg_pub(self,coll_type,pose,dims,i):
+
+        coll_msg = Marker()
+        coll_msg.header.stamp = rospy.Time.now()  
+        coll_msg.header.frame_id = "panda_link0"    
+        coll_msg.action = Marker.ADD
+        coll_msg.pose.orientation.w = 1.0
+        coll_msg.pose.position.x = pose[0]
+        coll_msg.pose.position.y = pose[1]
+        coll_msg.pose.position.z = pose[2]
+
+        if(coll_type == "cube"):
+            coll_msg.id=i # 用来区别differ msg
+            coll_msg.ns = "cube"
+            coll_msg.type = Marker.CUBE
+            coll_msg.scale.x = dims[0]
+            coll_msg.scale.y = dims[1]
+            coll_msg.scale.z = dims[2]
+            coll_msg.color.g = 1
+        if(coll_type == "sphere"):
+            coll_msg.id=i*10 # 用来区别differ msg
+            coll_msg.ns = "sphere"
+            coll_msg.type = Marker.SPHERE
+            coll_msg.scale.x = dims
+            coll_msg.scale.y = dims
+            coll_msg.scale.z = dims
+            coll_msg.color.g = 1
+
+        coll_msg.color.r = 0
+        coll_msg.color.b = 0
+        coll_msg.color.a = 0.8
+        coll_msg.lifetime = rospy.Duration()
+        self.coll_marker_pub.publish(coll_msg)
+
+
+    def marker_init(self):
+        # 创建一个marker消息
+
+        self.marker_msg.header.stamp = rospy.Time.now()
+        self.marker_msg.header.frame_id = "panda_link0"
+        self.marker_msg.ns = ""
+        self.marker_msg.action = Marker.ADD
+        self.marker_msg.pose.orientation.w = 1.0
+        self.marker_msg.type = Marker.SPHERE_LIST
+        self.marker_msg.scale.x = 0.005
+        self.marker_msg.scale.y = 0.005
+        self.marker_msg.scale.z = 0.005
+
+
     def robot_state_callback(self, msg):
         self.state_sub_on = True
         self.command_header = msg.header
@@ -92,8 +196,8 @@ class MPCReacherNode():
         # self.robot_state.position = msg.position[2:]
         # self.robot_state.velocity = msg.velocity[2:]
         # self.robot_state.effort = msg.effort[2:]
-        self.robot_state['position'] = np.array(msg.position)
-        self.robot_state['velocity'] = np.array(msg.velocity)
+        self.robot_state['position'] = np.array(msg.position[2:])
+        self.robot_state['velocity'] = np.array(msg.velocity[2:])
         self.robot_state['acceleration'] = np.zeros_like(self.robot_state['velocity'])
 
 
@@ -124,6 +228,7 @@ class MPCReacherNode():
                 #get mpc command
                 command = self.policy.get_command(
                     self.tstep, self.robot_state, control_dt=self.control_dt, WAIT=True)
+                
 
                 #publish mpc command
                 self.mpc_command.header = self.command_header
@@ -139,6 +244,40 @@ class MPCReacherNode():
                     self.start_t = rospy.get_time()
                 self.tstep = rospy.get_time() - self.start_t
 
+          
+
+                top_trajs = self.policy.top_trajs.cpu().float().numpy()  # .numpy()
+                
+                batch = 10
+                horizen = 30
+
+                for i in range(batch):
+                      # 将颜色列表中的颜色分配给该组轨迹的marker
+                    self.marker_msg.color.r = float(i+1) / float(batch)
+                    self.marker_msg.color.g = 1.0 - float(i+1) / float(batch)
+                    self.marker_msg.color.b = 0
+                    self.marker_msg.color.a = 1
+
+                    
+                    # 将该组轨迹的点转换为ROS消息中的点列表
+                    points = []
+                    for j in range(horizen):
+                        point = Point()
+                        point.x = top_trajs[i][j][0]
+                        point.y = top_trajs[i][j][1]
+                        point.z = top_trajs[i][j][2]
+                        points.append(point)
+                    # 将点列表添加到marker消息中
+                    self.marker_msg.points = points
+
+                     # 更新header中的时间戳和ID
+                    self.marker_msg.header.stamp = rospy.Time.now()
+                    self.marker_msg.id = i
+
+                    # 发布marker消息
+                    self.marker_pub.publish(self.marker_msg)
+    
+       
             else:
                 if (not self.state_sub_on) and (self.first_iter):
                     rospy.loginfo('[MPCPoseReacher]: Waiting for robot state.')
@@ -152,6 +291,7 @@ class MPCReacherNode():
         self.command_pub.unregister()
         self.state_sub.unregister()
         self.ee_goal_sub.unregister()
+        self.marker_pub.unregister()
 
 
 if __name__ == "__main__":

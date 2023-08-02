@@ -21,6 +21,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 
+from math import dist
 import cv2
 import numpy as np
 import trimesh
@@ -58,7 +59,7 @@ class WorldGridCollision(WorldCollision):
         self.scene_sdf_matrix = None
 
     def update_world_sdf(self):
-        sdf_grid = self._compute_sdfgrid()
+        sdf_grid = self._compute_sdfgrid() # compute costly
         self.scene_sdf_matrix = sdf_grid
         self.scene_sdf = sdf_grid.flatten()
 
@@ -298,7 +299,7 @@ class WorldPrimitiveCollision(WorldGridCollision):
         return dist
 
     def get_signed_distance(self, w_pts):
-        dist = torch.max(self.get_pt_distance(w_pts), dim=1)[0]
+        dist = torch.max(self.get_pt_distance(w_pts), dim=1)[0]  # max for negative is outside , positive is inside
         return dist
     
 
@@ -423,7 +424,10 @@ class WorldImageCollision(WorldCollision):
 
         self.ind_pt = None
     
-    def update_world(self, image_path):
+    def update_world(self, image_path):  
+        """
+        图像碰撞检测
+        """
         im = cv2.imread(image_path,0)
         _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
 
@@ -435,6 +439,10 @@ class WorldImageCollision(WorldCollision):
         dist_outside = cv2.distanceTransform(im, cv2.DIST_L2,3)
         
         dist_map = dist_obstacle - dist_outside
+        # dist_map = im_obstacle.astype(np.float32)-100
+        # dist_map = im_obstacle 
+
+        # dist_map = dist_obstacle
 
         self.dist_map = dist_map
         
@@ -454,7 +462,7 @@ class WorldImageCollision(WorldCollision):
         
         num_voxels = self.im_dims
         
-        flat_tensor = torch.tensor([num_voxels[1], 1], device=self.tensor_args['device'], dtype=torch.int64)
+        flat_tensor = torch.tensor([y_range, 1], device=self.tensor_args['device'], dtype=torch.int64)
         self.scene_voxels = torch.flatten(self.scene_im) * (1 / self.pitch[0])
 
         

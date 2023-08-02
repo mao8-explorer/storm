@@ -238,7 +238,6 @@ class HolonomicModel(DynamicsModelBase):
         elif(self.control_space == 'acc'):
             curr_state[2 * self.n_dofs:3 * self.n_dofs] = act * dt
             curr_state[self.n_dofs:2*self.n_dofs] = curr_state[self.n_dofs:2*self.n_dofs] + curr_state[self.n_dofs*2:self.n_dofs*3] * dt
-            
             curr_state[:self.n_dofs] = curr_state[:self.n_dofs] + curr_state[self.n_dofs:2*self.n_dofs] * dt
         elif(self.control_space == 'vel'):
             curr_state[2 * self.n_dofs:3 * self.n_dofs] = 0.0

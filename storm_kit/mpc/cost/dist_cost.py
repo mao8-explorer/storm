@@ -42,6 +42,8 @@ class DistCost(nn.Module):
         inp_device = disp_vec.device
         disp_vec = self.vec_weight * disp_vec.to(self.device)
 
+        
+
         if dist_type == 'l2':
             dist = torch.norm(disp_vec, p=2, dim=-1,keepdim=False)
         elif dist_type == 'squared_l2':
@@ -55,6 +57,7 @@ class DistCost(nn.Module):
             raise NotImplementedError
 
         cost = self.weight * self.proj_gaussian(dist)
+        cost = self.weight*dist
 
         if(RETURN_GOAL_DIST):
             return cost.to(inp_device), dist.to(inp_device)

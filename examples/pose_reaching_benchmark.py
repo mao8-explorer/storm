@@ -28,7 +28,7 @@ def main(cfg: DictConfig):
         # **kwargs,
     )
     while True:
-        envs.step()
+        # envs.step()
         envs.render()
     # input('....')
 

@@ -109,21 +109,21 @@ class OLGaussianMPC(Controller):
         # initialize sampling library:
         if sample_params['type'] == 'stomp':
             self.sample_lib = StompSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args)
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+            self.sample_shape = torch.Size([self.num_nonzero_particles - 2], device=self.tensor_args['device'])
             self.i_ha = torch.eye(self.d_action, **self.tensor_args).repeat(1, self.horizon)
 
         elif sample_params['type'] == 'halton':
             self.sample_lib = HaltonSampleLib(self.horizon, self.d_action,
                                               tensor_args=self.tensor_args,
                                               **self.sample_params)
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+            self.sample_shape = torch.Size([self.num_nonzero_particles - 2], device=self.tensor_args['device'])
         elif sample_params['type'] == 'random':
             self.sample_lib = RandomSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args,
                                               **self.sample_params)
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+            self.sample_shape = torch.Size([self.num_nonzero_particles - 2], device=self.tensor_args['device'])
         elif sample_params['type'] == 'multiple':
             self.sample_lib = MultipleSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args, **self.sample_params)
-            self.sample_shape = torch.Size([self.num_nonzero_particles - 2])
+            self.sample_shape = torch.Size([self.num_nonzero_particles - 2], device=self.tensor_args['device'])
 
         self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
         # initialize covariance types:
@@ -220,14 +220,31 @@ class OLGaussianMPC(Controller):
             state : dict or np.ndarray
                 Initial state to set the simulation env to
          """
-        
+        # 200 * 20 *2 
         act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
 
+
+        # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
 
 
         trajectories = self._rollout_fn(state, act_seq)
         return trajectories
     
+    # def generate_policy_rollouts(self, state):
+
+    #     pi_actions = torch.empty(num_particles,self.horizon, self.action_dim, device=self.device)
+    #     state = self.state.repeat(num_pi_trajs,1)
+    #     # 他repeat出来N_pi个初始状态 N的数量不一定越多越好 min_std越大 N大一点来增加探索，min_std小的话，N大会降低探索程度？
+    #     for t in range(self.horizon):
+    #         pi_actions[t] = self.model.pi(state)  # action take from N_pi min_std: 0.05
+    #         next_state = self.rollout_fn.dynamics_model.get_next_state(self.curr_state, pi_actions[t], self.sim_dt)
+    #         # (next_state + observation!) did not realize ： 请问我的observation 要实时的计算吗
+    #         # 需要动力学模型 state
+
+    #     actions = torch.cat([actions,pi_actions],dim = 1)
+
+    #     pass
+
     def _shift(self, shift_steps=1):
         """
             Predict mean for the next time step by
@@ -286,9 +303,8 @@ class OLGaussianMPC(Controller):
             self.init_cov_action = torch.diag(torch.tensor([self.init_cov] * (self.horizon * self.d_action), **self.tensor_args))
                 
             self.cov_action = self.init_cov_action
-            self.scale_tril = torch.cholesky(self.cov_action)
+            self.scale_tril = torch.linalg.cholesky(self.cov_action)
             self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
-            
         else:
             raise ValueError('Unidentified covariance type in update_distribution')
 

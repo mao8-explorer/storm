@@ -56,12 +56,14 @@ class Gym(object):
         self._create_envs(num_envs, num_per_row=int(np.sqrt(num_envs)))
         if(not headless):
             self.viewer = self.gym.create_viewer(self.sim, gymapi.CameraProperties())
-            cam_pos = gymapi.Vec3(-1.5, 1.8, 1.2)
-            cam_target = gymapi.Vec3(6, 0.0, -6)
+            # cam_pos = gymapi.Vec3(-1.5, 1.8, 1.2)
+            # cam_target = gymapi.Vec3(6, 0.0, -6)
+            cam_pos = gymapi.Vec3(3, 2.0, 0)
+            cam_target = gymapi.Vec3(-0.0, 0, 0)
             #cam_pos = gymapi.Vec3(2, 2.0, -2)
             #cam_target = gymapi.Vec3(-6, 0.0,6)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
-        #self.gym.add_ground(self.sim, gymapi.PlaneParams())
+            # self.gym.add_ground(self.sim, gymapi.PlaneParams())
 
         self.dt = sim_engine_params.dt
     def step(self):
@@ -128,8 +130,10 @@ class World(object):
         asset_options.armature = 0.001
         asset_options.fix_base_link = True
         asset_options.thickness = 0.002
+
         self.ENV_SEG_LABEL = 1
         self.BG_SEG_LABEL = 0
+        
         self.robot_pose = w_T_r
         self.table_handles = []
 
@@ -185,7 +189,7 @@ class World(object):
         self.gym.set_rigid_body_color(self.env_ptr, table_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, obj_color)
         self.table_handles.append(table_handle)
 
-    def spawn_object(self, asset_file, asset_root, pose, color=[], name='object'):
+    def spawn_object(self, asset_file, asset_root, pose, name='object'):
         asset_options = gymapi.AssetOptions()
         asset_options.armature = 0.001
         asset_options.fix_base_link = True
@@ -198,6 +202,22 @@ class World(object):
         obj_handle = self.gym.create_actor(self.env_ptr, obj_asset, pose,name,
                                            2,2,self.BG_SEG_LABEL)
         return obj_handle
+
+    def spawn_collision_obj(self, asset_file, asset_root, pose, name='object'):
+        asset_options = gymapi.AssetOptions()
+        asset_options.armature = 0.001
+        asset_options.fix_base_link = True
+        asset_options.disable_gravity = True
+        #pose = gymapi.Transform()
+        #pose.p = gymapi.Vec3(pose[0], pose[1], pose[2])
+        #pose.r = gymapi.Quat(pose[3], pose[4], pose[5], pose[6])
+        
+        obj_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
+        obj_handle = self.gym.create_actor(self.env_ptr, obj_asset, pose,name,
+                                           2,2,self.ENV_SEG_LABEL)
+        return obj_handle
+
+
 
     def get_pose(self, body_handle):
         pose = self.gym.get_rigid_transform(self.env_ptr, body_handle)

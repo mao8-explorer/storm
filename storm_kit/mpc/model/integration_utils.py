@@ -24,7 +24,7 @@ import torch
 
 #@torch.jit.script
 def build_fd_matrix(horizon, device='cpu', dtype=torch.float32, order=1, PREV_STATE=False,FULL_RANK=False):
-    # type: int, str, str, bool  -> Tensor
+    # int, str, str, bool  -> Tensor
     
     if(PREV_STATE):
         # build order 1 fd matrix of horizon+order size
@@ -79,7 +79,7 @@ def build_int_matrix(horizon, diagonal=0, device='cpu', dtype=torch.float32, ord
 
 #@torch.jit.script
 def tensor_step_jerk(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix=None):
-    # type: (Tensor, Tensor, Tensor, Tensor, int, Tensor, Optional[Tensor]) -> Tensor
+    #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Optional[Tensor]) -> Tensor
     
     
     # This is batch,n_dof
@@ -108,7 +108,7 @@ def euler_integrate(q_0, u, diag_dt, integrate_matrix):
 
 #@torch.jit.script
 def tensor_step_acc(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix=None):
-    # type: (Tensor, Tensor, Tensor, Tensor, int, Tensor, Optional[Tensor]) -> Tensor
+    #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Optional[Tensor]) -> Tensor
     # This is batch,n_dof
     q = state[:,:n_dofs]
     qd = state[:, n_dofs:2 * n_dofs]
@@ -124,7 +124,7 @@ def tensor_step_acc(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_ma
 
 #@torch.jit.script
 def tensor_step_vel(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix):
-    # type: (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
+    #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
     
     
     # This is batch,n_dof
@@ -143,7 +143,7 @@ def tensor_step_vel(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_ma
 
 #@torch.jit.script 
 def tensor_step_pos(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix):
-    # type: (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
+    #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
     
     
     # This is batch,n_dof

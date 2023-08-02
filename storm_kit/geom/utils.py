@@ -44,6 +44,16 @@ def get_open3d_pointcloud(points, color=[1,0,0], translation=np.zeros(3),rot=Non
 
 def get_pointcloud_from_depth(camera_data={'proj_matrix':None, 'segmentation':None,
                                            'depth':None}):
+    
+    """
+    Puts point clouds from camera and robot link positions into one pointcloud.
+    Returns:
+        env_xyzs: (num_env, npoints, 3), Joint pc for point
+        cloud of all the cameras in each env.
+        env_labels: (num_env, num_points) label for each point of the joint point cloud of each env.
+        depth_images: if return_depth_images is True, return depth images for each env
+        otherwise returns None.
+    """
     proj_matrix = camera_data['proj_matrix']
     
     fu = 2 / proj_matrix[0, 0]
@@ -53,6 +63,7 @@ def get_pointcloud_from_depth(camera_data={'proj_matrix':None, 'segmentation':No
     cam_width = camera_data['depth'].shape[1]
     cam_height = camera_data['depth'].shape[0]
     points = []
+    X2_points = []
     # Ignore any points which originate from ground plane or empty space
     depth_buffer[seg_buffer == 0] = -10001
     #print(cam_width)
@@ -81,3 +92,4 @@ def get_pointcloud_from_depth(camera_data={'proj_matrix':None, 'segmentation':No
     camera_data['pc'] = points#np.matrix(points)
     camera_data['pc_seg'] = np.ravel(pc_seg)
     return camera_data
+

@@ -488,7 +488,7 @@ def compute_spheres_distance(spheres_1, spheres_2):
     
     #print(l_spheres.shape, link_sphere_pts.shape)
     s_dist = torch.norm(spheres_2[:,:,:3] - link_sphere_pts[:,:,:3], dim=-1)
-    s_dist = spheres_2[:,:,3] + link_sphere_pts[:,:,3] - s_dist
+    s_dist = spheres_2[:,:,3] + link_sphere_pts[:,:,3] - s_dist # 这里是r1 + r2 - L(center_1 - center_2)
     max_dist = torch.max(s_dist, dim=-1)[0]
     
     
@@ -565,7 +565,7 @@ def find_link_distance(links_sphere_list, dist):
     for i in range(n_links):
         # for every link, compute the distance to the other links:
         current_spheres = links_sphere_list[i]
-        for j in range(i + 2, n_links):
+        for j in range(i + 2, n_links): # i+2 保证不是计算相邻link
             compute_spheres = links_sphere_list[j]
 
             # find the distance between the two links:

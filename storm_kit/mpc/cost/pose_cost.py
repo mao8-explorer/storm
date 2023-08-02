@@ -20,6 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from math import cos
 import torch
 import torch.nn as nn
 # import torch.nn.functional as F
@@ -88,15 +89,15 @@ class PoseCost(nn.Module):
         # transpose is done for matmul
         term1 = (R_g_t @ ee_pos_batch.transpose(-2,-1)).transpose(-2,-1) # g_R_w * w_d_ee -> g_d_ee
         d_g_ee = term1 + R_g_t_d # g_d_g + g_d_ee
-        goal_dist = torch.norm(self.pos_weight * d_g_ee, p=2, dim=-1, keepdim=True)
+        goal_dist = torch.norm(self.pos_weight * d_g_ee, p=2, dim=-1, keepdim=True)  # 500*30*1
         
         position_err = (torch.sum(torch.square(self.pos_weight * d_g_ee),dim=-1))
         #compute projection error
-        rot_err = self.I - R_g_ee
-        rot_err = torch.norm(rot_err, dim=-1)
-        rot_err_norm = torch.norm(torch.sum(self.rot_weight * rot_err,dim=-1), p=2, dim=-1, keepdim=True)
+        rot_err = self.I - R_g_ee # 500* 30* 3*3
+        rot_err = torch.norm(rot_err, dim=-1) # 500*30*3
+        rot_err_norm = torch.norm(torch.sum(self.rot_weight * rot_err,dim=-1), p=2, dim=-1, keepdim=True) #500*1
         
-        rot_err = torch.square(torch.sum(self.rot_weight * rot_err, dim=-1))
+        rot_err = torch.square(torch.sum(self.rot_weight * rot_err, dim=-1)) #500*30
 
 
         if(self.hinge_val > 0.0):
@@ -104,10 +105,19 @@ class PoseCost(nn.Module):
 
         rot_err[rot_err < self.convergence_val[0]] = 0.0
         position_err[position_err < self.convergence_val[1]] = 0.0
-        # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
-        cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(position_err)
+        cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
+        #cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(position_err)
 
+        if(ee_pos_batch.shape[0] == 1):
+            print(  " cost:_",cost.cpu().numpy(),
+                    " cost_shape",cost.shape,
+                    " rot_err:_",rot_err.cpu().numpy(),
+                    " position_err:_",position_err.cpu().numpy(),
+                    " ee_pos_batch:_",ee_pos_batch.cpu().numpy(),
+                    " ee_rot_batch:_",ee_rot_batch.cpu().numpy(),
+        )
+        print("pose_cost:_ ",cost.shape)
         # dimension should be bacth * traj_length
-        return cost.to(inp_device), rot_err_norm, goal_dist
+        return cost.to(inp_device), rot_err, position_err
 
 

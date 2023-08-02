@@ -27,7 +27,10 @@
 import copy
 
 import numpy as np
+from . import helpers 
 from quaternion import from_rotation_matrix, as_float_array, as_rotation_matrix, as_quat_array
+
+from scenecollisionnet.policy import utils
 try:
     from  isaacgym import gymapi
     from isaacgym import gymutil
@@ -35,6 +38,7 @@ except Exception:
     print("ERROR: gym not loaded, this is okay when generating doc")
 
 import torch
+import trimesh.transformations as tra
 
 from .helpers import load_struct_from_dict
 from ..util_file import join_path
@@ -64,11 +68,39 @@ def pose_from_gym(gym_pose):
                      gym_pose.r.x, gym_pose.r.y, gym_pose.r.z, gym_pose.r.w])
     return pose
 
+class CameraObservation:
+    __slots__ = (
+        "cam_pose",
+        "proj_matrix",
+        "rgb",
+        "depth",
+        "segmentation",
+        "pc",
+    )
+
+    def __init__(
+        self,
+        cam_pose=None,
+        proj_matrix=None,
+        rgb=None,
+        depth=None,
+        segmentation=None,
+        pc=None,
+    ):
+        self.cam_pose = cam_pose
+        self.proj_matrix = proj_matrix
+        self.rgb = rgb
+        self.depth = depth
+        self.segmentation = segmentation
+        self.pc = pc
+
+
 class RobotSim():
-    def __init__(self, device='cpu', gym_instance=None, sim_instance=None,
+    def __init__(self, device='cpu', gym_instance=None, sim_instance=None, env_instance=None,
                  asset_root='', sim_urdf='', asset_options='', init_state=None, collision_model=None, **kwargs):
         self.gym = gym_instance
         self.sim = sim_instance
+        self.env = env_instance 
         self.device = device
         self.dof = None
         self.init_state = init_state
@@ -78,9 +110,12 @@ class RobotSim():
 
         self.camera_handle = None
         self.collision_model_params = collision_model
-        self.DEPTH_CLIP_RANGE = 6.0
+        self.DEPTH_CLIP_RANGE = 4.0
+
         self.ENV_SEG_LABEL = 1
         self.ROBOT_SEG_LABEL = 2
+
+        self.npoints = 1024*10  # number of points
         
         self.robot_asset = self.load_robot_asset(sim_urdf,
                                                  robot_asset_options,
@@ -90,7 +125,7 @@ class RobotSim():
     def init_sim(self, gym_instance, sim_instance):
         self.gym = gym_instance
         self.sim = sim_instance
-        
+
     def load_robot_asset(self, sim_urdf, asset_options, asset_root):
 
         if ((self.gym is None) or (self.sim is None)):
@@ -130,6 +165,12 @@ class RobotSim():
 
         robot_lower_limits = robot_dof_props['lower']
         robot_upper_limits = robot_dof_props['upper']
+        print(
+            "robot_joint_names_:",robot_joint_names,
+            "\nrobot_lower_limits_:",robot_lower_limits,
+            "\nrobot_upper_limits_:",robot_upper_limits,
+            "\ndof_:",self.dof
+            )
         
         if(init_state is None):
             if(self.init_state is None):
@@ -166,6 +207,7 @@ class RobotSim():
             self.init_collision_model(self.collision_model_params, env_handle, robot_handle)
 
         return robot_handle
+    
     def get_state(self, env_handle, robot_handle):
         robot_state = self.gym.get_actor_dof_states(env_handle, robot_handle, gymapi.STATE_ALL)
         
@@ -182,11 +224,48 @@ class RobotSim():
         return joint_state
     
 
+    def _get_gym_state(self):
+        env_states = []
+
+        gym_state = {}
+        for i in range(self.gym.get_actor_count(self.env)):
+            actor_name = self.gym.get_actor_name(self.env, i)
+            dof_dict = self.gym.get_actor_rigid_body_dict(self.env, i)
+            body_states = self.gym.get_actor_rigid_body_states(
+                self.env,
+                i,
+                gymapi.STATE_ALL,
+            )
+            if actor_name == "robot":
+                robot_dof_names = self.gym.get_actor_dof_names(self.env, i)
+                dof_states = self.gym.get_actor_dof_states(
+                    self.env, i, gymapi.STATE_POS
+                )["pos"]
+                assert len(dof_states) == len(robot_dof_names)
+                links_pose = {
+                    name: state
+                    for name, state in zip(robot_dof_names, dof_states)
+                }
+            else:
+                links_pose = {
+                    k: utils.gym_pose_to_matrix(body_states["pose"][:][v])
+                    for k, v in dof_dict.items()
+                }
+            if len(links_pose) == 1:
+                gym_state[actor_name] = list(links_pose.values())[0]
+            else:
+                gym_state[actor_name] = links_pose
+        env_states.append(gym_state)
+        
+        return env_states
+        
+
     def command_robot(self, tau, env_handle, robot_handle):
         self.gym.apply_actor_dof_efforts(env_handle, robot_handle, np.float32(tau))
         
     def command_robot_position(self, q_des, env_handle, robot_handle):
-        self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(q_des))
+        # numpy.ndarray[float32])→ bool
+        return self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(q_des))
 
 
     def set_robot_state(self, q_des, qd_des, env_handle, robot_handle):
@@ -263,7 +342,7 @@ class RobotSim():
                          'p1_body_handle':link_p1_body, 'p2_body_handle': link_p2_body}
             self.link_colls.append(link_coll)
 
-    def spawn_camera(self, env_ptr, fov, width, height, robot_camera_pose):
+    def spawn_camera(self, env_ptr, fov, width, height,external_transform):
         """
         Spawn a camera in the environment
         Args:
@@ -279,78 +358,240 @@ class RobotSim():
 
         self.num_cameras = 1
         camera_handle = self.gym.create_camera_sensor(env_ptr, camera_props)
-        robot_camera_pose = gymapi.Transform(
-            gymapi.Vec3(robot_camera_pose[0], robot_camera_pose[1], robot_camera_pose[2]),
-            gymapi.Quat(robot_camera_pose[3], robot_camera_pose[4], robot_camera_pose[5], robot_camera_pose[6]))
+
+        # robot_camera_pose = gymapi.Transform(
+        #     gymapi.Vec3(robot_camera_pose[0], robot_camera_pose[1], robot_camera_pose[2]),
+        #     gymapi.Quat(robot_camera_pose[3], robot_camera_pose[4], robot_camera_pose[5], robot_camera_pose[6]))
 
         # quat (q.x, q.y, q.z, q.w)
         # as_float_array(q.w, q.x, q.y, q.z)
-        world_camera_pose = self.spawn_robot_pose * robot_camera_pose
+        # world_camera_pose = self.spawn_robot_pose * robot_camera_pose
         
-        #print('Spawn camera pose:',world_camera_pose.p)
-        self.gym.set_camera_transform(
-            camera_handle,
-            env_ptr,
-            world_camera_pose)
+        # print('Spawn camera pose:',world_camera_pose.p)
+        # self.gym.set_camera_transform(
+        #     camera_handle,
+        #     env_ptr,
+        #     world_camera_pose)
+        
+        external_q = tra.quaternion_from_matrix(external_transform)
+        external_q = np.roll(external_q, -1)
+        external_t = external_transform[:3, 3]
+        self.gym.set_camera_transform( 
+                camera_handle,
+                env_ptr,
+                gymapi.Transform(
+                    gymapi.Vec3(*external_t), gymapi.Quat(*external_q)
+                )
+        )
 
         self.camera_handle = camera_handle
-        
-        return camera_handle
+        self._cameras = [camera_handle]
 
         
         
-    def observe_camera(self, env_ptr):
+    def observe_camera(self):
         self.gym.render_all_camera_sensors(self.sim)
         self.current_env_observations = []
         
         camera_handle = self.camera_handle
 
-        w_c_mat = self.gym.get_camera_view_matrix(self.sim, env_ptr, camera_handle).T
+        w_c_mat = self.gym.get_camera_view_matrix(self.sim, self.env, camera_handle).T
+
         #print('View matrix',w_c_mat)
         #p = gymapi.Vec3(w_c_mat[3,0], w_c_mat[3,1], w_c_mat[3,2])
         #p = gymapi.Vec3(w_c_mat[0,3], w_c_mat[1,3], w_c_mat[2,3])
         #quat = as_float_array(from_rotation_matrix(w_c_mat[0:3, 0:3]))
         #r = gymapi.Quat(quat[1], quat[2], quat[3], quat[0])
-        camera_pose = self.spawn_robot_pose.inverse()
 
-        proj_matrix = self.gym.get_camera_proj_matrix(
-            self.sim, env_ptr, camera_handle
-        )
-        view_matrix = self.gym.get_camera_view_matrix(self.sim, env_ptr, camera_handle)#.T
-        #view_matrix = view_matrix_t
-        #view_matrix[0:3,3] = view_matrix_t[3,0:3]
-        #view_matrix[3,0:3] = 0.0
+        # camera_pose = self.spawn_robot_pose.inverse()
+
+        camera_pose = self.gym.get_camera_transform(
+                self.sim, self.env, camera_handle
+            )
+        robot_camera_pose = self.spawn_robot_pose.inverse()*camera_pose
+        
         q = camera_pose.r
         p = camera_pose.p
         camera_pose = [p.x,p.y, p.z, q.x, q.y, q.z, q.w]
-        
+
+        proj_matrix = self.gym.get_camera_proj_matrix(
+            self.sim, self.env, camera_handle
+        )  # like 相机内参 相机矩阵就是建立这种三维到二维的投影关系
+        view_matrix = self.gym.get_camera_view_matrix(self.sim, self.env, camera_handle)#.T
+        #view_matrix = view_matrix_t
+        #view_matrix[0:3,3] = view_matrix_t[3,0:3]
+        #view_matrix[3,0:3] = 0.0
+
+        # print("camera_pose: " + str(camera_pose)," get from gym_camera_transform ")
         
         color_image = self.gym.get_camera_image(
             self.sim,
-            env_ptr,
+            self.env,
             camera_handle,
             gymapi.IMAGE_COLOR)
         color_image = np.reshape(color_image, [480, 640, 4])[:, :, :3]
 
         depth_image = self.gym.get_camera_image(
             self.sim,
-            env_ptr,
+            self.env,
             camera_handle,
             gymapi.IMAGE_DEPTH,
-        )
+        ) #  representing how far that point is from the center of the camera.
         depth_image[depth_image == np.inf] = 0
-        #depth_image[depth_image > self.DEPTH_CLIP_RANGE] = 0
+        depth_image[depth_image > self.DEPTH_CLIP_RANGE] = 0
         segmentation = self.gym.get_camera_image(
             self.sim,
-            env_ptr,
+            self.env,
             camera_handle,
-            gymapi.IMAGE_SEGMENTATION,
+            gymapi.IMAGE_SEGMENTATION,  # represents the class of the object that is displayed on that pixel
         )
         
-        camera_data = {'color':color_image, 'depth':depth_image,
-                       'segmentation':segmentation, 'robot_camera_pose':camera_pose,
-                       'proj_matrix':proj_matrix, 'label_map':{'robot': self.ROBOT_SEG_LABEL,
-                                                               'ground': 0},
-                       'view_matrix':view_matrix,
-                       'world_robot_pose': self.spawn_robot_pose}
+        camera_data = {'color':color_image, 
+                       'depth':depth_image,
+                       'segmentation':segmentation, 
+                       'world_camera_pose': camera_pose,
+                       'robot_camera_pose': robot_camera_pose,
+                       'proj_matrix':proj_matrix, 
+                       'label_map':{'robot': self.ROBOT_SEG_LABEL,'ground': 0},
+                       'view_matrix':view_matrix,  
+                    }
         return camera_data
+
+
+    def _observe_all_cameras(self):
+
+
+        self.gym.render_all_camera_sensors(self.sim)
+
+    
+        self.current_observations = []
+        for camera_handle in self._cameras:
+            camera_pose = self.gym.get_camera_transform(
+                self.sim, self.env, camera_handle
+            )
+
+            proj_matrix = self.gym.get_camera_proj_matrix(
+                self.sim, self.env, camera_handle
+            ) # like 相机内参 相机矩阵就是建立这种三维到二维的投影关系
+
+            q = camera_pose.r
+            p = camera_pose.p
+            camera_pose = helpers.gym_pose_to_matrix(
+                {"r": [q.x, q.y, q.z, q.w], "p": [p.x, p.y, p.z]}
+            )
+            camera_pose = camera_pose.dot(tra.euler_matrix(np.pi, 0, 0))
+
+            color_image = self.gym.get_camera_image(
+                self.sim,
+                self.env,
+                camera_handle,
+                gymapi.IMAGE_COLOR,
+            )
+            color_image = np.reshape(color_image, [480, 640, 4])[:, :, :3]
+
+            depth_image = -self.gym.get_camera_image( # 为啥depth要在前面加负号呢
+                self.sim,
+                self.env,
+                camera_handle,
+                gymapi.IMAGE_DEPTH, #  representing how far that point is from the center of the camera.
+            )
+            depth_image[depth_image == np.inf] = 0
+            depth_image[depth_image > self.DEPTH_CLIP_RANGE] = 0 # depth_image clip range
+            segmentation = self.gym.get_camera_image(
+                self.sim,
+                self.env,
+                camera_handle,
+                gymapi.IMAGE_SEGMENTATION, # represents the class of the object that is displayed on that pixel
+            )
+
+            self.current_observations.append(
+                CameraObservation(
+                    camera_pose,
+                    proj_matrix,
+                    color_image,
+                    depth_image,
+                    segmentation,
+                )
+            )
+
+        
+    def _build_pc_observation(self):
+        """
+        Puts point clouds from camera and robot link positions into one point
+        cloud.
+        Returns:
+          env_xyzs: (num_env, npoints, 3), Joint pc for point
+            cloud of all the cameras in each env.
+          env_labels: (num_env, num_points) label for each point of the joint point cloud of each env.
+          depth_images: if return_depth_images is True, return depth images for each env
+          otherwise returns None.
+        """
+        fxs = []
+        fys = []
+        camera_poses = []
+        label_images = []
+        depth_images = []
+
+        for obs in self.current_observations:
+            depth_images.append(obs.depth.copy())
+            camera_poses.append(obs.cam_pose.copy())
+            fxs.append(obs.proj_matrix[0, 0])
+            fys.append(obs.proj_matrix[1, 1])
+            label_images.append(obs.segmentation.copy().flatten())
+
+        label_images = np.asarray(label_images, dtype=np.uint32)
+        output_camera_poses = np.asarray(camera_poses, dtype=np.float32)
+        depth_images = np.asarray(depth_images, dtype=np.float32)
+        num_cameras, height, width = depth_images.shape
+
+        if not hasattr(self, "_input_x"):
+            fxs = 2.0 / np.asarray(fxs).reshape(-1, 1, 1)
+            fys = 2.0 / np.asarray(fys).reshape(-1, 1, 1)
+            self._input_x = (np.arange(width) - (width / 2)) / width
+            self._input_y = (np.arange(height) - (height / 2)) / height
+            self._input_x, self._input_y = np.meshgrid(
+                self._input_x, self._input_y
+            )
+            self._input_x = fxs * np.repeat(
+                self._input_x[None, ...], num_cameras, axis=0
+            )
+            self._input_y = fys * np.repeat(
+                self._input_y[None, ...], num_cameras, axis=0
+            )
+
+        output_x = depth_images * self._input_x
+        output_y = depth_images * self._input_y
+
+        cam_xyzs = np.stack(
+            (output_x, output_y, depth_images), axis=-1
+        ).reshape([-1, height * width, 3])
+        cam_valid_depth = cam_xyzs[:, :, 2] > 0.001 # 探明 这里的0.001什么意思？ 刨去负值
+
+        pcs = []
+        labels = []
+        for cam_pc, cam_label, cam_valid in zip(
+            cam_xyzs, label_images, cam_valid_depth
+        ):
+            valid_index = np.where(cam_valid)[0]
+            if np.any(valid_index):
+                mask = np.random.choice(
+                    valid_index,
+                    size=self.npoints,
+                    replace=len(valid_index) < self.npoints,
+                )
+                pcs.append(cam_pc[mask, :])
+                label = cam_label[mask].copy()
+                # label[label == self._objects[self._target_name]] = 1
+                # label[np.logical_and(label > 1, label < ROBOT_LABEL)] = 2
+                labels.append(label)
+            else:
+                pcs.append(np.zeros((self.args.npoints, cam_pc.shape[-1])))
+                labels.append(np.zeros(self.args.npoints))
+
+        return {
+            "pc": np.asarray(pcs).reshape(num_cameras, -1, 3),
+            "pc_label": np.asarray(labels).reshape(num_cameras, -1),
+            "depth_image": depth_images,
+            "camera_pose": output_camera_poses,
+        }
+    

@@ -42,16 +42,20 @@ model:
 
   dt_traj_params:
     base_dt: 0.1
-    base_ratio: 1.0
-    max_dt: 0.3
+    base_ratio: 0.5
+    max_dt: 0.2
   init_state: [0.0,0.0]
-  position_bounds: [[0.0, 0.5], [0.0,0.5]]
+  position_bounds: [[0.0, 1], [0.0,1]]
   
 cost:
   goal_state:
     vec_weight: [1.0, 1.0]
-    weight: 100.0
+    weight: 1.0
     gaussian_params: {'n':0, 'c':0.2, 's':0.0, 'r':10.0}
+    # use for DDPG SAC
+    # vec_weight: [1.0, 1.0]
+    # weight: 1.0
+    # gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0} # turn 'c' to zero
     
 
   zero_vel:
@@ -60,11 +64,11 @@ cost:
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
     
   stop_cost:
-    weight: 100.0
+    weight: 0.0
     max_nlimit: 0.05 #0.2
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
   stop_cost_acc:
-    weight: 100.0
+    weight: 0.0
     max_limit: 0.01 #0.2
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
     
@@ -76,26 +80,27 @@ cost:
 
     
   image_collision: # on robot acceleration
-    weight: 1000.0 
+    weight: 5.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
-    collision_file: 'collision_maps/collision_map_cem.png'
+    # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
+    collision_file: 'collision_maps/collision_map_corridor.png'
     dist_thresh: 0.01
   state_bound:
-    weight: 100.0 
+    weight: 0.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
   terminal:
     weight: 0.0
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
 mppi:
-  horizon           : 30 # 100
+  horizon           : 20 # 20
   init_cov          : 0.01 #.5
   gamma             : 0.98 #
-  n_iters           : 1
+  n_iters           : 3
   step_size_mean    : 0.9
   step_size_cov     : 0.6
   beta              : 1.0
   alpha             : 1
-  num_particles     : 500 #10000
+  num_particles     : 200 #10000
   update_cov        : True
   cov_type          : 'diag_AxA' # 
   kappa             : 0.0001

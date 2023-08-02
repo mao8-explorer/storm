@@ -1,3 +1,6 @@
+from isaacgym import gymapi
+from isaacgym import gymutil
+
 import torch
 import numpy as np
 import yaml
@@ -15,9 +18,38 @@ from pytransform3d.urdf import UrdfTransformManager
 from pytransform3d.plot_utils import *
 import matplotlib.pyplot as plt
 
+
+def view_sdf(get_sdf_grid):
+
+    from mayavi import mlab
+    # 将CUDA tensor转换为NumPy数组并移回到CPU上
+    sdf_grid_data = get_sdf_grid.cpu().numpy()
+
+    # 设置可视化界面
+    mlab.figure(bgcolor=(1, 1, 1), size=(800, 800))
+
+    # 创建3D grid数据
+    x, y, z = np.mgrid[:32, :32, :32]
+
+    # 定义自定义颜色映射：在-1.4594到0.0997之间线性插值
+    min_value = -1.4594
+    max_value = 0.0997
+    color_map = 'coolwarm'
+    sdf_grid_data_normalized = (sdf_grid_data - min_value) / (max_value - min_value)
+    mlab.contour3d(x, y, z, sdf_grid_data_normalized, colormap=color_map, opacity=0.7)
+    volume = mlab.volume_slice(x, y, z, sdf_grid_data_normalized, colormap='coolwarm', plane_orientation='z_axes', opacity=0.7)
+    # 添加颜色条
+    mlab.colorbar()
+
+    # 显示网格线
+    mlab.outline()
+
+    # 显示可视化界面
+    mlab.show()
 robot_file = 'franka.yml'
-task_file = 'franka_real_robot_tray_reacher.yml'
-world_file = 'collision_wall_of_boxes.yml'
+task_file = 'franka_reacher.yml'
+world_file = 'collision_primitives_3d.yml'
+
 world_yml = join_path(get_gym_configs_path(), world_file)
 
 with open(world_yml) as file:
@@ -59,6 +91,11 @@ mpc_control.controller.rollout_fn.robot_self_collision_cost.coll.update_batch_ro
 spheres = mpc_control.controller.rollout_fn.robot_self_collision_cost.coll.w_batch_link_spheres
 spheres = [s.numpy() for s in spheres] 
 
+# view sdf grid
+get_sdf_grid = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll.scene_sdf_matrix
+# mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll.view_sdf_grid(get_sdf_grid)
+
+
 #visualize robot urdf with spheres
 tm = UrdfTransformManager()
 task_file = join_path(mpc_configs_path(), task_file)
@@ -91,3 +128,5 @@ for sphere in spheres:
 
 
 plt.show()
+
+view_sdf(get_sdf_grid)

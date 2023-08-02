@@ -63,13 +63,13 @@ class SimpleReacher(object):
         self.goal_state = None
         
 
-        self.goal_cost = DistCost(**exp_params['cost']['goal_state'],
+        self.goal_cost = DistCost(**exp_params['cost']['goal_state'], # 目标限制
                                   tensor_args=self.tensor_args)
 
-        self.stop_cost = StopCost(**exp_params['cost']['stop_cost'],
+        self.stop_cost = StopCost(**exp_params['cost']['stop_cost'], # 速度限制
                                   tensor_args=self.tensor_args,
                                   traj_dt=self.dynamics_model.traj_dt)
-        self.stop_cost_acc = StopCost(**exp_params['cost']['stop_cost_acc'],
+        self.stop_cost_acc = StopCost(**exp_params['cost']['stop_cost_acc'], # 加速度限制
                                       tensor_args=self.tensor_args,
                                       traj_dt=self.dynamics_model.traj_dt)
 

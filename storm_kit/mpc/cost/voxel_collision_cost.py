@@ -45,7 +45,7 @@ class VoxelCollisionCost(nn.Module):
 
 
         # load robot model:
-        robot_collision_params = robot_params['collision_params']
+        robot_collision_params = robot_params['robot_collision_params']
         robot_collision_params['urdf'] = join_path(get_assets_path(),
                                                    robot_collision_params['urdf'])
 
@@ -53,11 +53,12 @@ class VoxelCollisionCost(nn.Module):
         # load nn params:
         label_map = robot_params['world_collision_params']['label_map']
         bounds = robot_params['world_collision_params']['bounds']
-        #model_path = robot_params['world_collision_params']['model_path']
-        self.threshold = robot_params['collision_params']['threshold']
+        # model_path = robot_params['world_collision_params']['model_path'] 这里改了一下
+        model_path = robot_params['world_collision_params']['model_path']
+        self.threshold = robot_params['robot_collision_params']['threshold']
         self.batch_size = batch_size
         
-        # initialize NN model:
+        # initialize NN model: 这里是否有SceneCollisions模型的加载呢
         self.coll = RobotWorldCollisionVoxel(robot_collision_params, self.batch_size,
                                              label_map, bounds, grid_resolution=grid_resolution,
                                              tensor_args=self.tensor_args)

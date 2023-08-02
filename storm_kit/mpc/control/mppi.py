@@ -118,8 +118,9 @@ class MPPI(OLGaussianMPC):
         best_idx = torch.argmax(w)
         self.best_idx = best_idx
         self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0)
+        
 
-        top_values, top_idx = torch.topk(self.total_costs, 10)
+        top_values, top_idx = torch.topk(self.total_costs, 15) # Returns the k largest elements of the given input tensor along a given dimension.
         #print(ee_pos_seq.shape, top_idx)
         self.top_values = top_values
         self.top_idx = top_idx
@@ -133,8 +134,16 @@ class MPPI(OLGaussianMPC):
         sum_seq = torch.sum(weighted_seq.T, dim=0)
 
         new_mean = sum_seq
+
+        self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
+            self.step_size_mean * new_mean
         
-        delta = actions - self.mean_action.unsqueeze(0)
+        delta = actions - self.mean_action.unsqueeze(0)  
+
+        # self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
+        #     self.step_size_mean * new_mean
+        
+        # self.mean_action 放的位置 对delta有影响
 
         #Update Covariance
         if self.update_cov:
@@ -180,9 +189,6 @@ class MPPI(OLGaussianMPC):
             #    self.scale_tril = torch.sqrt(self.cov_action)
             # self.scale_tril = torch.cholesky(self.cov_action)
         # print(torch.norm(self.cov_action))
-        self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
-            self.step_size_mean * new_mean
-
         
     def _shift(self, shift_steps):
         """

@@ -25,7 +25,7 @@
 use_cuda: True
 cuda_device_num: 0
 
-control_dt: 0.02
+control_dt: 0.05
 run_open_loop: False
 control_space: 'acc'
 float_dtype: 'float32'
@@ -39,14 +39,14 @@ model:
     learnable_links: []
   name: "franka_panda"
   max_acc: 5.0 
-  dt: 0.02
+  dt: 0.05
   dt_traj_params:
-    base_dt: 0.02
+    base_dt: 0.05
     base_ratio: 0.5
     max_dt: 0.2
   #control_freq: 10
   #sim_freq: 100
-  ee_link_name: "ee_link"
+  ee_link_name: "panda_hand"
   init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.]
   link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
   #link_names: ['panda_link6']
@@ -59,14 +59,15 @@ model:
     link_objs: ['panda_link1', 'panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
     #link_objs: ['panda_link6']
     threshold: 0.35
-    bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
+    bounds: [[-0.8, -0.8, 0.0],[0.8,0.8,1.6]]
     collision_spheres: '../robot/franka_real_robot.yml'
-    self_collision_weights: 'robot_self/franka_real_self_sdf.pt'
+    self_collision_weights: 'robot_self/franka_real_robot_self_sdf.pt'
     dof: 7
 
   world_collision_params:
+    model_path: '/home/zm/MotionPolicyNetworks/SceneCollisionNet/weights/scene_coll_nn'
     label_map: {'robot': 2, 'ground':0}
-    bounds: [[-1.0, -1.0, -0.2],[1.0,1.0,1.0]]
+    bounds: [[-0.8, -0.8, 0.0],[0.8,0.8,1.6]]
     #bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
     grid_resolution: 0.05
 
@@ -91,12 +92,12 @@ cost:
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
       
   primitive_collision:
-    weight: 5000.0
+    weight: 0.0
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
   robot_self_collision:
-    weight: 5000.0
+    weight: 1000.0
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
@@ -107,7 +108,7 @@ cost:
     #retract_state : [-1.57, -1.2, 1.9, -1.383, -1.57, 0.00]
 
   manipulability:
-    weight: 10.0 #100.0 #0.05 #0.5 #1.0
+    weight: 0.0 #100.0 #0.05 #0.5 #1.0
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     thresh: 0.03
 
@@ -136,6 +137,12 @@ cost:
     distance_threshold: 0.05
     grid_resolution: 0.05
 
+  scene_collision:
+    weight: 0.0 #5000.0
+    gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
+    #threshold: 0.35
+    
+
   smooth: # on robot acceleration
     weight: 0.0 
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
@@ -153,13 +160,13 @@ mppi:
   horizon           : 30
   init_cov          : 0.05 #.5 #.5
   gamma             : 0.999
-  n_iters           : 1
+  n_iters           : 2
   step_size_mean    : 0.98
-  step_size_cov     : 0.01 #0.7
+  step_size_cov     : 0.7 #0.7
   beta              : 0.1 #0.01 #1.0
   alpha             : 1
-  num_particles     : 1000 #10000
-  update_cov        : False
+  num_particles     : 1000 #10000 
+  update_cov        : True
   cov_type          : 'diag_AxA' # 
   kappa             : 0.01 #0.005
   null_act_frac     : 0.001

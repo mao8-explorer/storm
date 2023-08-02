@@ -93,9 +93,11 @@ class RobotSelfCollisionCost(nn.Module):
         
         res = res.view(batch_size, horizon)
         res += self.distance_threshold
-        res[res <= 0.0] = 0.0
 
-        res[res >= 0.5] = 0.5
+        # 自碰撞是有问题的 这样设置 这种是连续的吗？ 1. 阈值是怎么确定的 2. 连续性的碰撞值是否合理 需要验证 怎么验证
+        res[res <= 0.0] = 0.0
+ 
+        res[res >= 0.5] = 0.5  # 貌似无意义 
 
         # rescale:
         res = res / 0.25

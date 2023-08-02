@@ -31,7 +31,7 @@ class ArmReacher(ArmBase):
     """
     This rollout function is for reaching a cartesian pose for a robot
 
-    Todo: 
+Todo: 
     1. Update exp_params to be kwargs
     """
 
@@ -42,12 +42,17 @@ class ArmReacher(ArmBase):
         self.goal_state = None
         self.goal_ee_pos = None
         self.goal_ee_rot = None
-        
+
         device = self.tensor_args['device']
         float_dtype = self.tensor_args['dtype']
         self.dist_cost = DistCost(**self.exp_params['cost']['joint_l2'], device=device,float_dtype=float_dtype)
 
-        self.goal_cost = PoseCost(**exp_params['cost']['goal_pose'],
+        # todo : PoseCost | PoseCostQuaternion compare
+
+        # self.goal_cost = PoseCost(**exp_params['cost']['goal_pose'],
+        #                           tensor_args=self.tensor_args)
+        #
+        self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
                                   tensor_args=self.tensor_args)
         
 
@@ -62,7 +67,7 @@ class ArmReacher(ArmBase):
         retract_state = self.retract_state
         goal_state = self.goal_state
         
-        
+        # 500*30 500*1 500*30*1
         goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
                                                                     goal_ee_pos, goal_ee_rot)
 
@@ -75,7 +80,7 @@ class ArmReacher(ArmBase):
             cost += self.dist_cost.forward(disp_vec)
 
         if(return_dist):
-            return cost, rot_err_norm, goal_dist
+            return cost, goal_cost, rot_err_norm, goal_dist
 
             
         if self.exp_params['cost']['zero_acc']['weight'] > 0:
