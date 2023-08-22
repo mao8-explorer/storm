@@ -48,19 +48,19 @@ model:
   #sim_freq: 100
   ee_link_name: "panda_hand"
   init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.]
-  link_names: ['panda_link1', 'panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
+  link_names: ['panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_link7']
   #link_names: ['panda_link6']
   vel_scale: 1.0
-  collision_spheres: '../robot/franka_real_robot.yml'
+  collision_spheres: '../robot/franka_multipoint.yml'
   
   robot_collision_params:
     urdf: "urdf/franka_description/franka_panda_no_gripper.urdf"
     sample_points: 100
-    link_objs: ['panda_link1', 'panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_hand']
+    link_objs: ['panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_link7']
     #link_objs: ['panda_link6']
     threshold: 0.35
     bounds: [[-0.8, -0.8, 0.0],[0.8,0.8,1.6]]
-    collision_spheres: '../robot/franka_real_robot.yml'
+    collision_spheres: '../robot/franka_multipoint.yml'
     self_collision_weights: 'robot_self/franka_real_robot_self_sdf.pt'
     dof: 7
 
@@ -92,7 +92,7 @@ cost:
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
       
   primitive_collision:
-    weight: 0.0
+    weight: 5000.0
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 

@@ -66,7 +66,7 @@ np.set_printoptions(precision=2)
 
 
 
-# from mppi_scn import MPPIPolicy
+from mppi_scn import MPPIPolicy
 
 import rospy
 from std_msgs.msg import Float32
@@ -200,7 +200,7 @@ def mpc_robot_interactive(args, gym_instance):
     # object_pose.r = gymapi.Quat(g_q[1], g_q[2], g_q[3], g_q[0])
     # object_pose = w_T_r * object_pose
 
-    object_pose.p = gymapi.Vec3(0.447,0.217,-0.221)
+    object_pose.p = gymapi.Vec3(0.484,0.284,0.071)
     object_pose.r = gymapi.Quat(0.392,0.608,-0.535,0.436)
 
 
@@ -224,7 +224,7 @@ def mpc_robot_interactive(args, gym_instance):
 
 
 
-    # policy = MPPIPolicy() sceneCollisionNet 句柄
+    policy = MPPIPolicy() #sceneCollisionNet 句柄
     # policy = mpc_control.controller.rollout_fn.scene_collision_cost.policy
 
     # SCN get ee_pose (copy from SCN_ updata_state):
@@ -264,31 +264,67 @@ def mpc_robot_interactive(args, gym_instance):
     coll_msg = Float32()
     coll_robot_pub = rospy.Publisher('robot_collision', Float32, queue_size=10)
     
+    loop_last_time = time.time_ns()
     while not rospy.is_shutdown():
         try:
+
+            loop_time = (time.time_ns() - loop_last_time)/1e+6
+            loop_last_time = time.time_ns()
+
+
             gym_instance.step()
             gym_instance.clear_lines()
+
+            scene_last_time = time.time_ns()         
             robot_sim._observe_all_cameras()
             obs = {}
             obs.update(robot_sim._build_pc_observation())
-            # policy.set_scene(obs)  # you must know how the scene coordinate changes !!!
-            # SCN get ee_pose (copy from SCN_ updata_state):
-            env_states = robot_sim._get_gym_state()
-            robot_q = np.array(list(env_states[-1]["robot"].values())).astype(np.float64).copy()
-            robot_q = robot_q.reshape(1, -1)
+            policy.set_scene(obs)  # you must know how the scene coordinate changes !!!
+            scene_pc_time = (time.time_ns() - scene_last_time)/1e+6
 
-            # # last_time = time.time_ns()
+            print("Control Loop: {:<10.3f}sec | Scene PC: {:<10.3f}sec | Percent: {:<5.2f}%".format(loop_time, scene_pc_time, (scene_pc_time / loop_time) * 100))
+
+            scene_pc = policy.scene_collision_checker.cur_scene_pc
+            # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
+            collision_grid = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc, visual = True)
+
+            if mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres is not None :
+                w_batch_link_spheres = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
+                spheres = [s[0][:, :3].cpu().numpy() for s in w_batch_link_spheres]
+                # 将所有球体位置信息合并为一个NumPy数组
+                all_positions = np.concatenate(spheres, axis=0)
+    
+                msg.header.stamp = rospy.Time().now()
+                if len(all_positions.shape) == 3:
+                    msg.height = all_positions.shape[1]
+                    msg.width = all_positions.shape[0]
+                else:
+                    msg.height = 1
+                    msg.width = len(all_positions)
+
+                msg.row_step = msg.point_step * all_positions.shape[0]
+                msg.data = np.asarray(all_positions, np.float32).tostring()
+
+                pub_robot_link_pc.publish(msg)   
+
+            # SCN get ee_pose (copy from SCN_ updata_state):
+            # env_states = robot_sim._get_gym_state()
+            # robot_q = np.array(list(env_states[-1]["robot"].values())).astype(np.float64).copy()
+            # robot_q = robot_q.reshape(1, -1)
+
+            # last_time = time.time_ns()
             
             # colls_value = policy._check_collisions(robot_q)
-            # # check_time = (time.time_ns() - last_time)/1000000
-            # # print(check_time)
+            # check_time = (time.time_ns() - last_time)/1000000
+            # print(check_time)
             # print(colls_value.reshape(-1).cpu().numpy())
 
             # policy._fcl_check_collisions(robot_q) # low frequency
 
-            ## cur_scene_pc visualize SCN
+            # cur_scene_pc visualize SCN
             # if policy.scene_collision_checker.cur_scene_pc.cpu().numpy() is not None:
             #     scene_pc = policy.scene_collision_checker.cur_scene_pc.cpu().numpy() 
+
 
             #     msg.header.stamp = rospy.Time().now()
             #     if len(scene_pc.shape) == 3:
@@ -302,20 +338,34 @@ def mpc_robot_interactive(args, gym_instance):
             #     msg.data = np.asarray(scene_pc, np.float32).tostring()
 
             #     pub_env_pc.publish(msg)
-                
-            #     # trans_robot_link_pc = policy.scene_collision_checker._link_trans.cpu().numpy().squeeze()
 
-            #     # if len(trans_robot_link_pc.shape) == 3:
-            #     #     msg.height = trans_robot_link_pc.shape[1]
-            #     #     msg.width = trans_robot_link_pc.shape[0]
-            #     # else:
-            #     #     msg.height = 1
-            #     #     msg.width = len(trans_robot_link_pc)
+    
+            collision_grid_pc = collision_grid.cpu().numpy() 
+            msg.header.stamp = rospy.Time().now()
+            if len(collision_grid_pc.shape) == 3:
+                msg.height = collision_grid_pc.shape[1]
+                msg.width = collision_grid_pc.shape[0]
+            else:
+                msg.height = 1
+                msg.width = len(collision_grid_pc)
 
-            #     # msg.row_step = msg.point_step * trans_robot_link_pc.shape[0]
-            #     # msg.data = np.asarray(trans_robot_link_pc, np.float32).tostring()
+            msg.row_step = msg.point_step * collision_grid_pc.shape[0]
+            msg.data = np.asarray(collision_grid_pc, np.float32).tostring()
 
-            #     # pub_robot_link_pc.publish(msg)
+            pub_env_pc.publish(msg)
+                # trans_robot_link_pc = policy.scene_collision_checker._link_trans.cpu().numpy().squeeze()
+
+                # if len(trans_robot_link_pc.shape) == 3:
+                #     msg.height = trans_robot_link_pc.shape[1]
+                #     msg.width = trans_robot_link_pc.shape[0]
+                # else:
+                #     msg.height = 1
+                #     msg.width = len(trans_robot_link_pc)
+
+                # msg.row_step = msg.point_step * trans_robot_link_pc.shape[0]
+                # msg.data = np.asarray(trans_robot_link_pc, np.float32).tostring()
+
+                # pub_robot_link_pc.publish(msg)
 
 
             if (vis_ee_target):

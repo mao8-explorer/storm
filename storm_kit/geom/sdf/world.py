@@ -116,20 +116,22 @@ class WorldGridCollision(WorldCollision):
         sdf_grid_dims = torch.Size(((self.bounds[1] - self.bounds[0]) / self.grid_resolution).int())
         self.build_transform_matrices(self.bounds, self.grid_resolution)
 
-        sdf_grid = torch.zeros(sdf_grid_dims, **self.tensor_args)
+        # sdf初始化 
+        sdf_grid = torch.zeros(sdf_grid_dims, **self.tensor_args)  
+
         self.num_voxels = torch.tensor([sdf_grid.shape[0], sdf_grid.shape[1],
                                         sdf_grid.shape[2]],
                                        **self.tensor_args)
 
-        # get indices
+        # get indices 对应的是sdf_grid的索引
 
         ind_matrix = [[x,y,z] for x in range(sdf_grid.shape[0]) for y in range(sdf_grid.shape[1]) for z in range(sdf_grid.shape[2])]
         
         ind_matrix = torch.tensor(ind_matrix, **self.tensor_args)
         self.ind_matrix = ind_matrix
-        pt_matrix = self.proj_idx_pt.transform_point(ind_matrix)
+        self.pt_matrix = self.proj_idx_pt.transform_point(ind_matrix)
 
-        dist_matrix = torch.flatten(self.get_signed_distance(pt_matrix))
+        dist_matrix = torch.flatten(self.get_signed_distance(self.pt_matrix))
         self.dist_matrix = dist_matrix
         
         # get corresponding points
@@ -142,6 +144,72 @@ class WorldGridCollision(WorldCollision):
                     
         return sdf_grid
     
+    def _compute_dynamic_sdfgrid(self, pts,visual = False):
+        """
+        Update the scene_sdf based on the given points using rounding method.
+
+        Args:
+            pts (torch.Tensor): A tensor of shape (N, 3) representing the point cloud.
+
+        Returns:
+            None
+        """
+        pts = torch.tensor(pts, **self.tensor_args)
+
+        # Step 0: Clear scene_sdf by setting all elements to 0
+        self.scene_sdf.fill_(0)
+
+        # Step 1: Filter out-of-bound points
+        in_bounds = (pts >= self.bounds[0]).all(dim=-1) & (pts < self.bounds[1]).all(dim=-1)
+        pts = pts[in_bounds]
+
+        # Step 2: Convert point cloud coordinates to voxel indices 
+        pt = self.proj_pt_idx.transform_point(pts)
+        pt = (pt).to(dtype=torch.int64)
+
+        # Step 3: Convert voxel indices to a flat index and keep only unique indices
+        ind_pt = (pt[..., 0]) * (self.num_voxels[1] * self.num_voxels[2]) + pt[..., 1] * self.num_voxels[2] + pt[..., 2]
+        unique_indices = torch.unique(ind_pt).to(dtype=torch.int64)
+    
+        # Step 4: Set corresponding voxels to 1
+        # Make sure the data type and device of self.scene_sdf matches with the class's tensor_args
+        self.scene_sdf[unique_indices] = torch.tensor(1.0, **self.tensor_args)
+        if visual:
+            return self.pt_matrix[unique_indices]
+
+    def get_scene_sdf_matrix(self):
+        self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
+
+
+    def view_scene_sdf_matrix(self):
+        from mayavi import mlab
+
+        #view scene_sdf_matrix : 因为self.scene_sdf =  scene_sdf_matrix.flatten(),现在想逆转 根据self.scene_sdf 得到scene_sdf_matrix
+        self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
+
+        # Assuming you have already computed self.scene_sdf_matrix
+
+        # Convert the scene_sdf_matrix to a NumPy array
+        scene_sdf_np = self.scene_sdf_matrix.cpu().numpy()
+
+        # Get the indices of non-zero elements (corresponding to occupied voxels)
+        nonzero_indices = np.transpose(np.nonzero(scene_sdf_np))
+
+        # Create a figure
+        fig = mlab.figure()
+
+        # Create a sparse voxel grid
+        grid = mlab.points3d(nonzero_indices[:, 0], nonzero_indices[:, 1], nonzero_indices[:, 2], scale_factor=1.0, color=(1, 0, 0))
+
+        # Customize the appearance of the voxel grid
+        grid.glyph.scale_mode = 'scale_by_vector'
+        grid.mlab_source.dataset.point_data.scalars = scene_sdf_np[scene_sdf_np != 0]
+
+        # Show the figure
+        mlab.show()
+       
+
+
     def check_pts_sdf(self, pts):
         '''
         finds the signed distance for the points from the stored grid
@@ -163,7 +231,8 @@ class WorldGridCollision(WorldCollision):
         # get sdf from scene voxels:
         # negative distance is outside mesh:
         sdf = self.scene_sdf[pt_idx]
-        sdf[~in_bounds] = -10.0
+        # sdf[~in_bounds] = -10.0
+        sdf[~in_bounds] = 0.0
         return sdf
 
     def voxel_inds(self, pt, scale=1):
@@ -171,6 +240,7 @@ class WorldGridCollision(WorldCollision):
         pt = self.proj_pt_idx.transform_point(pt)
 
         pt = (pt).to(dtype=torch.int64)
+        # pt = torch.round(pt).to(dtype=torch.int64) #四舍五入
 
         
         ind_pt = (pt[...,0]) * (self.num_voxels[1] * self.num_voxels[2]) + pt[...,1] * self.num_voxels[2] + pt[...,2]
@@ -301,6 +371,15 @@ class WorldPrimitiveCollision(WorldGridCollision):
     def get_signed_distance(self, w_pts):
         dist = torch.max(self.get_pt_distance(w_pts), dim=1)[0]  # max for negative is outside , positive is inside
         return dist
+    
+
+
+
+
+
+
+
+
     
 
 class WorldPointCloudCollision(WorldGridCollision):

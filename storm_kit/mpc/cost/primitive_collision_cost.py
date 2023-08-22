@@ -63,14 +63,17 @@ class PrimitiveCollisionCost(nn.Module):
 
         link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
         link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
-        dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch,
+        # 更改为基于点云的碰撞检测方法 
+        # dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch,
+        #                                                            link_rot_batch)
+        dist = self.robot_world_coll.check_robot_collisions_pointCloud(link_pos_batch,
                                                                    link_rot_batch)
         dist = dist.view(batch_size, horizon, n_links)#, self.n_world_objs)
         # cost only when dist is less
         dist += self.distance_threshold
 
-        dist[dist <= 0.0] = 0.0
-        dist[dist > 0.2] = 0.2
+        # dist[dist <= 0.0] = 0.0
+        # dist[dist > 0.2] = 0.2
         dist = dist / 0.25
         
         cost = torch.sum(dist, dim=-1)

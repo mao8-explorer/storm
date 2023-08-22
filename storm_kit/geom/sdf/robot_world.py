@@ -135,6 +135,59 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
             dist[:, i] = torch.max(sdf, dim=-1)[0]
 
         return dist
+    
+    def check_robot_collisions_pointCloud(self, link_trans, link_rot):
+
+        """get signed distance from stored grid [very fast]
+
+        Args:
+            link_trans (tensor): [b,3]
+            link_rot (tensor): [b,3,3]
+
+        Returns:
+            tensor: signed distance [b,1]
+        """
+        batch_size = link_trans.shape[0]
+        # update link pose:
+        if (self.robot_batch_size != batch_size):
+            self.robot_batch_size = batch_size
+            self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
+
+        self.robot_coll.update_batch_robot_collision_objs(link_trans, link_rot)  # 根据关节位置 解算每个link对应的球体位置
+
+        w_link_spheres = self.robot_coll.get_batch_robot_link_spheres() 
+
+
+
+        n_links = len(w_link_spheres)
+
+        if (self.dist is None or self.dist.shape[0] != n_links):
+            self.dist = torch.zeros((batch_size, n_links), **self.tensor_args)
+        dist = self.dist
+
+        """
+        返回每个link的sdf
+          -- 拆分 每个link对应n个球体的sdf : 球体点位对应的sdf_grid  不需要加球体的半径 因为你的sdf是直接基于点云生成的,是离散的，加半径没有意义
+                 选取n个球体的最大值作为对应link的sdf
+
+        离散的sdf 有着非常差的表现效果  1.只靠link的几个点位无法保证捕捉局部碰撞 2.离散的sdf无法对将要碰撞的情况足够的预警 反应不敏感
+        为了较好的捕捉局部碰撞, 增加link点位尝试缝补问题
+        
+        为了获得连续的sdf需要借助神经网络 再说
+        """
+
+        for i in range(n_links):
+            spheres = w_link_spheres[i]
+            b, n, _ = spheres.shape
+            spheres = spheres.view(b * n, 4)
+
+            # compute distance between world objs and link spheres
+            sdf = self.world_coll.check_pts_sdf(spheres[:, :3]) # 球体point对应的sdf 外负内正
+            sdf = sdf.view(b, n)
+            dist[:, i] = torch.max(sdf, dim=-1)[0]
+
+        return dist
+    
 
     def get_robot_env_sdf(self, link_trans, link_rot):
         """Compute signed distance via analytic functino

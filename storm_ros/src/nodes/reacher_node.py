@@ -19,6 +19,10 @@ import rospy
 from geometry_msgs.msg import PoseStamped 
 from sensor_msgs.msg import JointState
 import rospkg
+from sensor_msgs.msg import PointCloud2
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointField
+
 # from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 # from std_msgs.msg import String, Header
 
@@ -49,13 +53,14 @@ class MPCReacherNode():
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
+        self.env_pc_topic = rospy.get_param('~env_pc_topic', '/points2_filter')
 
         self.marker_pub = rospy.Publisher('trajectory_pub', Marker, queue_size=10)
         self.coll_marker_pub = rospy.Publisher('collision_pub', Marker, queue_size=10)
 
 
         self.world_description = os.path.join(self.storm_path, rospy.get_param('~world_description', 'content/configs/gym/collision_primitives_3d.yml'))
-        self.robot_coll_description = os.path.join(self.storm_path, rospy.get_param('~robot_coll_description', 'content/configs/robot/franka_real_robot.yml'))
+        self.robot_coll_description = os.path.join(self.storm_path, rospy.get_param('~robot_coll_description', 'content/configs/robot/franka_multipoint.yml'))
         self.mpc_config = os.path.join(self.storm_path, rospy.get_param('~mpc_config', 'content/configs/mpc/franka_real_robot_reacher.yml'))
         self.control_dt = rospy.get_param('~control_dt', 0.05)
 
@@ -84,11 +89,14 @@ class MPCReacherNode():
             'acceleration': np.zeros(7)}
         self.ee_goal_pos = None
         self.ee_goal_quat = None
+        self.point_array =None
 
         #ROS Initialization
         self.command_pub = rospy.Publisher(self.joint_command_topic, JointState, queue_size=1, tcp_nodelay=True, latch=False)
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
         self.ee_goal_sub = rospy.Subscriber(self.ee_goal_topic, PoseStamped, self.ee_goal_callback, queue_size=1)
+        self.env_pc_sub = rospy.Subscriber(self.env_pc_topic, PointCloud2, self.env_pc_callback, queue_size=5)
+
         self.control_freq = float(1.0/self.control_dt)
         self.rate = rospy.Rate(self.control_freq)
 
@@ -101,6 +109,9 @@ class MPCReacherNode():
         self.marker_msg = Marker()
         self.marker_init()
         self.coll_create_init()
+
+        self.pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
+
 
     
     def coll_create_init(self):
@@ -214,8 +225,26 @@ class MPCReacherNode():
             msg.pose.orientation.y,
             msg.pose.orientation.z])
 
+    def env_pc_callback(self, msg):
+        point_generator = pc2.read_points(msg)
+        point_list = list(point_generator)
+        self.point_array = np.array(point_list)
+
+        # point_array is now a NumPy array of shape (N, 3), containing the x, y, z coordinates of the points
+        # You can use point_array as needed for further processing or visualization
+
 
     def control_loop(self):
+
+        msg = PointCloud2()
+        msg.header.frame_id = "world"
+        msg.fields = [
+            PointField('x', 0, PointField.FLOAT32, 1),
+            PointField('y', 4, PointField.FLOAT32, 1),
+            PointField('z', 8, PointField.FLOAT32, 1)]
+        msg.is_bigendian = False
+        msg.point_step = 12
+        msg.is_dense = False
         while not rospy.is_shutdown():
             #only do something if state and goal have been received
             if self.state_sub_on and self.goal_sub_on:
@@ -224,6 +253,27 @@ class MPCReacherNode():
                     self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
                         goal_ee_quat = self.ee_goal_quat)
                     self.new_ee_goal = False
+
+                # 更新scene_grid 
+                
+                # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
+                collision_grid = self.policy.controller.rollout_fn. \
+                                    primitive_collision_cost.robot_world_coll.world_coll. \
+                                    _compute_dynamic_sdfgrid(self.point_array, visual = True)
+                
+                collision_grid_pc = collision_grid.cpu().numpy() 
+                msg.header.stamp = rospy.Time().now()
+                if len(collision_grid_pc.shape) == 3:
+                    msg.height = collision_grid_pc.shape[1]
+                    msg.width = collision_grid_pc.shape[0]
+                else:
+                    msg.height = 1
+                    msg.width = len(collision_grid_pc)
+
+                msg.row_step = msg.point_step * collision_grid_pc.shape[0]
+                msg.data = np.asarray(collision_grid_pc, np.float32).tostring()
+
+                self.pub_env_pc.publish(msg)
 
                 #get mpc command
                 command = self.policy.get_command(
@@ -285,7 +335,7 @@ class MPCReacherNode():
                     rospy.loginfo('[MPCPoseReacher]: Waiting for ee goal.')
             
             self.first_iter = False
-            self.rate.sleep()
+            # self.rate.sleep()
     
     def close(self):
         self.command_pub.unregister()
