@@ -41,7 +41,7 @@ MANIFEST
 storm_kit.egg-info
 .pytest_cache
 
-docs
+# docs
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
