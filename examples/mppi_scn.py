@@ -82,7 +82,8 @@ class MPPIPolicy:
             "model_to_robot": np.linalg.inv(rtm),
         }
 
-        self.scene_collision_checker.set_scene(in_obs)
+        # self.scene_collision_checker.set_scene(in_obs)
+        self.scene_collision_checker.setinstant_scene(in_obs)
 
 
 

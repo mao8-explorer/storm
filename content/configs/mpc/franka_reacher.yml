@@ -98,7 +98,7 @@ cost:
     gaussian_params: {'n':0, 'c':0.5, 's':0, 'r':5.0}
     
   primitive_collision:
-    weight: 5000.0
+    weight: 100.0
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 

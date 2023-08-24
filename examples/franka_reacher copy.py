@@ -37,9 +37,6 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 #
-
-
-
 # import matplotlib
 # matplotlib.use('tkagg')
 
@@ -72,6 +69,7 @@ np.set_printoptions(precision=2)
 from mppi_scn import MPPIPolicy
 
 import rospy
+from std_msgs.msg import Float32
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import PointField
 
@@ -102,37 +100,29 @@ def set_scene(obs):
 
 def mpc_robot_interactive(args, gym_instance):
     vis_ee_target = True
-
     # yml配置
     robot_file = args.robot + '.yml'
     task_file = args.robot + '_reacher.yml'
     world_file = 'collision_primitives_3d.yml'
-
     gym = gym_instance.gym
     sim = gym_instance.sim
     env_ptr = gym_instance.env_list[0]
-
     world_yml = join_path(get_gym_configs_path(), world_file)
     with open(world_yml) as file:
-        world_params = yaml.load(file, Loader=yaml.FullLoader)  # world_model
-
+        world_params = yaml.load(file, Loader=yaml.FullLoader)  # world_mode
     robot_yml = join_path(get_gym_configs_path(), args.robot + '.yml')
     with open(robot_yml) as file:
         robot_params = yaml.load(file, Loader=yaml.FullLoader)
     sim_params = robot_params['sim_params']  # get from -->'/home/zm/MotionPolicyNetworks/storm_ws/src/storm/content/configs/gym/franka.yml'
     sim_params['asset_root'] = get_assets_path()
-
     sim_params['collision_model']=None
-
     device = torch.device('cuda', 0) 
     tensor_args = {'device': device, 'dtype': torch.float32}
 
     # create robot simulation: contains a generic robot class that can load a robot asset into sim and gives access to robot's state and control.
     robot_sim = RobotSim(gym_instance=gym, sim_instance=sim, env_instance = env_ptr,**sim_params, device=device)
-
     # create gym environment:
     robot_pose = sim_params['robot_pose']  # robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]
-    
     robot_ptr = robot_sim.spawn_robot(env_ptr, robot_pose, coll_id=2)
 
 
@@ -145,9 +135,21 @@ def mpc_robot_interactive(args, gym_instance):
     external_transform[2, 3] = 0
     robot_sim.spawn_camera(env_ptr, 60, 640, 480, external_transform)
 
-
     # get pose
     w_T_r = copy.deepcopy(robot_sim.spawn_robot_pose)
+    
+    w_T_robot = torch.eye(4)
+    quat = torch.tensor([w_T_r.r.w,w_T_r.r.x,w_T_r.r.y,w_T_r.r.z]).unsqueeze(0)
+    rot = quaternion_to_matrix(quat)
+    w_T_robot[0,3] = w_T_r.p.x
+    w_T_robot[1,3] = w_T_r.p.y
+    w_T_robot[2,3] = w_T_r.p.z
+    w_T_robot[:3,:3] = rot[0]
+
+
+    w_robot_coord = CoordinateTransform(trans=w_T_robot[0:3,3].unsqueeze(0),
+                                        rot=w_T_robot[0:3,0:3].unsqueeze(0))
+
     world_instance = World(gym, sim, env_ptr, world_params, w_T_r=w_T_r)
 
     # in one word, may be all above just part of this ReacherTask 初始化所有
@@ -168,9 +170,16 @@ def mpc_robot_interactive(args, gym_instance):
     object_pose.r = gymapi.Quat(0.801, 0.598, 0.0, 0)
     obj_asset_file = "urdf/mug/movable_mug.urdf"
     obj_asset_root = get_assets_path()
+
+    collision_obj_asset_file = "urdf/mug/movable_collision_test.urdf"
     if (vis_ee_target):
         target_object = world_instance.spawn_object(obj_asset_file, obj_asset_root, object_pose,
                                                     name='ee_target_object')
+        collision_obj = world_instance.spawn_collision_obj(collision_obj_asset_file, obj_asset_root, object_pose,
+                                                    name='collision_move_test')        
+
+        collision_obj_base_handle = gym.get_actor_rigid_body_handle(env_ptr, collision_obj, 0)
+
         obj_base_handle = gym.get_actor_rigid_body_handle(env_ptr, target_object, 0)
         obj_body_handle = gym.get_actor_rigid_body_handle(env_ptr, target_object, 6)
         gym.set_rigid_body_color(env_ptr, target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, tray_color)
@@ -187,11 +196,23 @@ def mpc_robot_interactive(args, gym_instance):
 
     g_pos = np.ravel(mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
     g_q = np.ravel(mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
-    object_pose.p = gymapi.Vec3(g_pos[0], g_pos[1], g_pos[2])
-    object_pose.r = gymapi.Quat(g_q[1], g_q[2], g_q[3], g_q[0])
-    object_pose = w_T_r * object_pose
+    # object_pose.p = gymapi.Vec3(g_pos[0], g_pos[1], g_pos[2])
+    # object_pose.r = gymapi.Quat(g_q[1], g_q[2], g_q[3], g_q[0])
+    # object_pose = w_T_r * object_pose
+
+    object_pose.p = gymapi.Vec3(0.280,0.469,0.118)
+    object_pose.r = gymapi.Quat(0.392,0.608,-0.535,0.436)
+
+
     if (vis_ee_target):
         gym.set_rigid_transform(env_ptr, obj_base_handle, object_pose)
+
+        # object_pose.p = gymapi.Vec3(0.2, 0.4, 0.2)
+        # object_pose.r = gymapi.Quat(g_q[1], g_q[2], g_q[3], g_q[0])
+        # object_pose = w_T_r * object_pose
+        object_pose.p = gymapi.Vec3(0.580,0.626, -0.274)
+        object_pose.r = gymapi.Quat(0.278,0.668,-0.604,0.334)
+        gym.set_rigid_transform(env_ptr, collision_obj_base_handle, object_pose)
 
 
     sim_dt = mpc_control.exp_params['control_dt']
@@ -203,16 +224,17 @@ def mpc_robot_interactive(args, gym_instance):
 
 
 
-    policy = MPPIPolicy()
+    policy = MPPIPolicy() #sceneCollisionNet 句柄
+    # policy = mpc_control.controller.rollout_fn.scene_collision_cost.policy
 
     # SCN get ee_pose (copy from SCN_ updata_state):
-    env_states = robot_sim._get_gym_state()
-    obs = {
-        "robot_q": np.array(list(env_states[-1]["robot"].values()))
-    }
-    robot_q = obs["robot_q"].astype(np.float64).copy()
-    policy.robot.set_joint_cfg(robot_q)
-    scn_ee_pose = policy.robot.ee_pose[0].cpu().numpy()
+    # env_states = robot_sim._get_gym_state()
+    # obs = {
+    #     "robot_q": np.array(list(env_states[-1]["robot"].values()))
+    # }
+    # robot_q = obs["robot_q"].astype(np.float64).copy()
+    # policy.robot.set_joint_cfg(robot_q)
+    # scn_ee_pose = policy.robot.ee_pose[0].cpu().numpy()
 
     # STORM get ee_pose
     current_robot_state = copy.deepcopy(robot_sim.get_state(env_ptr, robot_ptr))
@@ -224,12 +246,9 @@ def mpc_robot_interactive(args, gym_instance):
     # summary : SCN与STORM在ee_pose的计算上是一致的 或者说 SCN与STORM的FK模型具有一致性 输入关节角 输出各link的pose
 
 
-
-
-    last_time = 0
     ee_pose = gymapi.Transform()
 
-
+    #  all ros_related
     pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
     pub_robot_link_pc = rospy.Publisher('robot_link_pc', PointCloud2, queue_size=5)
     msg = PointCloud2()
@@ -241,66 +260,111 @@ def mpc_robot_interactive(args, gym_instance):
     msg.is_bigendian = False
     msg.point_step = 12
     msg.is_dense = False
-   
+
+    coll_msg = Float32()
+    coll_robot_pub = rospy.Publisher('robot_collision', Float32, queue_size=10)
+    
+    loop_last_time = time.time_ns()
     while not rospy.is_shutdown():
         try:
 
+            loop_time = (time.time_ns() - loop_last_time)/1e+6
+            loop_last_time = time.time_ns()
+
             gym_instance.step()
+            gym_instance.clear_lines()
+
+            scene_last_time = time.time_ns()         
             robot_sim._observe_all_cameras()
             obs = {}
             obs.update(robot_sim._build_pc_observation())
-
             policy.set_scene(obs)  # you must know how the scene coordinate changes !!!
+            scene_pc_time = (time.time_ns() - scene_last_time)/1e+6
 
+            print("Control Loop: {:<10.3f}sec | Scene PC: {:<10.3f}sec | Percent: {:<5.2f}%".format(loop_time, scene_pc_time, (scene_pc_time / loop_time) * 100))
+
+            scene_pc = policy.scene_collision_checker.cur_scene_pc
+            # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
+            collision_grid = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_voxeltosdf(scene_pc, visual = True)
+
+            if mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres is not None :
+                w_batch_link_spheres = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
+                spheres = [s[0][:, :3].cpu().numpy() for s in w_batch_link_spheres]
+                # 将所有球体位置信息合并为一个NumPy数组
+                all_positions = np.concatenate(spheres, axis=0)
+    
+                msg.header.stamp = rospy.Time().now()
+                if len(all_positions.shape) == 3:
+                    msg.height = all_positions.shape[1]
+                    msg.width = all_positions.shape[0]
+                else:
+                    msg.height = 1
+                    msg.width = len(all_positions)
+
+                msg.row_step = msg.point_step * all_positions.shape[0]
+                msg.data = np.asarray(all_positions, np.float32).tostring()
+
+                pub_robot_link_pc.publish(msg)   
 
             # SCN get ee_pose (copy from SCN_ updata_state):
-            env_states = robot_sim._get_gym_state()
-            robot_q = np.array(list(env_states[-1]["robot"].values())).astype(np.float64).copy()
+            # env_states = robot_sim._get_gym_state()
+            # robot_q = np.array(list(env_states[-1]["robot"].values())).astype(np.float64).copy()
+            # robot_q = robot_q.reshape(1, -1)
 
-            robot_q = robot_q.reshape(1, -1)
-
-
-       
             # last_time = time.time_ns()
-            policy._check_collisions(robot_q)
+            
+            # colls_value = policy._check_collisions(robot_q)
             # check_time = (time.time_ns() - last_time)/1000000
             # print(check_time)
-   
+            # print(colls_value.reshape(-1).cpu().numpy())
 
-            
             # policy._fcl_check_collisions(robot_q) # low frequency
-            
 
             # cur_scene_pc visualize SCN
-            if policy.scene_collision_checker.cur_scene_pc.cpu().numpy() is not None:
-                scene_pc = policy.scene_collision_checker.cur_scene_pc.cpu().numpy() 
+            # if policy.scene_collision_checker.cur_scene_pc.cpu().numpy() is not None:
+            #     scene_pc = policy.scene_collision_checker.cur_scene_pc.cpu().numpy() 
 
-                msg.header.stamp = rospy.Time().now()
-                if len(scene_pc.shape) == 3:
-                    msg.height = scene_pc.shape[1]
-                    msg.width = scene_pc.shape[0]
-                else:
-                    msg.height = 1
-                    msg.width = len(scene_pc)
 
-                msg.row_step = msg.point_step * scene_pc.shape[0]
-                msg.data = np.asarray(scene_pc, np.float32).tostring()
+            #     msg.header.stamp = rospy.Time().now()
+            #     if len(scene_pc.shape) == 3:
+            #         msg.height = scene_pc.shape[1]
+            #         msg.width = scene_pc.shape[0]
+            #     else:
+            #         msg.height = 1
+            #         msg.width = len(scene_pc)
 
-                pub_env_pc.publish(msg)
-                
-                trans_robot_link_pc = policy.scene_collision_checker._link_trans.cpu().numpy().squeeze()
+            #     msg.row_step = msg.point_step * scene_pc.shape[0]
+            #     msg.data = np.asarray(scene_pc, np.float32).tostring()
 
-                if len(trans_robot_link_pc.shape) == 3:
-                    msg.height = trans_robot_link_pc.shape[1]
-                    msg.width = trans_robot_link_pc.shape[0]
-                else:
-                    msg.height = 1
-                    msg.width = len(trans_robot_link_pc)
+            #     pub_env_pc.publish(msg)
 
-                msg.row_step = msg.point_step * trans_robot_link_pc.shape[0]
-                msg.data = np.asarray(trans_robot_link_pc, np.float32).tostring()
+    
+            collision_grid_pc = collision_grid.cpu().numpy() 
+            msg.header.stamp = rospy.Time().now()
+            if len(collision_grid_pc.shape) == 3:
+                msg.height = collision_grid_pc.shape[1]
+                msg.width = collision_grid_pc.shape[0]
+            else:
+                msg.height = 1
+                msg.width = len(collision_grid_pc)
 
-                pub_robot_link_pc.publish(msg)
+            msg.row_step = msg.point_step * collision_grid_pc.shape[0]
+            msg.data = np.asarray(collision_grid_pc, np.float32).tostring()
+
+            pub_env_pc.publish(msg)
+                # trans_robot_link_pc = policy.scene_collision_checker._link_trans.cpu().numpy().squeeze()
+
+                # if len(trans_robot_link_pc.shape) == 3:
+                #     msg.height = trans_robot_link_pc.shape[1]
+                #     msg.width = trans_robot_link_pc.shape[0]
+                # else:
+                #     msg.height = 1
+                #     msg.width = len(trans_robot_link_pc)
+
+                # msg.row_step = msg.point_step * trans_robot_link_pc.shape[0]
+                # msg.data = np.asarray(trans_robot_link_pc, np.float32).tostring()
+
+                # pub_robot_link_pc.publish(msg)
 
 
             if (vis_ee_target):
@@ -335,6 +399,14 @@ def mpc_robot_interactive(args, gym_instance):
             qd_des = copy.deepcopy(command['velocity'])  # * 0.5
      
             ee_error = mpc_control.get_current_error(filtered_state_mpc)
+            
+            # use for robot_self_collision_check : mpc_control.controller.rollout_fn.robot_self_collision_cost()
+            robot_collision_cost = mpc_control.controller.rollout_fn \
+                                        .robot_self_collision_cost(curr_state_tensor.unsqueeze(0)[:,:,:7]) \
+                                        .squeeze().cpu().numpy()
+            coll_msg.data = robot_collision_cost
+            coll_robot_pub.publish(coll_msg)
+            
 
             pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
 
@@ -349,7 +421,7 @@ def mpc_robot_interactive(args, gym_instance):
             if (vis_ee_target):
                 gym.set_rigid_transform(env_ptr, ee_body_handle, copy.deepcopy(ee_pose))
 
- 
+
 
 
             # print(["{:.3f}".format(x) for x in ee_error], " opt_dt: {:.3f}".format(mpc_control.opt_dt),
@@ -359,21 +431,21 @@ def mpc_robot_interactive(args, gym_instance):
             #       " run_hz: {:.3f}".format(run_hz))                       
                
 
-            gym_instance.clear_lines()
-            # top_trajs = mpc_control.top_trajs.cpu().float()  # .numpy()
-            # n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
-            # w_pts = w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
+            # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
+            top_trajs = mpc_control.top_trajs.cpu().float()  # .numpy()
+            n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
+            w_pts = w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
 
 
-            # top_trajs = w_pts.cpu().numpy()
-            # color = np.array([0.0, 1.0, 0.0])
-            # for k in range(top_trajs.shape[0]):
-            #     pts = top_trajs[k, :, :]
-            #     color[0] = float(k) / float(top_trajs.shape[0])
-            #     color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
-            #     gym_instance.draw_lines(pts, color=color)
+            top_trajs = w_pts.cpu().numpy()
+            color = np.array([0.0, 1.0, 0.0])
+            for k in range(top_trajs.shape[0]):
+                pts = top_trajs[k, :, :]
+                color[0] = float(k) / float(top_trajs.shape[0])
+                color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
+                gym_instance.draw_lines(pts, color=color)
 
-            # robot_sim.command_robot_position(q_des, env_ptr, robot_ptr)
+            robot_sim.command_robot_position(q_des, env_ptr, robot_ptr)
             robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)
 
         except KeyboardInterrupt:
@@ -381,7 +453,6 @@ def mpc_robot_interactive(args, gym_instance):
             done = True
             break
     mpc_control.close()
-    return 1
 
   
 
@@ -390,7 +461,6 @@ if __name__ == '__main__':
 
     rospy.init_node('pointcloud_publisher_node')
     
-
     # instantiate empty gym:
     parser = argparse.ArgumentParser(description='pass args')
     parser.add_argument('--robot', type=str, default='franka', help='Robot to spawn')
@@ -402,8 +472,6 @@ if __name__ == '__main__':
     sim_params = load_yaml(join_path(get_gym_configs_path(), 'physx.yml'))
     sim_params['headless'] = args.headless
     gym_instance = Gym(**sim_params)
-
-
 
 
     mpc_robot_interactive(args, gym_instance)

@@ -200,7 +200,7 @@ def mpc_robot_interactive(args, gym_instance):
     # object_pose.r = gymapi.Quat(g_q[1], g_q[2], g_q[3], g_q[0])
     # object_pose = w_T_r * object_pose
 
-    object_pose.p = gymapi.Vec3(0.484,0.284,0.071)
+    object_pose.p = gymapi.Vec3(0.280,0.469,0.118)
     object_pose.r = gymapi.Quat(0.392,0.608,-0.535,0.436)
 
 
@@ -210,7 +210,7 @@ def mpc_robot_interactive(args, gym_instance):
         # object_pose.p = gymapi.Vec3(0.2, 0.4, 0.2)
         # object_pose.r = gymapi.Quat(g_q[1], g_q[2], g_q[3], g_q[0])
         # object_pose = w_T_r * object_pose
-        object_pose.p = gymapi.Vec3(0.642,0.490,0.207)
+        object_pose.p = gymapi.Vec3(0.580,0.626, -0.274)
         object_pose.r = gymapi.Quat(0.278,0.668,-0.604,0.334)
         gym.set_rigid_transform(env_ptr, collision_obj_base_handle, object_pose)
 
@@ -271,7 +271,6 @@ def mpc_robot_interactive(args, gym_instance):
             loop_time = (time.time_ns() - loop_last_time)/1e+6
             loop_last_time = time.time_ns()
 
-
             gym_instance.step()
             gym_instance.clear_lines()
 
@@ -286,7 +285,7 @@ def mpc_robot_interactive(args, gym_instance):
 
             scene_pc = policy.scene_collision_checker.cur_scene_pc
             # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
-            collision_grid = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc, visual = True)
+            collision_grid = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_voxeltosdf(scene_pc, visual = True)
 
             if mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres is not None :
                 w_batch_link_spheres = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 

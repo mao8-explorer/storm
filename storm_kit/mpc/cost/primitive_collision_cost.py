@@ -49,7 +49,7 @@ class PrimitiveCollisionCost(nn.Module):
         self.n_world_objs = self.robot_world_coll.world_coll.n_objs
         self.t_mat = None
         self.distance_threshold = distance_threshold
-    def forward(self, link_pos_seq, link_rot_seq):
+    def voxel_forward(self, link_pos_seq, link_rot_seq):
 
         
         inp_device = link_pos_seq.device
@@ -63,11 +63,13 @@ class PrimitiveCollisionCost(nn.Module):
 
         link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
         link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
-        # 更改为基于点云的碰撞检测方法 
+        # 原始的基于图形学的碰撞检测
         # dist = self.robot_world_coll.check_robot_sphere_collisions(link_pos_batch,
         #                                                            link_rot_batch)
+        # 基于点云数据的 离散体素化 voxel grid
         dist = self.robot_world_coll.check_robot_collisions_pointCloud(link_pos_batch,
                                                                    link_rot_batch)
+        
         dist = dist.view(batch_size, horizon, n_links)#, self.n_world_objs)
         # cost only when dist is less
         dist += self.distance_threshold
@@ -84,4 +86,39 @@ class PrimitiveCollisionCost(nn.Module):
         return cost.to(inp_device)
 
 
+    def forward(self, link_pos_seq, link_rot_seq):
 
+        
+        inp_device = link_pos_seq.device
+        batch_size = link_pos_seq.shape[0]
+        horizon = link_pos_seq.shape[1]
+        n_links = link_pos_seq.shape[2]
+
+        if(self.batch_size != batch_size):
+            self.batch_size = batch_size
+            self.robot_world_coll.build_batch_features(self.batch_size * horizon, clone_pose=True, clone_points=True)
+
+        link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
+        link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
+        # 基于点云数据的 voxel grid to SDF
+        dist = self.robot_world_coll.check_robot_sphere_collisions_voxeltosdf(link_pos_batch,
+                                                                   link_rot_batch)
+        
+        dist = dist.view(batch_size, horizon, n_links) 
+
+        cost_sdf = torch.zeros_like(dist)
+
+        # 对dist大于0.05小于0.30的区域进行运算
+        mask_mid = (dist > 0.05) & (dist <= 0.30)
+        cost_sdf[mask_mid] = torch.exp(-20 * (dist[mask_mid] - 0.05))
+
+        # 对dist小于等于0.05的区域直接设置为1
+        cost_sdf[dist <= 0.05] = 1.0
+
+        # 对dist大于0.30的区域直接设置为0
+        cost_sdf[dist > 0.30] = 0.0
+
+        cost = torch.sum(cost_sdf, dim=-1)
+        cost = self.weight * cost
+
+        return cost.to(inp_device)
