@@ -16,7 +16,7 @@ import time
 np.set_printoptions(suppress=True)
 
 
-class MPPIPolicy:
+class SCN_MPPIPolicy:
     def __init__(
         self,
         scene_coll_nn="/home/zm/MotionPolicyNetworks/SceneCollisionNet/weights/scene_coll_nn",

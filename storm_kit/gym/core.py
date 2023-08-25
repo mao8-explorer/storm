@@ -65,6 +65,13 @@ class Gym(object):
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
             # self.gym.add_ground(self.sim, gymapi.PlaneParams())
 
+            self.gym.subscribe_viewer_keyboard_event(
+                self.viewer, gymapi.KEY_P, "pause"
+            )
+            self.gym.subscribe_viewer_keyboard_event(
+                self.viewer, gymapi.KEY_N, "next_target"
+            )
+
         self.dt = sim_engine_params.dt
     def step(self):
         
@@ -144,10 +151,7 @@ class World(object):
             radius = spheres[obj]['radius']
             position = spheres[obj]['position']
 
-            
-            
             # get pose
-            
             object_pose = gymapi.Transform()
             object_pose.p = gymapi.Vec3(position[0], position[1], position[2])
             object_pose.r = gymapi.Quat(0, 0, 0,1)
@@ -216,8 +220,6 @@ class World(object):
         obj_handle = self.gym.create_actor(self.env_ptr, obj_asset, pose,name,
                                            2,2,self.ENV_SEG_LABEL)
         return obj_handle
-
-
 
     def get_pose(self, body_handle):
         pose = self.gym.get_rigid_transform(self.env_ptr, body_handle)

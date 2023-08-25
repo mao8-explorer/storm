@@ -20,27 +20,37 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
-from .dist_cost import DistCost
-from .finite_difference_cost import FiniteDifferenceCost
-from .jacobian_cost import JacobianCost
-from .pose_cost import PoseCost
-from .pose_cost_quaternion import PoseCostQuaternion
-from .terminal_cost_pose import terminalCost
-from .stop_cost import StopCost
-from .projected_dist_cost import ProjectedDistCost
-from .null_costs import get_inv_null_cost, get_transpose_null_cost
-from .zero_cost import ZeroCost
-from .ee_vel_cost import EEVelCost
+import torch
+import torch.nn as nn
 
-from .collision_cost import CollisionCost
-from .primitive_collision_cost import PrimitiveCollisionCost
-from .voxel_collision_cost import VoxelCollisionCost
-from .scenecollision_cost import ScenecollisionCost
-try:
-    True
-    # from .scene_nn_collision_cost import SceneNNCollisionCost
-except ImportError:
-    pass
+import math
 
-__all__ = ['DistCost', 'FiniteDifferenceCost', 'JacobianCost', 'PoseCost', 'ProjectedDistCost','PoseCostQuaternion' \
-           'ZeroCost', 'get_inv_null_cost','get_transpose_null_cost', 'ScenecollisionCost', 'terminalCost']
+
+class terminalCost(nn.Module):
+    """ 
+    add terminal cost to minimize error 
+    """
+    def __init__(self, weight, horizon, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+
+        super(terminalCost, self).__init__()
+        self.tensor_args = tensor_args
+        self.weight = weight
+        self.horizon = horizon
+        self.dtype = self.tensor_args['dtype']
+        self.device = self.tensor_args['device']
+
+    def forward(self, ee_pos_batch, ee_goal_pos):
+
+    
+        inp_device = ee_pos_batch.device
+        ee_pos_batch = ee_pos_batch.to(device=self.device,
+                                       dtype=self.dtype)
+
+        ee_goal_pos = ee_goal_pos.to(device=self.device,
+                                     dtype=self.dtype)
+
+        cost = self.weight * torch.linalg.norm( ee_pos_batch[:,self.horizon,:]- ee_goal_pos, ord=2, dim=1)
+ 
+        
+        return cost.to(inp_device)
+

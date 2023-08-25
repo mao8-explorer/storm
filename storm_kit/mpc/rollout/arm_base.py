@@ -34,6 +34,7 @@ from ...mpc.model.integration_utils import build_fd_matrix
 from ...mpc.rollout.rollout_base import RolloutBase
 from ..cost.robot_self_collision_cost import RobotSelfCollisionCost
 
+import time
 class ArmBase(RolloutBase):
     """
     This rollout function is for reaching a cartesian pose for a robot
@@ -207,8 +208,14 @@ class ArmBase(RolloutBase):
                 coll_cost = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs])
                 cost += coll_cost
             if self.exp_params['cost']['primitive_collision']['weight'] > 0:
+                loop_last_time = time.time_ns()
+
                 coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
                 cost += coll_cost
+                
+                loop_time = (time.time_ns() - loop_last_time)/1e+6
+                # print(" check time: {:<10.3f}sec".format(loop_time))
+            
             if self.exp_params['cost']['voxel_collision']['weight'] > 0:
                 coll_cost = self.voxel_collision_cost.forward(link_pos_batch, link_rot_batch)
                 cost += coll_cost

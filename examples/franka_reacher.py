@@ -24,6 +24,7 @@
 
 """
 import copy
+from shutil import move
 from isaacgym import gymapi
 from isaacgym import gymutil
 
@@ -107,6 +108,7 @@ def mpc_robot_interactive(args, gym_instance):
     gym = gym_instance.gym
     sim = gym_instance.sim
     env_ptr = gym_instance.env_list[0]
+    viewer = gym_instance.viewer
     world_yml = join_path(get_gym_configs_path(), world_file)
     with open(world_yml) as file:
         world_params = yaml.load(file, Loader=yaml.FullLoader)  # world_mode
@@ -120,7 +122,7 @@ def mpc_robot_interactive(args, gym_instance):
     tensor_args = {'device': device, 'dtype': torch.float32}
 
     # create robot simulation: contains a generic robot class that can load a robot asset into sim and gives access to robot's state and control.
-    robot_sim = RobotSim(gym_instance=gym, sim_instance=sim, env_instance = env_ptr,**sim_params, device=device)
+    robot_sim = RobotSim(gym_instance=gym, sim_instance=sim, env_instance = env_ptr, viewer = viewer ,**sim_params, device=device)
     # create gym environment:
     robot_pose = sim_params['robot_pose']  # robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]
     robot_ptr = robot_sim.spawn_robot(env_ptr, robot_pose, coll_id=2)
@@ -164,7 +166,6 @@ def mpc_robot_interactive(args, gym_instance):
 
     # spawn object:
     x, y, z = 1.0, 0.0, 0.0
-    tray_color = gymapi.Vec3(0.8, 0.1, 0.1)
     object_pose = gymapi.Transform()
     object_pose.p = gymapi.Vec3(x, y, z)
     object_pose.r = gymapi.Quat(0.801, 0.598, 0.0, 0)
@@ -179,12 +180,17 @@ def mpc_robot_interactive(args, gym_instance):
                                                     name='collision_move_test')        
 
         collision_obj_base_handle = gym.get_actor_rigid_body_handle(env_ptr, collision_obj, 0)
+        collision_body_handle = gym.get_actor_rigid_body_handle(env_ptr, collision_obj, 6)
 
         obj_base_handle = gym.get_actor_rigid_body_handle(env_ptr, target_object, 0)
         obj_body_handle = gym.get_actor_rigid_body_handle(env_ptr, target_object, 6)
+
+        tray_color = gymapi.Vec3(0.8, 0.1, 0.1)
         gym.set_rigid_body_color(env_ptr, target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, tray_color)
         gym.set_rigid_body_color(env_ptr, target_object, 6, gymapi.MESH_VISUAL_AND_COLLISION, tray_color)
-
+        tray_color = gymapi.Vec3(0.80, 0.42, 0.13)
+        gym.set_rigid_body_color(env_ptr, collision_obj, 0, gymapi.MESH_VISUAL_AND_COLLISION, tray_color)
+        gym.set_rigid_body_color(env_ptr, collision_obj, 6, gymapi.MESH_VISUAL_AND_COLLISION, tray_color)
         obj_asset_file = "urdf/mug/mug.urdf"
         obj_asset_root = get_assets_path()
 
@@ -219,8 +225,6 @@ def mpc_robot_interactive(args, gym_instance):
     q_des = None
     qd_des = None
     t_step = gym_instance.get_sim_time()
-
-
 
 
 
@@ -263,6 +267,19 @@ def mpc_robot_interactive(args, gym_instance):
 
     coll_msg = Float32()
     coll_robot_pub = rospy.Publisher('robot_collision', Float32, queue_size=10)
+
+
+    # 实验： dynamic object moveDesign
+    # 首先获取物体当前位姿 并将其转到robot坐标系下
+    move_pose = copy.deepcopy(world_instance.get_pose(collision_body_handle))
+    move_pose = copy.deepcopy(w_T_r.inverse() * move_pose)
+    # 已知 物体在robot坐标系下的移动边界值为 bounds
+    move_bounds = np.array([[-0.58, -0.57,  0.63],
+                        [0.58, 0.57,  0.63]])
+    # 根据两个边界点 确定物体移动方向  这一段代码有误 typeError: unsupported operand type(s) for -: 'list' and 'list'
+    velocity_vector = np.array([move_bounds[1] - move_bounds[0]])
+    # 将 方向向量 velocity_vector 归一化
+    velocity_vector = velocity_vector / np.linalg.norm(velocity_vector)
     
     loop_last_time = time.time_ns()
     while not rospy.is_shutdown():
@@ -281,11 +298,13 @@ def mpc_robot_interactive(args, gym_instance):
             policy.set_scene(obs)  # you must know how the scene coordinate changes !!!
             scene_pc_time = (time.time_ns() - scene_last_time)/1e+6
 
-            print("Control Loop: {:<10.3f}sec | Scene PC: {:<10.3f}sec | Percent: {:<5.2f}%".format(loop_time, scene_pc_time, (scene_pc_time / loop_time) * 100))
-
+            sdf_last_time = time.time_ns() 
             scene_pc = policy.scene_collision_checker.cur_scene_pc
             # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
             collision_grid = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_voxeltosdf(scene_pc, visual = True)
+            voxeltosdf_time = (time.time_ns() - sdf_last_time)/1e+6
+            
+            # print("Control Loop: {:<10.3f}sec | Scene PC: {:<10.3f}sec voxel SDF: {:<10.3f}sec | Percent: {:<5.2f}%".format(loop_time, scene_pc_time, voxeltosdf_time, (scene_pc_time / loop_time) * 100))
 
             if mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres is not None :
                 w_batch_link_spheres = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
@@ -445,8 +464,22 @@ def mpc_robot_interactive(args, gym_instance):
                 color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
                 gym_instance.draw_lines(pts, color=color)
 
-            robot_sim.command_robot_position(q_des, env_ptr, robot_ptr)
+            # robot_sim.command_robot_position(q_des, env_ptr, robot_ptr)
             robot_sim.set_robot_state(q_des, qd_des, env_ptr, robot_ptr)
+
+            # 实验： dynamic object moveDesign
+            # actor  :  collision_obj_base_handle 
+            #  如果越界，将速度向量取反 超过两个边界 都要变更速度方向
+            if move_pose.p.x <= move_bounds[0][0] or move_pose.p.x >= move_bounds[1][0]:
+               velocity_vector *= -1
+            # 速度积分  vel to pos
+            dt_scale = 0.01
+            move_pose.p.x += velocity_vector[0][0] * dt_scale
+            move_pose.p.y += velocity_vector[0][1] * dt_scale
+            move_pose.p.z += velocity_vector[0][2] * dt_scale
+            # 坐标系变更
+            gym.set_rigid_transform(env_ptr, collision_obj_base_handle, w_T_r * move_pose)
+
 
         except KeyboardInterrupt:
             print('Closing')

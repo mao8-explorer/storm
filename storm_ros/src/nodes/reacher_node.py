@@ -259,7 +259,7 @@ class MPCReacherNode():
                 # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
                 collision_grid = self.policy.controller.rollout_fn. \
                                     primitive_collision_cost.robot_world_coll.world_coll. \
-                                    _compute_dynamic_sdfgrid(self.point_array, visual = True)
+                                    _compute_dynamic_voxeltosdf(self.point_array, visual = True)
                 
                 collision_grid_pc = collision_grid.cpu().numpy() 
                 msg.header.stamp = rospy.Time().now()

@@ -96,11 +96,12 @@ class CameraObservation:
 
 
 class RobotSim():
-    def __init__(self, device='cpu', gym_instance=None, sim_instance=None, env_instance=None,
+    def __init__(self, device='cpu', gym_instance=None, sim_instance=None, env_instance=None, viewer = None,
                  asset_root='', sim_urdf='', asset_options='', init_state=None, collision_model=None, **kwargs):
         self.gym = gym_instance
         self.sim = sim_instance
         self.env = env_instance 
+        self.viewer = viewer
         self.device = device
         self.dof = None
         self.init_state = init_state
@@ -121,6 +122,7 @@ class RobotSim():
                                                  robot_asset_options,
                                                  asset_root)
 
+        self.playing = True
         
     def init_sim(self, gym_instance, sim_instance):
         self.gym = gym_instance
@@ -269,14 +271,24 @@ class RobotSim():
 
 
     def set_robot_state(self, q_des, qd_des, env_handle, robot_handle):
-        robot_dof_states = copy.deepcopy(self.gym.get_actor_dof_states(env_handle, robot_handle,
-                                                                       gymapi.STATE_ALL))
 
-        for i in range(len(robot_dof_states['pos'])):
-            robot_dof_states['pos'][i] = q_des[i]
-            robot_dof_states['vel'][i] = qd_des[i]
-        self.init_robot_state = robot_dof_states
-        self.gym.set_actor_dof_states(env_handle, robot_handle, robot_dof_states, gymapi.STATE_ALL)
+        for evt in self.gym.query_viewer_action_events(self.viewer):
+            if evt.action == "pause" and evt.value > 0:
+                self.playing = not self.playing
+                
+        if self.playing :
+            robot_dof_states = copy.deepcopy(self.gym.get_actor_dof_states(env_handle, robot_handle,
+                                                                        gymapi.STATE_ALL))
+            for i in range(len(robot_dof_states['pos'])):
+                robot_dof_states['pos'][i] = q_des[i]
+                robot_dof_states['vel'][i] = qd_des[i]
+            self.init_robot_state = robot_dof_states
+            self.gym.set_actor_dof_states(env_handle, robot_handle, robot_dof_states, gymapi.STATE_ALL)
+        else :
+            robot_dof_states = copy.deepcopy(self.gym.get_actor_dof_states(env_handle, robot_handle,
+                                                                        gymapi.STATE_ALL))
+            self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(robot_dof_states['pos']))
+
 
     def update_collision_model(self, link_poses, env_ptr, robot_handle):
         w_T_r = self.spawn_robot_pose

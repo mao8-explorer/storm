@@ -196,9 +196,6 @@ def mpc_robot_interactive(args, gym_instance):
 
     g_pos = np.ravel(mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
     g_q = np.ravel(mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
-    # object_pose.p = gymapi.Vec3(g_pos[0], g_pos[1], g_pos[2])
-    # object_pose.r = gymapi.Quat(g_q[1], g_q[2], g_q[3], g_q[0])
-    # object_pose = w_T_r * object_pose
 
     object_pose.p = gymapi.Vec3(0.280,0.469,0.118)
     object_pose.r = gymapi.Quat(0.392,0.608,-0.535,0.436)
@@ -207,9 +204,6 @@ def mpc_robot_interactive(args, gym_instance):
     if (vis_ee_target):
         gym.set_rigid_transform(env_ptr, obj_base_handle, object_pose)
 
-        # object_pose.p = gymapi.Vec3(0.2, 0.4, 0.2)
-        # object_pose.r = gymapi.Quat(g_q[1], g_q[2], g_q[3], g_q[0])
-        # object_pose = w_T_r * object_pose
         object_pose.p = gymapi.Vec3(0.580,0.626, -0.274)
         object_pose.r = gymapi.Quat(0.278,0.668,-0.604,0.334)
         gym.set_rigid_transform(env_ptr, collision_obj_base_handle, object_pose)
@@ -220,21 +214,7 @@ def mpc_robot_interactive(args, gym_instance):
     qd_des = None
     t_step = gym_instance.get_sim_time()
 
-
-
-
-
     policy = MPPIPolicy() #sceneCollisionNet 句柄
-    # policy = mpc_control.controller.rollout_fn.scene_collision_cost.policy
-
-    # SCN get ee_pose (copy from SCN_ updata_state):
-    # env_states = robot_sim._get_gym_state()
-    # obs = {
-    #     "robot_q": np.array(list(env_states[-1]["robot"].values()))
-    # }
-    # robot_q = obs["robot_q"].astype(np.float64).copy()
-    # policy.robot.set_joint_cfg(robot_q)
-    # scn_ee_pose = policy.robot.ee_pose[0].cpu().numpy()
 
     # STORM get ee_pose
     current_robot_state = copy.deepcopy(robot_sim.get_state(env_ptr, robot_ptr))
@@ -244,7 +224,6 @@ def mpc_robot_interactive(args, gym_instance):
     curr_state_tensor = torch.as_tensor(curr_state, **tensor_args).unsqueeze(0)
     pose_state = mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
     # summary : SCN与STORM在ee_pose的计算上是一致的 或者说 SCN与STORM的FK模型具有一致性 输入关节角 输出各link的pose
-
 
     ee_pose = gymapi.Transform()
 
@@ -305,39 +284,6 @@ def mpc_robot_interactive(args, gym_instance):
                 msg.data = np.asarray(all_positions, np.float32).tostring()
 
                 pub_robot_link_pc.publish(msg)   
-
-            # SCN get ee_pose (copy from SCN_ updata_state):
-            # env_states = robot_sim._get_gym_state()
-            # robot_q = np.array(list(env_states[-1]["robot"].values())).astype(np.float64).copy()
-            # robot_q = robot_q.reshape(1, -1)
-
-            # last_time = time.time_ns()
-            
-            # colls_value = policy._check_collisions(robot_q)
-            # check_time = (time.time_ns() - last_time)/1000000
-            # print(check_time)
-            # print(colls_value.reshape(-1).cpu().numpy())
-
-            # policy._fcl_check_collisions(robot_q) # low frequency
-
-            # cur_scene_pc visualize SCN
-            # if policy.scene_collision_checker.cur_scene_pc.cpu().numpy() is not None:
-            #     scene_pc = policy.scene_collision_checker.cur_scene_pc.cpu().numpy() 
-
-
-            #     msg.header.stamp = rospy.Time().now()
-            #     if len(scene_pc.shape) == 3:
-            #         msg.height = scene_pc.shape[1]
-            #         msg.width = scene_pc.shape[0]
-            #     else:
-            #         msg.height = 1
-            #         msg.width = len(scene_pc)
-
-            #     msg.row_step = msg.point_step * scene_pc.shape[0]
-            #     msg.data = np.asarray(scene_pc, np.float32).tostring()
-
-            #     pub_env_pc.publish(msg)
-
     
             collision_grid_pc = collision_grid.cpu().numpy() 
             msg.header.stamp = rospy.Time().now()
@@ -352,19 +298,7 @@ def mpc_robot_interactive(args, gym_instance):
             msg.data = np.asarray(collision_grid_pc, np.float32).tostring()
 
             pub_env_pc.publish(msg)
-                # trans_robot_link_pc = policy.scene_collision_checker._link_trans.cpu().numpy().squeeze()
 
-                # if len(trans_robot_link_pc.shape) == 3:
-                #     msg.height = trans_robot_link_pc.shape[1]
-                #     msg.width = trans_robot_link_pc.shape[0]
-                # else:
-                #     msg.height = 1
-                #     msg.width = len(trans_robot_link_pc)
-
-                # msg.row_step = msg.point_step * trans_robot_link_pc.shape[0]
-                # msg.data = np.asarray(trans_robot_link_pc, np.float32).tostring()
-
-                # pub_robot_link_pc.publish(msg)
 
 
             if (vis_ee_target):
@@ -421,15 +355,6 @@ def mpc_robot_interactive(args, gym_instance):
             if (vis_ee_target):
                 gym.set_rigid_transform(env_ptr, ee_body_handle, copy.deepcopy(ee_pose))
 
-
-
-
-            # print(["{:.3f}".format(x) for x in ee_error], " opt_dt: {:.3f}".format(mpc_control.opt_dt),
-            #       " mpc_dt: {:.3f}".format(mpc_control.mpc_dt),
-            #       " t_step: {:.3f}".format(t_step),
-            #       " gym_sim_time: {:.3f}".format(gym_instance.get_sim_time()),
-            #       " run_hz: {:.3f}".format(run_hz))                       
-               
 
             # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
             top_trajs = mpc_control.top_trajs.cpu().float()  # .numpy()

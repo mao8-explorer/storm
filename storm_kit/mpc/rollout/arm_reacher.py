@@ -24,7 +24,7 @@ import torch
 import torch.autograd.profiler as profiler
 
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
-from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost
+from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost,terminalCost
 from ...mpc.rollout.arm_base import ArmBase
 
 class ArmReacher(ArmBase):
@@ -55,7 +55,10 @@ Todo:
         self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
                                   tensor_args=self.tensor_args)
         
-
+        
+        self.terminal_cost = terminalCost(**exp_params['cost']['terminal_pos'],
+                                  tensor_args=self.tensor_args)
+        
     def cost_fn(self, state_dict, action_batch, no_coll=False, horizon_cost=True, return_dist=False):
 
         cost = super(ArmReacher, self).cost_fn(state_dict, action_batch, no_coll, horizon_cost)
@@ -88,7 +91,11 @@ Todo:
 
         if self.exp_params['cost']['zero_vel']['weight'] > 0:
             cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist)
-        
+
+
+        if self.exp_params['cost']['terminal_pos']['weight'] > 0:
+            cost[:,self.exp_params['cost']['terminal_pos']['horizon']] += self.terminal_cost.forward(ee_pos_batch, goal_ee_pos)
+          
         return cost
 
 

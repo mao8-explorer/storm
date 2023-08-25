@@ -118,6 +118,7 @@ class PrimitiveCollisionCost(nn.Module):
         # 对dist大于0.30的区域直接设置为0
         cost_sdf[dist > 0.30] = 0.0
 
+
         cost = torch.sum(cost_sdf, dim=-1)
         cost = self.weight * cost
 

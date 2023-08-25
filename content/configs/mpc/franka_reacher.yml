@@ -77,7 +77,7 @@ cost:
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     # weight: [10.0, 30.0]
-    weight: [5.0, 30.0]
+    weight: [5.0, 50.0]
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     hinge_val: -1
@@ -121,6 +121,10 @@ cost:
   joint_l2:
     weight: 0.0
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
+
+  terminal_pos:
+    weight: 1000.0
+    horizon : 15
 
   ee_vel:
     weight: 0.0
