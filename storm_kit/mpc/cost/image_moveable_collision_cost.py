@@ -28,11 +28,12 @@ from ...geom.geom_types import tensor_circle
 from .gaussian_projection import GaussianProjection
 from ...util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path
 from ...geom.sdf.world import WorldImageCollision
+from ...geom.sdf.world import WorldMoveableImageCollision
 
 
-class ImageCollisionCost(nn.Module):
+class ImagemoveCollisionCost(nn.Module):
     def __init__(self, weight=None, collision_file=None, bounds=[], dist_thresh=0.01, gaussian_params={}, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
-        super(ImageCollisionCost, self).__init__()
+        super(ImagemoveCollisionCost, self).__init__()
         
         self.tensor_args = tensor_args
         self.weight = torch.as_tensor(weight,**self.tensor_args)
@@ -43,8 +44,7 @@ class ImageCollisionCost(nn.Module):
         world_image = join_path(get_assets_path(), collision_file)
         
 
-        self.world_coll = WorldImageCollision(bounds=bounds, tensor_args=tensor_args)
-        self.world_coll.update_world(world_image)
+        self.world_coll = WorldMoveableImageCollision(bounds=bounds, world_image = world_image ,tensor_args=tensor_args)
         self.dist_thresh = dist_thresh # meters
         
         self.t_mat = None

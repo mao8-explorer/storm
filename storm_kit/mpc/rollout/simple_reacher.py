@@ -28,6 +28,7 @@ from ...mpc.cost.stop_cost import StopCost
 from ...mpc.model.simple_model import HolonomicModel
 from ...mpc.cost.circle_collision_cost import CircleCollisionCost
 from ...mpc.cost.image_collision_cost import ImageCollisionCost
+from ...mpc.cost.image_moveable_collision_cost import ImagemoveCollisionCost
 from ...mpc.cost.bound_cost import BoundCost
 from ...mpc.model.integration_utils import build_fd_matrix, tensor_linspace
 from ...util_file import join_path, get_assets_path
@@ -82,6 +83,10 @@ class SimpleReacher(object):
 
         
         self.image_collision_cost = ImageCollisionCost(
+            **self.exp_params['cost']['image_collision'], bounds=exp_params['model']['position_bounds'],
+            tensor_args=self.tensor_args)
+
+        self.image_move_collision_cost = ImagemoveCollisionCost(
             **self.exp_params['cost']['image_collision'], bounds=exp_params['model']['position_bounds'],
             tensor_args=self.tensor_args)
         
@@ -144,6 +149,14 @@ class SimpleReacher(object):
             coll_cost = self.image_collision_cost.forward(state_batch[:,:,:self.n_dofs])
             #print (coll_cost.shape)
             cost += coll_cost
+            
+        if self.exp_params['cost']['image_move_collision']['weight'] > 0:
+            # compute collision cost:
+            self.image_move_collision_cost.world_coll.update_world()
+            coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:self.n_dofs])
+            #print (coll_cost.shape)
+            cost += coll_cost
+
 
         if self.exp_params['cost']['state_bound']['weight'] > 0:
             # compute collision cost:
@@ -245,5 +258,5 @@ class SimpleReacher(object):
         num_traj_points = 1
         state_dict = {'state_seq': current_state}
 
-        cost = self.cost_fn(state_dict, None,no_coll=False, horizon_cost=False, return_dist=True)
-        return cost, state_dict
+        cost, goal_dist= self.cost_fn(state_dict, None,no_coll=False, horizon_cost=False, return_dist=True)
+        return cost, state_dict ,goal_dist

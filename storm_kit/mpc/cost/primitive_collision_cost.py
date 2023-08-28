@@ -26,6 +26,8 @@ import torch.nn as nn
 from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
 from .gaussian_projection import GaussianProjection
 
+
+
 class PrimitiveCollisionCost(nn.Module):
     def __init__(self, weight=None, world_params=None, robot_params=None, gaussian_params={},
                  distance_threshold=0.1, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
@@ -104,8 +106,6 @@ class PrimitiveCollisionCost(nn.Module):
         dist = self.robot_world_coll.check_robot_sphere_collisions_voxeltosdf(link_pos_batch,
                                                                    link_rot_batch)
         
-        dist = dist.view(batch_size, horizon, n_links) 
-
         cost_sdf = torch.zeros_like(dist)
 
         # 对dist大于0.05小于0.30的区域进行运算
@@ -118,6 +118,7 @@ class PrimitiveCollisionCost(nn.Module):
         # 对dist大于0.30的区域直接设置为0
         cost_sdf[dist > 0.30] = 0.0
 
+        cost_sdf = cost_sdf.view(batch_size, horizon, n_links) 
 
         cost = torch.sum(cost_sdf, dim=-1)
         cost = self.weight * cost

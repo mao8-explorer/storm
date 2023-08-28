@@ -21,7 +21,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 
-from math import dist
+from math import cos, dist
 import cv2
 import numpy as np
 import trimesh
@@ -227,7 +227,7 @@ class WorldGridCollision(WorldCollision):
 
         if visual: # visual pointcloud  in voxel grid
             return self.pt_matrix[unique_indices]
-
+        
     def get_scene_sdf_matrix(self):
         self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
 
@@ -319,6 +319,7 @@ class WorldGridCollision(WorldCollision):
         sdf[~in_bounds] = 0.0
         return sdf
 
+    
     def voxel_inds(self, pt, scale=1):
 
         pt = self.proj_pt_idx.transform_point(pt)
@@ -626,8 +627,22 @@ class WorldImageCollision(WorldCollision):
         num_voxels = self.im_dims
         
         flat_tensor = torch.tensor([y_range, 1], device=self.tensor_args['device'], dtype=torch.int64)
-        self.scene_voxels = torch.flatten(self.scene_im) * (1 / self.pitch[0])
+        # self.scene_voxels = torch.flatten(self.scene_im) * (1 / self.pitch[0])
+        self.scene_voxels = -torch.flatten(self.scene_im) * (1 / self.pitch[0])
 
+        cost_sdf = torch.zeros_like(self.scene_voxels)
+
+        # 对dist大于0.05小于0.30的区域进行运算
+        mask_mid = (self.scene_voxels > 0.01) & (self.scene_voxels < 0.05)
+        cost_sdf[mask_mid] = torch.exp(-150 * (self.scene_voxels[mask_mid] - 0.01))
+
+        # 对dist小于等于0.05的区域直接设置为1
+        cost_sdf[self.scene_voxels <= 0.01] = 1.0
+
+        # 对dist大于0.30的区域直接设置为0
+        cost_sdf[self.scene_voxels > 0.05] = 0.0
+
+        self.scene_voxels = cost_sdf
         
         self.num_voxels = num_voxels
         self._flat_tensor = flat_tensor
@@ -648,7 +663,100 @@ class WorldImageCollision(WorldCollision):
         pt_coll = self.scene_voxels[ind]
         
         # values are signed distance: positive inside object, negative outside
-        pt_coll[~flat_mask] = -10.0
+        pt_coll[~flat_mask] = 1.0
         
         return pt_coll
 
+
+
+      
+class WorldMoveableImageCollision(WorldCollision):
+    def __init__(self, bounds, world_image, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+        super().__init__(1, tensor_args)
+        self.bounds = torch.as_tensor(bounds, **tensor_args)
+        self.scene_im = None
+
+        self._flat_tensor = None
+        self.proj_pt_idx = None
+
+        self.ind_pt = None
+        im = cv2.imread(world_image,0)
+        _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
+        self.im = im
+        shift = 2
+        
+        self.movelist = np.float32([
+            [[1, 0, -shift], [0, 1, 0]],
+            [[1, 0,  shift], [0, 1, 0]]])
+        
+        self.step_move = 3
+        self.move_ind = self.step_move
+        
+    def update_world(self):  
+        """
+        图像碰撞检测
+        """
+        #load image and move_it
+        
+        rows, cols = self.im.shape
+        ind = self.move_ind % (2*self.step_move) // self.step_move
+        self.move_ind += 1
+        M_left = self.movelist[ind]
+        self.im = cv2.warpAffine(self.im, M_left, (cols, rows))
+        
+        im_obstacle = cv2.bitwise_not(self.im)
+        dist_obstacle = cv2.distanceTransform(im_obstacle, cv2.DIST_L2,3)
+        dist_outside = cv2.distanceTransform(self.im, cv2.DIST_L2,3)
+        
+        dist_map = dist_obstacle - dist_outside
+        self.dist_map = dist_map
+        
+        # transpose and flip to get the map to normal x, y axis
+        a = torch.as_tensor(dist_map, **self.tensor_args).T
+        scene_im = torch.flip(a, [1])
+        self.scene_im = scene_im
+        # get pixel range and rescale to meter bounds
+        x_range,y_range = scene_im.shape
+        self.im_dims = torch.tensor([x_range, y_range], **self.tensor_args)
+        pitch = (self.im_dims) / ((self.bounds[:,1] - self.bounds[:,0]))
+        self.pitch = pitch
+
+        num_voxels = self.im_dims
+        
+        flat_tensor = torch.tensor([y_range, 1], device=self.tensor_args['device'], dtype=torch.int64)
+        # self.scene_voxels = torch.flatten(self.scene_im) * (1 / self.pitch[0])
+        self.scene_voxels = -torch.flatten(self.scene_im) * (1 / self.pitch[0])
+
+        cost_sdf = torch.zeros_like(self.scene_voxels)
+        # 对dist大于0.05小于0.30的区域进行运算
+        mask_mid = (self.scene_voxels > 0.01) & (self.scene_voxels < 0.05)
+        cost_sdf[mask_mid] = torch.exp(-150 * (self.scene_voxels[mask_mid] - 0.01))
+        # 对dist小于等于0.05的区域直接设置为1
+        cost_sdf[self.scene_voxels <= 0.01] = 1.0
+        # 对dist大于0.30的区域直接设置为0
+        cost_sdf[self.scene_voxels > 0.05] = 0.0
+
+        self.scene_voxels = cost_sdf
+        
+        self.num_voxels = num_voxels
+        self._flat_tensor = flat_tensor
+        self.im_bounds = self.bounds 
+        self.num_voxels = num_voxels
+    def voxel_inds(self, pt):
+        pt = (self.pitch * pt).to(dtype=torch.int64)
+        
+        ind_pt = (pt[...,0]) * (self.num_voxels[0]) + pt[...,1]
+        ind_pt = ind_pt.to(dtype=torch.int64)
+        return ind_pt
+    def get_pt_value(self, pt):
+        bound_mask = torch.logical_and(torch.all(pt < self.im_bounds[:,1] - (1.0/self.pitch),dim=-1),
+                                       torch.all(pt > self.im_bounds[:,0] + (1.0/self.pitch),dim=-1))
+        flat_mask = bound_mask.flatten()
+        ind = self.voxel_inds(pt)
+        ind[~flat_mask] = 0
+        pt_coll = self.scene_voxels[ind]
+        
+        # values are signed distance: positive inside object, negative outside
+        pt_coll[~flat_mask] = 1.0
+        
+        return pt_coll

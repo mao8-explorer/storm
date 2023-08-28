@@ -148,7 +148,6 @@ class MPCRobotController:
         current_ee_obj = self.world_instance.spawn_object(current_asset_file, obj_asset_root, object_pose, 
                                                 name='ee_current_as_mug')    
 
-
         self.collision_obj_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, collision_obj, 0)
         self.collision_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, collision_obj, 6)
 
@@ -176,9 +175,7 @@ class MPCRobotController:
         self.gym.set_rigid_transform(self.env_ptr, self.collision_obj_base_handle, object_pose)
 
 
-
-
-    def _move_object(self):
+    def _dynamic_object_moveDesign(self):
         # Update velocity vector based on move bounds and current pose
         if self.move_pose.p.x <= self.move_bounds[0][0] or self.move_pose.p.x >= self.move_bounds[1][0]:
             self.velocity_vector *= -1
@@ -193,7 +190,6 @@ class MPCRobotController:
             self.env_ptr, self.collision_obj_base_handle, w_move
         )
     def _initialize_rospy(self):
-
         #  all ros_related
         self.msg = PointCloud2()
         self.msg.header.frame_id = "world"
@@ -222,7 +218,7 @@ class MPCRobotController:
             self.msg.width = len(pc)
 
         self.msg.row_step = self.msg.point_step * pc.shape[0]
-        self.msg.data = np.asarray(pc, np.float32).tostring()
+        self.msg.data = np.asarray(pc, np.float32).tobytes()
 
         pub_handle.publish(self.msg)   
 
@@ -249,30 +245,36 @@ class MPCRobotController:
         envpc_scn = SCN_MPPIPolicy() #sceneCollisionNet 句柄 现在只是用来获取点云
         ee_pose = gymapi.Transform()
 
-
         loop_last_time = time.time_ns()
         obs = {}
+        i = 0
+        loop_time = 0
+        scene_pc_time = 0
+        voxeltosdf_time = 0
         while not rospy.is_shutdown():
             try:
+                i += 1
                 self.gym_instance.step()
                 self.gym_instance.clear_lines()
 
-                loop_time = (time.time_ns() - loop_last_time)/1e+6
+                if i > 500 : loop_time += (time.time_ns() - loop_last_time)/1e+6
                 loop_last_time = time.time_ns()
 
                 # get_env_pointcloud
                 self.robot_sim._observe_all_cameras()
                 obs.update(self.robot_sim._build_pc_observation())
                 envpc_scn.set_scene(obs) 
-                scene_pc_time = (time.time_ns() - loop_last_time)/1e+6
+                if i > 500 : scene_pc_time += (time.time_ns() - loop_last_time)/1e+6
 
                 # compute pointcloud to sdf_map
                 sdf_last_time = time.time_ns() 
                 scene_pc = envpc_scn.scene_collision_checker.cur_scene_pc
                 # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
                 collision_grid = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_voxeltosdf(scene_pc, visual = True)
-                voxeltosdf_time = (time.time_ns() - sdf_last_time)/1e+6
-                # print("Control Loop: {:<10.3f}sec | Scene PC: {:<10.3f}sec voxel SDF: {:<10.3f}sec | Percent: {:<5.2f}%".format(loop_time, scene_pc_time, voxeltosdf_time, (scene_pc_time / loop_time) * 100))
+                if i > 500 : voxeltosdf_time += (time.time_ns() - sdf_last_time)/1e+6
+
+                if i > 500 and i < 6000:
+                    print("Control Loop: {:<10.3f}sec | Scene PC: {:<10.3f}sec voxel SDF: {:<10.3f}sec | Percent: {:<5.2f}%".format(loop_time/(i-500), scene_pc_time/(i-500), voxeltosdf_time/(i-500), (scene_pc_time / loop_time) * 100))
 
 
 
@@ -350,8 +352,7 @@ class MPCRobotController:
 
                 # 实验： dynamic object moveDesign
                 # actor  :  collision_obj_base_handle 
-                self._move_object()
-
+                self._dynamic_object_moveDesign()
 
                 # pub env_pointcloud and robot_link_spheres
                 w_batch_link_spheres = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
@@ -366,9 +367,14 @@ class MPCRobotController:
 
             except KeyboardInterrupt:
                 print('Closing')
-                break
+                # break
 
         self.mpc_control.close()
+        self.coll_robot_pub.unregister() 
+        self.pub_env_pc.unregister()
+        self.pub_robot_link_pc.unregister()
+        print("mpc_close...")
+        
 if __name__ == '__main__':
 
     rospy.init_node('pointcloud_publisher_node')

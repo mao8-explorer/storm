@@ -52,7 +52,6 @@ class ManipulabilityCost(nn.Module):
         # I don’t think float16 support will be added to lu_cuda for the aforementioned stability reasons.
 
         with torch.cuda.amp.autocast(enabled=False):
-            
             J_J_t = torch.matmul(jac_batch, jac_batch.transpose(-2,-1))
             score = torch.sqrt(torch.det(J_J_t))
         #  try to find max_of_score  or manipulability
@@ -69,6 +68,8 @@ class ManipulabilityCost(nn.Module):
         
         score[score > self.thresh] = self.thresh #1.0
         score = (self.thresh - score) / self.thresh  # map from 0 ~ score_max|thresh to 1 ~ 0
+
+        # print(score[0,0])
 
         cost = self.weight * score 
         

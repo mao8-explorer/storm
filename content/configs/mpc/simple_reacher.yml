@@ -50,7 +50,7 @@ model:
 cost:
   goal_state:
     vec_weight: [1.0, 1.0]
-    weight: 1.0
+    weight: 5.0
     gaussian_params: {'n':0, 'c':0.2, 's':0.0, 'r':10.0}
     # use for DDPG SAC
     # vec_weight: [1.0, 1.0]
@@ -80,13 +80,22 @@ cost:
 
     
   image_collision: # on robot acceleration
+    weight: 0.0 
+    gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
+    # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
+    collision_file: 'collision_maps/collision_map_cem.png'
+    dist_thresh: 0.01
+
+
+  image_move_collision: # on robot acceleration
     weight: 5.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
     # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
-    collision_file: 'collision_maps/collision_map_corridor.png'
+    collision_file: 'collision_maps/collision_map_cem.png'
     dist_thresh: 0.01
+  
   state_bound:
-    weight: 0.0 
+    weight: 100.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
   terminal:
     weight: 0.0

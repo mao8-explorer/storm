@@ -55,14 +55,18 @@ torch.multiprocessing.set_start_method('spawn',force=True)
 traj_log = None
 key_stop = False
 
-goal_state = [0.8,0.4]
+goal_state = [0.2240259740259739, 0.7851731601731602]
 
-
+goal_list = [
+[0.8787878787878789, 0.7824675324675325], 
+[0.2240259740259739, 0.7851731601731602],
+]
 
 
 def press_call_back(event):
     global goal_state
     goal_state = [event.xdata,event.ydata]
+    print(goal_state)
 
 def key_call_back(event):
     global key_stop
@@ -90,7 +94,7 @@ def holonomic_robot(args):
     global key_stop # 标志： 键盘是否有按键按下， 图像停止路径规划
 
     i = 0
-    plan_length = 1000 # 路径规划的总steps 
+    plan_length = 500 # 路径规划的总steps 
 
     # dist_map
     image = controller.rollout_fn.image_collision_cost.world_coll.im # 获取障碍图像，im:原始图像 dist_map: 碰撞图像（会被0-1化离散表征）
@@ -123,6 +127,8 @@ def holonomic_robot(args):
 
     ax.imshow(traj_log['world'], extent=extents)
 
+    goal_flagi = 0
+
     while(i < plan_length and not key_stop):
         
         ax.cla()
@@ -142,7 +148,7 @@ def holonomic_robot(args):
             
 
         curr_state_tensor = torch.as_tensor(curr_state, **tensor_args).unsqueeze(0)
-        error, _ = simple_task.get_current_error(filtered_state)
+        error, goal_dist = simple_task.get_current_error(filtered_state)
         
         #action =  env.step(obs)
         command = simple_task.get_command(t_step, filtered_state, sim_dt, WAIT=True)
@@ -150,11 +156,15 @@ def holonomic_robot(args):
         
         
         current_state = command
-        costs = simple_task.get_current_error(current_state)  
+        # costs = simple_task.get_current_error(current_state)  
+        if goal_dist[0] < 0.05:
+            goal_state = goal_list[goal_flagi % 2]
+            goal_flagi += 1
+            print("next goal",goal_flagi)
         # reward = -1.0*costs
 
 
-        print(i, command['position'],costs)
+        # print(i, command['position'],costs)
 
         # 作图
         # img_ax.plot(np.ravel(position[:,0]), np.ravel(position[:,1]), 'k-.', linewidth=3.0)
@@ -184,7 +194,8 @@ def holonomic_robot(args):
         traj_log['des'].append(copy.deepcopy(goal_state))
         t_step += sim_dt
         i += 1
-        
+
+
     # matplotlib.use('tkagg')
     plot_traj(traj_log)
 

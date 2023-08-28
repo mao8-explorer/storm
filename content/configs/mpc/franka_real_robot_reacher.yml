@@ -92,7 +92,7 @@ cost:
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
       
   primitive_collision:
-    weight: 5000.0
+    weight: 100.0
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
@@ -115,6 +115,10 @@ cost:
   joint_l2:
     weight: 0.0
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
+
+  terminal_pos:
+    weight: 500.0
+    horizon : 15
 
   ee_vel:
     weight: 0.0
