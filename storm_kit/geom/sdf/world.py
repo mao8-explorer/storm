@@ -577,7 +577,7 @@ class WorldPointCloudCollision(WorldGridCollision):
         return mesh
         
 class WorldImageCollision(WorldCollision):
-    def __init__(self, bounds, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    def __init__(self, bounds, world_image, tensor_args={'device':"cpu", 'dtype':torch.float32}):
         super().__init__(1, tensor_args)
         self.bounds = torch.as_tensor(bounds, **tensor_args)
         self.scene_im = None
@@ -587,20 +587,33 @@ class WorldImageCollision(WorldCollision):
         
 
         self.ind_pt = None
-    
-    def update_world(self, image_path):  
+
+        im = cv2.imread(world_image,0)
+        _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
+        self.im = im
+        shift = 3
+        self.movelist = np.float32([
+            [[1, 0, -shift], [0, 1, 0]],
+            [[1, 0,  shift], [0, 1, 0]]])
+        
+        self.step_move = 20
+        self.move_ind = 10
+
+    def update_world(self):  
         """
         图像碰撞检测
         """
-        im = cv2.imread(image_path,0)
-        _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
-
-        self.im = im
+     
+        rows, cols = self.im.shape
+        ind = self.move_ind % (2*self.step_move) // self.step_move
+        self.move_ind += 1
+        M_left = self.movelist[ind]
+        self.im = cv2.warpAffine(self.im, M_left, (cols, rows),borderMode=cv2.BORDER_CONSTANT, borderValue=255)
         
-        #load image
-        im_obstacle = cv2.bitwise_not(im)
+        im_obstacle = cv2.bitwise_not(self.im)
         dist_obstacle = cv2.distanceTransform(im_obstacle, cv2.DIST_L2,3)
-        dist_outside = cv2.distanceTransform(im, cv2.DIST_L2,3)
+        dist_outside = cv2.distanceTransform(self.im, cv2.DIST_L2,3)
+
         
         dist_map = dist_obstacle - dist_outside
         # dist_map = im_obstacle.astype(np.float32)-100
@@ -627,22 +640,7 @@ class WorldImageCollision(WorldCollision):
         num_voxels = self.im_dims
         
         flat_tensor = torch.tensor([y_range, 1], device=self.tensor_args['device'], dtype=torch.int64)
-        # self.scene_voxels = torch.flatten(self.scene_im) * (1 / self.pitch[0])
-        self.scene_voxels = -torch.flatten(self.scene_im) * (1 / self.pitch[0])
-
-        cost_sdf = torch.zeros_like(self.scene_voxels)
-
-        # 对dist大于0.05小于0.30的区域进行运算
-        mask_mid = (self.scene_voxels > 0.01) & (self.scene_voxels < 0.05)
-        cost_sdf[mask_mid] = torch.exp(-150 * (self.scene_voxels[mask_mid] - 0.01))
-
-        # 对dist小于等于0.05的区域直接设置为1
-        cost_sdf[self.scene_voxels <= 0.01] = 1.0
-
-        # 对dist大于0.30的区域直接设置为0
-        cost_sdf[self.scene_voxels > 0.05] = 0.0
-
-        self.scene_voxels = cost_sdf
+        self.scene_voxels = torch.flatten(self.scene_im) * (1 / self.pitch[0])
         
         self.num_voxels = num_voxels
         self._flat_tensor = flat_tensor
@@ -683,14 +681,13 @@ class WorldMoveableImageCollision(WorldCollision):
         im = cv2.imread(world_image,0)
         _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
         self.im = im
-        shift = 2
-        
+        shift = 3
         self.movelist = np.float32([
             [[1, 0, -shift], [0, 1, 0]],
             [[1, 0,  shift], [0, 1, 0]]])
         
-        self.step_move = 3
-        self.move_ind = self.step_move
+        self.step_move = 20
+        self.move_ind = 10
         
     def update_world(self):  
         """
@@ -702,7 +699,7 @@ class WorldMoveableImageCollision(WorldCollision):
         ind = self.move_ind % (2*self.step_move) // self.step_move
         self.move_ind += 1
         M_left = self.movelist[ind]
-        self.im = cv2.warpAffine(self.im, M_left, (cols, rows))
+        self.im = cv2.warpAffine(self.im, M_left, (cols, rows),borderMode=cv2.BORDER_CONSTANT, borderValue=255)
         
         im_obstacle = cv2.bitwise_not(self.im)
         dist_obstacle = cv2.distanceTransform(im_obstacle, cv2.DIST_L2,3)
@@ -730,7 +727,7 @@ class WorldMoveableImageCollision(WorldCollision):
         cost_sdf = torch.zeros_like(self.scene_voxels)
         # 对dist大于0.05小于0.30的区域进行运算
         mask_mid = (self.scene_voxels > 0.01) & (self.scene_voxels < 0.05)
-        cost_sdf[mask_mid] = torch.exp(-150 * (self.scene_voxels[mask_mid] - 0.01))
+        cost_sdf[mask_mid] = torch.exp(-100 * (self.scene_voxels[mask_mid] - 0.01))
         # 对dist小于等于0.05的区域直接设置为1
         cost_sdf[self.scene_voxels <= 0.01] = 1.0
         # 对dist大于0.30的区域直接设置为0

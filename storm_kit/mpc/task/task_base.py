@@ -83,10 +83,16 @@ class BaseTask():
         state_tensor = self._state_to_tensor(curr_state).to(**self.controller.tensor_args).unsqueeze(0)
 
         
-        ee_error,_ , goal_dist= self.controller.rollout_fn.current_cost(state_tensor)
+        ee_error,_ , goal_dist, coll_cost= self.controller.rollout_fn.current_cost(state_tensor)
         ee_error = [x.detach().cpu().item() for x in ee_error]
         goal_dist = [x.detach().cpu().item() for x in goal_dist]
-        return ee_error, goal_dist
+        coll_cost = [x.detach().cpu().item() for x in coll_cost]
+        return ee_error, goal_dist,coll_cost
+    
+    def get_current_coll(self, curr_state):
+        curr_state_tensor = curr_state.view(-1,7)
+        ee_error,_ , goal_dist, coll_cost= self.controller.rollout_fn.current_cost(curr_state_tensor)
+        return ee_error, goal_dist,coll_cost
 
     @property
     def mpc_dt(self):

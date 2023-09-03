@@ -122,6 +122,7 @@ class ControlProcess(object):
         command_buffer, command_tstep_buffer = self.truncate_command(self.command[0], t_step, self.command_tstep)
         
         act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[0], self.control_dt)
+        # next_command, val, info, best_action
         return act, command_tstep_buffer, self.command[1], command_buffer
 
     def get_command(self, t_step, curr_state, debug=False, control_dt=0.01):

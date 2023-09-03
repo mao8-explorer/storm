@@ -307,7 +307,7 @@ class MPCRobotController:
                 curr_state_tensor = torch.as_tensor(curr_state, **self.tensor_args).unsqueeze(0)
 
                 # get current_cost or error
-                current_state_cost = self.mpc_control.get_current_error(filtered_state_mpc)
+                # current_state_cost = self.mpc_control.get_current_error(filtered_state_mpc)
                 
                 # use for robot_self_collision_check : mpc_control.controller.rollout_fn.robot_self_collision_cost()
                 robot_collision_cost = self.mpc_control.controller.rollout_fn \

@@ -47,33 +47,28 @@ class ImagemoveCollisionCost(nn.Module):
         self.world_coll = WorldMoveableImageCollision(bounds=bounds, world_image = world_image ,tensor_args=tensor_args)
         self.dist_thresh = dist_thresh # meters
         
-        self.t_mat = None
-    def forward(self, pos_seq):
+    def forward(self, state_seq):
         
-        inp_device = pos_seq.device
-        batch_size = pos_seq.shape[0]
-        horizon = pos_seq.shape[1]
-        pos_batch = pos_seq.view(batch_size * horizon, 2)
+        inp_device = state_seq.device
+        batch_size = state_seq.shape[0]
+        horizon = state_seq.shape[1]
+        pos_batch = state_seq[:,:,:2].view(batch_size * horizon, 2)
+        vel_batch = state_seq[:,:,2:4].view(batch_size * horizon, 2)
 
+        
         # query sdf for points:
         dist = self.world_coll.get_pt_value(pos_batch)
         
-        
-        dist = dist.view(batch_size, horizon, 1)
+        #step 1:  计算根据 vel_batch 计算速度的绝对值|vel_batch|  =  sqrt(vel_batch[:,0]^2 + vel_batch[：,1]^2)
+        vel_abs = torch.linalg.norm(vel_batch,ord=2,dim=1)
+        #step 2:  将速度绝对值与dist相乘 dist * |vel_batch| 获得size为（batch_size, horizon, 1）的代价值
+        cost =  dist
+        cost = cost.view(batch_size, horizon, 1)
         # cost only when dist is less
 
-        # values are signed distance: positive inside object, negative outside
-        # dist += self.dist_thresh
-        # dist[dist < 0.0] = 0.0
-        # dist[dist > 0.0] = 1.0
+        res = self.weight * cost
+        
 
-
-        res = self.weight * dist
-
-        if(self.t_mat is None or self.t_mat.shape[0] != res.shape[1]):
-            self.t_mat = torch.ones((res.shape[1], res.shape[1]), **self.tensor_args).tril()
-            
-        t_mat = self.t_mat
 
         res = res.squeeze(-1)
         

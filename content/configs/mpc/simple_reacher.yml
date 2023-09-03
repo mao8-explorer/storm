@@ -56,7 +56,11 @@ cost:
     # vec_weight: [1.0, 1.0]
     # weight: 1.0
     # gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0} # turn 'c' to zero
-    
+
+  sparse_reward:
+    vec_weight: [1.0, 1.0]
+    weight: 0.0
+    sigma : 0.03
 
   zero_vel:
     weight: 0.0
@@ -72,23 +76,20 @@ cost:
     max_limit: 0.01 #0.2
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
     
-  
   smooth: # on robot acceleration
     weight: 0.0 
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
     order: 3 # on velocity
 
-    
   image_collision: # on robot acceleration
     weight: 0.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
     # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     collision_file: 'collision_maps/collision_map_cem.png'
-    dist_thresh: 0.01
-
+    dist_thresh: 0.03
 
   image_move_collision: # on robot acceleration
-    weight: 5.0 
+    weight: 10.0  # 不宜过大 过大跟sdf 置为1 没区别了
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
     # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     collision_file: 'collision_maps/collision_map_cem.png'
@@ -97,9 +98,12 @@ cost:
   state_bound:
     weight: 100.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
+
   terminal:
     weight: 0.0
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
+
+
 mppi:
   horizon           : 20 # 20
   init_cov          : 0.01 #.5

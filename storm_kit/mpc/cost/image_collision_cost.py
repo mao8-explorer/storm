@@ -43,8 +43,8 @@ class ImageCollisionCost(nn.Module):
         world_image = join_path(get_assets_path(), collision_file)
         
 
-        self.world_coll = WorldImageCollision(bounds=bounds, tensor_args=tensor_args)
-        self.world_coll.update_world(world_image)
+        self.world_coll = WorldImageCollision(bounds=bounds, world_image= world_image ,tensor_args=tensor_args)
+        # self.world_coll.update_world(world_image)
         self.dist_thresh = dist_thresh # meters
         
         self.t_mat = None
@@ -63,9 +63,9 @@ class ImageCollisionCost(nn.Module):
         # cost only when dist is less
 
         # values are signed distance: positive inside object, negative outside
-        # dist += self.dist_thresh
-        # dist[dist < 0.0] = 0.0
-        # dist[dist > 0.0] = 1.0
+        dist += self.dist_thresh
+        dist[dist < 0.0] = 0.0
+        dist[dist > 0.0] = 1.0
 
 
         res = self.weight * dist

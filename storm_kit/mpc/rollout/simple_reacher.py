@@ -23,7 +23,7 @@
 
 import torch
 
-from ...mpc.cost import DistCost, ZeroCost, FiniteDifferenceCost
+from ...mpc.cost import DistCost, ZeroCost, FiniteDifferenceCost ,SparseReward
 from ...mpc.cost.stop_cost import StopCost
 from ...mpc.model.simple_model import HolonomicModel
 from ...mpc.cost.circle_collision_cost import CircleCollisionCost
@@ -66,6 +66,9 @@ class SimpleReacher(object):
 
         self.goal_cost = DistCost(**exp_params['cost']['goal_state'], # 目标限制
                                   tensor_args=self.tensor_args)
+        
+        self.sparse_reward = SparseReward(**exp_params['cost']['sparse_reward'], # 目标限制
+                                  tensor_args=self.tensor_args)
 
         self.stop_cost = StopCost(**exp_params['cost']['stop_cost'], # 速度限制
                                   tensor_args=self.tensor_args,
@@ -87,7 +90,7 @@ class SimpleReacher(object):
             tensor_args=self.tensor_args)
 
         self.image_move_collision_cost = ImagemoveCollisionCost(
-            **self.exp_params['cost']['image_collision'], bounds=exp_params['model']['position_bounds'],
+            **self.exp_params['cost']['image_move_collision'], bounds=exp_params['model']['position_bounds'],
             tensor_args=self.tensor_args)
         
         self.bound_cost = BoundCost(**exp_params['cost']['state_bound'],
@@ -110,6 +113,12 @@ class SimpleReacher(object):
         goal_state = self.goal_state.unsqueeze(0)
         
         cost, goal_dist = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs], RETURN_GOAL_DIST=True)
+
+        if self.exp_params['cost']['sparse_reward']['weight'] > 0:
+            reward = self.sparse_reward.forward(goal_state - state_batch[:,:,:self.n_dofs])
+            cost += reward
+
+
         if self.exp_params['cost']['zero_vel']['weight'] > 0:
             vel_cost = self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist.unsqueeze(-1))
             cost += vel_cost
@@ -152,8 +161,7 @@ class SimpleReacher(object):
             
         if self.exp_params['cost']['image_move_collision']['weight'] > 0:
             # compute collision cost:
-            self.image_move_collision_cost.world_coll.update_world()
-            coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:self.n_dofs])
+            coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
             #print (coll_cost.shape)
             cost += coll_cost
 
@@ -175,7 +183,7 @@ class SimpleReacher(object):
             
             cost[:,-1] += torch.sum(term_cost, dim=-1)
         if(return_dist):
-            return cost, goal_dist
+            return cost, goal_dist , coll_cost
         else:
             return cost
     
@@ -258,5 +266,5 @@ class SimpleReacher(object):
         num_traj_points = 1
         state_dict = {'state_seq': current_state}
 
-        cost, goal_dist= self.cost_fn(state_dict, None,no_coll=False, horizon_cost=False, return_dist=True)
-        return cost, state_dict ,goal_dist
+        cost, goal_dist, coll_cost= self.cost_fn(state_dict, None,no_coll=False, horizon_cost=False, return_dist=True)
+        return cost, state_dict ,goal_dist ,coll_cost

@@ -25,7 +25,7 @@
 use_cuda: True
 cuda_device_num: 0
 
-control_dt: 0.05
+control_dt: 0.06
 run_open_loop: False
 control_space: 'acc'
 float_dtype: 'float32'
@@ -39,9 +39,9 @@ model:
     learnable_links: []
   name: "franka_panda"
   max_acc: 5.0 
-  dt: 0.05
+  dt: 0.06
   dt_traj_params:
-    base_dt: 0.05
+    base_dt: 0.06
     base_ratio: 0.5
     max_dt: 0.2
   #control_freq: 10
