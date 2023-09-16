@@ -50,7 +50,7 @@ model:
 cost:
   goal_state:
     vec_weight: [1.0, 1.0]
-    weight: 5.0
+    weight: 20.0
     gaussian_params: {'n':0, 'c':0.2, 's':0.0, 'r':10.0}
     # use for DDPG SAC
     # vec_weight: [1.0, 1.0]
@@ -59,7 +59,7 @@ cost:
 
   sparse_reward:
     vec_weight: [1.0, 1.0]
-    weight: 0.0
+    weight: 5.0
     sigma : 0.03
 
   zero_vel:
@@ -68,7 +68,7 @@ cost:
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
     
   stop_cost:
-    weight: 0.0
+    weight: 10.0
     max_nlimit: 0.05 #0.2
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
   stop_cost_acc:
@@ -90,13 +90,14 @@ cost:
 
   image_move_collision: # on robot acceleration
     weight: 10.0  # 不宜过大 过大跟sdf 置为1 没区别了
+    vec_weight: [10.0, 80.0]
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
     # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     collision_file: 'collision_maps/collision_map_cem.png'
     dist_thresh: 0.01
   
   state_bound:
-    weight: 100.0 
+    weight: 1000.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
 
   terminal:
@@ -108,12 +109,12 @@ mppi:
   horizon           : 20 # 20
   init_cov          : 0.01 #.5
   gamma             : 0.98 #
-  n_iters           : 3
+  n_iters           : 1
   step_size_mean    : 0.9
   step_size_cov     : 0.6
   beta              : 1.0
   alpha             : 1
-  num_particles     : 200 #10000
+  num_particles     : 300 #10000
   update_cov        : True
   cov_type          : 'diag_AxA' # 
   kappa             : 0.0001

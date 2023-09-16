@@ -119,15 +119,17 @@ class MPPI(OLGaussianMPC):
         self.best_idx = best_idx
         self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0)
         
-
-        top_values, top_idx = torch.topk(self.total_costs, 15) # Returns the k largest elements of the given input tensor along a given dimension.
+        # 5条好的轨迹  10条最差轨迹 ； 5条好的轨迹基本扭结在一起 10条差轨迹扩散较为明显
+        top_values, good_idx = torch.topk(self.total_costs, k=5, largest=False)
+        top_values, bad_idx = torch.topk(self.total_costs, k=10) # Returns the k largest elements of the given input tensor along a given dimension. 
         #print(ee_pos_seq.shape, top_idx)
         self.top_values = top_values
-        self.top_idx = top_idx
-        self.top_trajs = torch.index_select(vis_seq, 0, top_idx).squeeze(0)
+        self.top_idx = torch.cat((good_idx, bad_idx), dim=0)
+        self.top_trajs = torch.index_select(vis_seq, 0, self.top_idx).squeeze(0)
         #print(self.top_traj.shape)
         #print(self.best_traj.shape, best_idx, w.shape)
         #self.best_trajs = torch.index_select(
+        # self.bad_traj = torch.index_select(actions,0,bad_idx).squeeze(0)
 
         weighted_seq = w.T * actions.T
 
@@ -256,6 +258,7 @@ class MPPI(OLGaussianMPC):
         
         # #calculate soft-max
         w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
+        self.Valsum = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs,dim=0)
         self.total_costs = total_costs
         return w
 
@@ -295,7 +298,7 @@ class MPPI(OLGaussianMPC):
         # val1 = -self.beta * val1
 
         # val = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
-        val = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs)
+        val = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs,dim=0)
         return val
         
 

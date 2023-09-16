@@ -242,14 +242,31 @@ class Controller(ABC):
         with torch.cuda.amp.autocast(enabled=True):
             with torch.no_grad():
                 for _ in range(n_iters):
+                    # sample M trajectories from mean_t-1
+                    # update_distribution to get mean_t1 (greedy path)
+
                     # generate random simulated trajectories
                     trajectory = self.generate_rollouts(state)
-
                     # update distribution parameters
                     with profiler.record_function("mppi_update"):
-                        self._update_distribution(trajectory)
-                    info['rollout_time'] += trajectory['rollout_time']
+                        self._update_distribution(trajectory) 
+                    """
+                    1. sample N trajectories from mean_t1
+                    2. update_distribution to get mean_t2 (sensitive path)
+    
+                    # sample N trajectories from mean_t1
+                    generate_rollouts 包括sample based on mean&cov 以及 compute cost 两部分
+                    compute cost 是重点修改部分，现阶段设计较为容易，进修改 target_cost 与 collision_cost的权重实现 差异化竞争
+                    要实现对 权重的 修改
+                    """
+                    sensitive_trajectory = self.generate_rollouts(state)
+                    self._update_distribution(sensitive_trajectory) 
 
+
+
+
+
+                    info['rollout_time'] += trajectory['rollout_time']
                     # check if converged
                     if self.check_convergence():
                         break
@@ -258,10 +275,10 @@ class Controller(ABC):
         # curr_action = self._get_next_action(state, mode=self.sample_mode)
         curr_action_seq = self._get_action_seq(mode=self.sample_mode)
         #calculate optimal value estimate if required
-        value = 0.0
-        if calc_val:
-            trajectories = self.generate_rollouts(state)
-            value = self._calc_val(trajectories)
+        value = self.Valsum
+        # if calc_val:
+        #     trajectories = self.generate_rollouts(state)
+        #     value = self._calc_val(trajectories)
 
         # # shift distribution to hotstart next timestep
         # if self.hotstart:

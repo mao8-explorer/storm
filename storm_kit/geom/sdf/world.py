@@ -28,12 +28,9 @@ import trimesh
 from trimesh.voxel.creation import voxelize
 import torch
 import matplotlib
-matplotlib.use('tkagg')
-
 import matplotlib.pyplot as plt
-
 from scipy.ndimage import distance_transform_edt
-
+matplotlib.use('tkagg')
 
 
 from ...differentiable_robot_model.coordinate_transform import CoordinateTransform, rpy_angles_to_matrix, transform_point
@@ -460,13 +457,6 @@ class WorldPrimitiveCollision(WorldGridCollision):
 
 
 
-
-
-
-
-
-    
-
 class WorldPointCloudCollision(WorldGridCollision):
     def __init__(self, label_map, bounds, grid_resolution=0.02, tensor_args={'device':"cpu", 'dtype':torch.float32}, batch_size=1):
         super().__init__(batch_size, tensor_args, bounds, grid_resolution)
@@ -682,9 +672,12 @@ class WorldMoveableImageCollision(WorldCollision):
         _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
         self.im = im
         shift = 3
+        # self.movelist = np.float32([
+        #     [[1, 0, -shift], [0, 1, 0]],
+        #     [[1, 0,  shift], [0, 1, 0]]])
         self.movelist = np.float32([
-            [[1, 0, -shift], [0, 1, 0]],
-            [[1, 0,  shift], [0, 1, 0]]])
+            [[1, 0, 0], [0, 1, -shift]],
+            [[1, 0,  0], [0, 1, shift]]])
         
         self.step_move = 20
         self.move_ind = 10
@@ -694,7 +687,6 @@ class WorldMoveableImageCollision(WorldCollision):
         图像碰撞检测
         """
         #load image and move_it
-        
         rows, cols = self.im.shape
         ind = self.move_ind % (2*self.step_move) // self.step_move
         self.move_ind += 1
@@ -733,12 +725,80 @@ class WorldMoveableImageCollision(WorldCollision):
         # 对dist大于0.30的区域直接设置为0
         cost_sdf[self.scene_voxels > 0.05] = 0.0
 
+        # 使用多项式的方式
+        # a = 0.05
+        # negtive_mask = self.scene_voxels <= 0
+        # mid_mask = (self.scene_voxels >0) & (self.scene_voxels < 0.05)
+        # cost_sdf[negtive_mask] = 1 - 2/a * self.scene_voxels[negtive_mask]
+        # cost_sdf[mid_mask] = 1/(a**2) * (self.scene_voxels[mid_mask] - a)**2
+
         self.scene_voxels = cost_sdf
-        
         self.num_voxels = num_voxels
         self._flat_tensor = flat_tensor
         self.im_bounds = self.bounds 
         self.num_voxels = num_voxels
+
+     
+    def updateSDFPotientailGradient(self):  
+        """
+        SDF  potential and gradient update
+        """
+        #load image and move_it
+        rows, cols = self.im.shape
+        ind = self.move_ind % (2*self.step_move) // self.step_move
+        self.move_ind += 1
+        M_left = self.movelist[ind]
+        self.im = cv2.warpAffine(self.im, M_left, (cols, rows),borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+        
+        im_obstacle = cv2.bitwise_not(self.im)
+        dist_obstacle = cv2.distanceTransform(im_obstacle, cv2.DIST_L2,3)
+        dist_outside = cv2.distanceTransform(self.im, cv2.DIST_L2,3)
+        
+        dist_map = dist_obstacle - dist_outside
+        self.dist_map =  torch.as_tensor(dist_map, **self.tensor_args)
+
+        self.scene_im = torch.flip(self.dist_map.T, [1]) 
+        grad_y, grad_x = torch.gradient(self.scene_im) # 指向： 从低到高
+        grad_y, grad_x = -grad_y, -grad_x # 外推效果 从高到低
+        # visualize flip picture to prove 
+        # plt.figure()
+        # self.ax = plt.subplot(1, 1, 1)
+        # x_step = y_step =  8
+        # x = np.arange(0, 378, x_step)
+        # y = np.arange(0, 378, y_step)
+        # X, Y = np.meshgrid(x, y)
+        # # 绘制箭头
+        # self.ax.imshow(self.scene_im.cpu())
+        # self.ax.quiver(X, Y, 
+        #                grad_x[::x_step, ::y_step].cpu().numpy(), 
+        #                -grad_y[::x_step, ::y_step].cpu().numpy(),  # quiver自己的显示问题 坐标轴 和 图像坐标轴不一致导致
+        #                cmap=plt.cm.jet)
+
+        # get pixel range and rescale to meter bounds
+        x_range,y_range = self.scene_im.shape
+        self.im_dims = torch.tensor([x_range, y_range], **self.tensor_args)
+        self.pitch = (self.im_dims) / ((self.bounds[:,1] - self.bounds[:,0]))
+        flat_tensor = torch.tensor([y_range, 1], device=self.tensor_args['device'], dtype=torch.int64)
+
+        self.scene_voxels = -torch.flatten(self.scene_im) * (1 / self.pitch[0])
+        self.grad_x_voxels = torch.flatten(grad_x)
+        self.grad_y_voxels = torch.flatten(grad_y)
+
+        cost_sdf = torch.zeros_like(self.scene_voxels)
+        # 对dist大于0.05小于0.30的区域进行运算
+        mask_mid = (self.scene_voxels > 0.01) & (self.scene_voxels < 0.08)
+        cost_sdf[mask_mid] = torch.exp(-50 * (self.scene_voxels[mask_mid] - 0.01))
+        # 对dist小于等于0.05的区域直接设置为1
+        cost_sdf[self.scene_voxels <= 0.01] = 1.0
+        # 对dist大于0.30的区域直接设置为0
+        cost_sdf[self.scene_voxels > 0.08] = 0.0
+
+        self.scene_voxels = cost_sdf
+        self.num_voxels = self.im_dims
+        self._flat_tensor = flat_tensor
+        self.im_bounds = self.bounds 
+
+
     def voxel_inds(self, pt):
         pt = (self.pitch * pt).to(dtype=torch.int64)
         
@@ -757,3 +817,20 @@ class WorldMoveableImageCollision(WorldCollision):
         pt_coll[~flat_mask] = 1.0
         
         return pt_coll
+    
+    def get_pt_gradxy(self, pt):
+        """
+        input : N * 2 : batch_size * horizon, 2
+        """
+        bound_mask = torch.logical_and(torch.all(pt < self.im_bounds[:,1] - (1.0/self.pitch),dim=-1),
+                                       torch.all(pt > self.im_bounds[:,0] + (1.0/self.pitch),dim=-1))
+        flat_mask = bound_mask.flatten()
+        ind = self.voxel_inds(pt)
+        ind[~flat_mask] = 0
+        grad_x = self.grad_x_voxels[ind]
+        grad_y = self.grad_y_voxels[ind]
+        # values are signed distance: positive inside object, negative outside
+        grad_x[~flat_mask] = 1.0
+        grad_y[~flat_mask] = 0.0
+        
+        return grad_x,grad_y

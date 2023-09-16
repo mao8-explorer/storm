@@ -13,15 +13,15 @@ This package contains code for reactive robot motion leveraging parallel compute
 
 
 
-## voxel to sdf 
+## 1. voxel to sdf 
 lean from   STOMP and [RAMP](https://samsunglabs.github.io/RAMP-project-page/).
 <p align="center">
-  <img width="250" src="docs/images/SDF_0.jpg">
-  <img width="280" src="docs/images/SDF_1.jpg">
-  <img width="300" src="docs/images/sdf_modify.jpg">
+  <img width="220" src="docs/images/SDF_0.jpg">
+  <img width="250" src="docs/images/SDF_1.jpg">
+  <img width="280" src="docs/images/sdf_modify.jpg">
 </p>
 
-## Sparse Reward for MPPI motivated by RL
+## 2. Sparse Reward for MPPI motivated by RL
 learn from [Collaborative Interaction Models for Optimized Human-Robot Teamwork](https://ieeexplore.ieee.org/document/9341369)
 <p align="center">
   <img width="300" src="docs/images/sparse_reward.jpg">
@@ -76,6 +76,77 @@ reward 在加入前后的对轨迹的影响比较
 </table>
 
 可以看到，加入reward后，智能体更加贪婪的朝着目标点前进，对目标点的完成度优于没加reward; 但是贪婪的路径意味着探索的缺乏或者对碰撞条件的抑制，这是一个权衡... 黄色增多了
+
+## 3. Robot Vel with SDF Potential and Gradient
+cost设计
+```python
+        根据代价函数计算cost
+        cost = self.w1 * potential
+        cost = self.w2 * potential * vel_abs
+        cost = self.w1 * potential + self.w2 * potential * vel_abs 
+        cost = self.w1 * potential +\
+                    self.w2 * potential * vel_abs * (1.0 + (torch.max(-torch.cos(theta), torch.tensor(0.0).to(inp_device))))
+        cost = self.w1 * potential +\
+                    self.w1*8.0* potential * vel_abs * (1.0 - 0.50* torch.cos(theta))
+```
+
+<p align="center">
+  <img width="400" src="zlog/091401.png">
+</p>
+
+$$
+\begin{align*}
+    J(x) &= w1 \cdot SDF\_Potential 
+\end{align*}
+$$
+
+仅SDF势场 紧贴障碍物 较为危险
+
+
+
+<p align="center">
+  <img width="400" src="zlog/091402_PV.png">
+</p>
+
+$$
+\begin{align*}
+    J(x) &= w2 \cdot SDF\_Potential \cdot Robot\_Vel\
+\end{align*}
+$$
+
+robot_velocity *  Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值
+
+
+<p align="center">
+  <img width="400" src="zlog/091403_PPV.png">
+</p>
+
+
+$$
+\begin{align*}
+    J(x) &= w1 \cdot SDF\_Potential + w2 \cdot SDF \_Potential \cdot Robot\_Vel
+\end{align*}
+$$
+
+较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域
+
+
+<p align="center">
+  <img width="400" src="zlog/091405_PPV_wholetheta.png">
+</p>
+
+$$
+\begin{align*}
+    J(x) &= w1 \cdot SDF\_Potential \\
+         &+ w2 \cdot SDF \_Potential \cdot Robot\_Vel \cdot (1 - a\cdot cos(theta)) \\\\
+    theta &= arccos (SDF\_gradient * robot\_Velorient) \\
+    a  &\in [0, 1] \\
+\end{align*}
+$$
+
+加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。
+
+
 
 
 ## Updates

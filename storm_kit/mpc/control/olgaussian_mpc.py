@@ -124,7 +124,6 @@ class OLGaussianMPC(Controller):
         elif sample_params['type'] == 'multiple':
             self.sample_lib = MultipleSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args, **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2], device=self.tensor_args['device'])
-
         self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
         # initialize covariance types:
         if self.cov_type == 'full_HAxHA':
@@ -163,10 +162,15 @@ class OLGaussianMPC(Controller):
         delta = self.sample_lib.get_samples(sample_shape=shape, seed=base_seed)
         return delta
         
-    def sample_actions(self, state=None):
+    def sample_enhance_actions(self, state=None):
+
+        # chatgpt,下面更改代码，通过 不同采样均值（random_shooting的best_action 与 MPPI的mean_action）的方式增加MPPI的探索能力
+        # 前面根据MPPI算法的mean_action随机采样出来一系列轨迹：act_seq = self.mean_action.unsqueeze(0) + scaled_delta
+        # 现在需要根据 random_shooting算法的best_action(best_traj)随机采样出一系列轨迹；然后将两个算法采样的轨迹叠放在一起， 生成最后的批量轨迹，用于MPPI算法后续的代价计算以及softMAX部分；
+        # 之所以这样更改代码，是希望能通过不同采样均值的方式增加MPPI的探索能力。 我的代码有一些错误和不足，有没有之前类似的算法值得借鉴，希望能根据我的需求补充完整
+        # random_shooting_act_seq = self.best_traj.unsqueeze(0) + scaled_delta 
+        # act_seq = torch.cat((act_seq, random_shooting_act_seq), dim=0)
         delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)
-
-
         #add zero-noise seq so mean is always a part of samples
         delta = torch.cat((delta, self.Z_seq), dim=0)
         
@@ -177,19 +181,20 @@ class OLGaussianMPC(Controller):
         if self.cov_type == 'full_HAxHA':
             # delta: N * H * A -> N * HA
             delta = delta.view(delta.shape[0], self.horizon * self.d_action)
-
             
         scaled_delta = torch.matmul(delta, self.full_scale_tril).view(delta.shape[0],
                                                                       self.horizon,
                                                                       self.d_action)
+       
+        random_scaled_delta = scaled_delta[:60]
+        mppi_scaled_delta = scaled_delta[60:]
+        # debug_act = delta[:,:,0].cpu().numpy()
 
+        mppi_act_seq = self.mean_action.unsqueeze(0) + mppi_scaled_delta
+        random_act_seq = self.best_traj.unsqueeze(0) + random_scaled_delta
 
-
-        #
-        debug_act = delta[:,:,0].cpu().numpy()
-
-        act_seq = self.mean_action.unsqueeze(0) + scaled_delta
-        
+        act_seq = torch.cat((random_act_seq,mppi_act_seq), dim=0)
+        # act_seq[-1,]==self.mean_action.unsqueeze(0)
 
         act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
         
@@ -205,9 +210,46 @@ class OLGaussianMPC(Controller):
             neg_act_seqs = neg_action.expand(self.num_neg_particles,-1,-1)
             append_acts = torch.cat((append_acts, self.null_act_seqs, neg_act_seqs),dim=0)
 
-        
+        # mean action index_+1 : 296 = sample_shape + 1 = 295 + 1
+        # best_traj_index_+1 : 297 = sample_shape + 2 = 295 + 2
         act_seq = torch.cat((act_seq, append_acts), dim=0)
         return act_seq
+
+       
+    def sample_actions(self, state=None):
+        delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)
+        #add zero-noise seq so mean is always a part of samples
+        delta = torch.cat((delta, self.Z_seq), dim=0)
+        
+        # samples could be from HAxHA or AxA:
+        # We reshape them based on covariance type:
+        # if cov is AxA, then we don't reshape samples as samples are: N x H x A
+        # if cov is HAxHA, then we reshape
+        if self.cov_type == 'full_HAxHA':
+            # delta: N * H * A -> N * HA
+            delta = delta.view(delta.shape[0], self.horizon * self.d_action)
+            
+        scaled_delta = torch.matmul(delta, self.full_scale_tril).view(delta.shape[0],
+                                                                      self.horizon,
+                                                                      self.d_action)
+        debug_act = delta[:,:,0].cpu().numpy()
+
+        act_seq = self.mean_action.unsqueeze(0) + scaled_delta
+
+        act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
+        append_acts = self.best_traj.unsqueeze(0)
+        
+        #append zero actions (for stopping)
+        if self.num_null_particles > 0:
+            # zero particles:
+            # negative action particles:
+            neg_action = -1.0 * self.mean_action.unsqueeze(0)
+            neg_act_seqs = neg_action.expand(self.num_neg_particles,-1,-1)
+            append_acts = torch.cat((append_acts, self.null_act_seqs, neg_act_seqs),dim=0)
+
+        act_seq = torch.cat((act_seq, append_acts), dim=0)
+        return act_seq
+
 
     def generate_rollouts(self, state):
         """
@@ -221,13 +263,28 @@ class OLGaussianMPC(Controller):
                 Initial state to set the simulation env to
          """
         # 200 * 20 *2 
-        act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
-
-
+        # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
+        act_seq = self.sample_enhance_actions(state=state)
         # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
-
-
         trajectories = self._rollout_fn(state, act_seq)
+        # trajectories['actions'][-5,] == act_seq[295,]
+        # mean_trajectories = trajectories['state_seq'][-5,]
+        # best_trajectories = trajectories['state_seq'][-4,]
+
+        return trajectories
+
+
+    def generate_sensitive_rollouts(self, state):
+
+        # 200 * 20 *2 
+        # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
+        act_seq = self.sample_enhance_actions(state=state)
+        # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
+        trajectories = self._rollout_fn(state, act_seq)
+        # trajectories['actions'][-5,] == act_seq[295,]
+        # mean_trajectories = trajectories['state_seq'][-5,]
+        # best_trajectories = trajectories['state_seq'][-4,]
+
         return trajectories
     
     # def generate_policy_rollouts(self, state):
