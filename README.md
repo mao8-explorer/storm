@@ -146,8 +146,38 @@ $$
 
 加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。
 
+## 4. Random_shooting Plus MPPI
+这是一次并行化不同mean值的测试，是初始阶段，也即 Multi Mean ON same Cost_Policy \
+实验表明：
+1. Muilty mean can help enhance exploration and lower collision situation
+2. PPV can Great improve collision avoidance . PPV can do almost same as PPV_Gradient AND The effectiveness of gradient methods requires more argumentation. Gradient 的效果抵不过开销
 
-
+<table align="center">
+  <tr>
+    <td align="center">
+      <img width="300" src="zlog/randomPlusMPPI/300_0_move_1policy_14.8_14coll.png">
+      <br>
+      <em>300MPPI_0random_1shift_14.8goal_14coll</em>
+    </td>
+    <td align="center">
+      <img width="300" src="zlog/randomPlusMPPI/300_60_move_2policy_15.0_3coll.png">
+      <br>
+      <em>240MPPI_60random_1shift_15.0goal_3coll</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img width="300" src="zlog/randomPlusMPPI/300_60_2shift_14.8_27.png">
+      <br>
+      <em>only P 240|60_2shift_14.8goal_27coll </em>
+    </td>
+    <td align="center">
+      <img width="300" src="zlog/randomPlusMPPI/300_60_2shift_14.1_7.png">
+      <br>
+      <em>PPVtheta 240|60_2shift_14.1goal_7coll </em>
+    </td>
+  </tr>
+</table>
 
 ## Updates
 Jan. 2022 - Add CoRL citation, merge torch.size() bug (thanks [@maxpahn](https://github.com/maxspahn)).
