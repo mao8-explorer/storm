@@ -96,7 +96,7 @@ cost设计
 
 $$
 \begin{align*}
-    J(x) &= w_1 \cdot \text{SDF\_Potential}
+    J(x) &= w1 \cdot SDFPotential 
 \end{align*}
 $$
 
@@ -110,7 +110,7 @@ $$
 
 $$
 \begin{align*}
-    J(x) &= w_2 \cdot \text{SDF\_Potential} \cdot \text{Robot\_Vel}
+    J(x) &= w2 \cdot SDFPotential \cdot RobotVel\
 \end{align*}
 $$
 
@@ -124,10 +124,9 @@ robot_velocity *  Potential, 尽管考虑到智能体速度的影响，但是该
 
 $$
 \begin{align*}
-    J(x) &= w_1 \cdot \text{SDF\_Potential} + w_2 \cdot \text{SDF\_Potential} \cdot \text{Robot\_Vel}
+    J(x) &= w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel
 \end{align*}
 $$
-
 
 较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域
 
@@ -136,17 +135,14 @@ $$
   <img width="400" src="zlog/091405_PPV_wholetheta.png">
 </p>
 
-
-
 $$
 \begin{align*}
-    J(x) &= w_1 \cdot \text{SDF\_Potential} \\
-         &+ w_2 \cdot \text{SDF\_Potential} \cdot \text{Robot\_Vel} \cdot (1 - a \cdot \cos(\theta)) \\\\
-    \theta &= \arccos(\text{SDF\_gradient} \cdot \text{Robot\_Velorient}) \\
-    a &\in [0, 1]
+    J(x) &= w1 \cdot SDFPotential \\
+         &+ w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta)) \\\\
+    theta &= arccos (SDFGradient * RobotVelOrient) \\
+    a  &\in [0, 1] \\
 \end{align*}
 $$
-
 
 加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。
 
