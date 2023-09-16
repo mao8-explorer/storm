@@ -248,8 +248,8 @@ class Controller(ABC):
                     # generate random simulated trajectories
                     trajectory = self.generate_rollouts(state)
                     # update distribution parameters
-                    with profiler.record_function("mppi_update"):
-                        self._update_distribution(trajectory) 
+                    # with profiler.record_function("mppi_update"):
+                    self._update_distribution(trajectory) 
                     """
                     1. sample N trajectories from mean_t1
                     2. update_distribution to get mean_t2 (sensitive path)
@@ -259,7 +259,7 @@ class Controller(ABC):
                     compute cost 是重点修改部分，现阶段设计较为容易，进修改 target_cost 与 collision_cost的权重实现 差异化竞争
                     要实现对 权重的 修改
                     """
-                    sensitive_trajectory = self.generate_rollouts(state)
+                    sensitive_trajectory = self.generate_sensitive_rollouts(state)
                     self._update_distribution(sensitive_trajectory) 
 
 
