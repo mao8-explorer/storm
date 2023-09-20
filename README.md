@@ -78,6 +78,12 @@ reward 在加入前后的对轨迹的影响比较
 可以看到，加入reward后，智能体更加贪婪的朝着目标点前进，对目标点的完成度优于没加reward; 但是贪婪的路径意味着探索的缺乏或者对碰撞条件的抑制，这是一个权衡... 黄色增多了
 
 ## 3. Robot Vel with SDF Potential and Gradient
+
+<p align="center">
+  <img width="400" src="zlog/randomPlusMPPI/20230920-133010.jpg">
+</p>
+区别于传统做法，只是用SDF的Potential作为代价，这里设计基于梯度和势场的cost,更加全面的利用sdf
+
 cost设计
 ```python
         根据代价函数计算cost

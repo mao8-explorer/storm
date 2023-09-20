@@ -250,6 +250,7 @@ class Controller(ABC):
                     # update distribution parameters
                     # with profiler.record_function("mppi_update"):
                     self._update_distribution(trajectory) 
+                    self.mean_traj_greedy = self.get_mean_trajectory(state)
                     """
                     1. sample N trajectories from mean_t1
                     2. update_distribution to get mean_t2 (sensitive path)
@@ -260,12 +261,13 @@ class Controller(ABC):
                     要实现对 权重的 修改
                     """
                     sensitive_trajectory = self.generate_sensitive_rollouts(state)
-                    self._update_distribution(sensitive_trajectory) 
 
+                    self._update_sensitive_distribution(sensitive_trajectory) 
+                    self.mean_traj_sensi = self.get_mean_trajectory(state)
 
-
-
-
+                    # sensitive_trajectory = self.generate_sensitive_rollouts(state)
+                    # self._update_sensitive_distribution(sensitive_trajectory) 
+                    # self.mean_traj_sensi = self.get_mean_trajectory(state)
                     info['rollout_time'] += trajectory['rollout_time']
                     # check if converged
                     if self.check_convergence():

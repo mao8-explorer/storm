@@ -30,7 +30,8 @@ class Plotter:
         image = cv2.addWeighted(im.astype(float), 0.5, dist_map.cpu().numpy().astype(float), 0.5, 1).astype(np.uint8)
 
         self.traj_log['world'] = image
-        self.ax.imshow(self.traj_log['world'], extent=self.extents,cmap='gray')
+        # self.ax.imshow(self.traj_log['world'], extent=self.extents,cmap='gray')
+        self.ax.imshow(self.traj_log['world'], extent=self.extents)
         self.ax.set_xlim(self.traj_log['bounds'][0], self.traj_log['bounds'][1])
         self.ax.set_ylim(self.traj_log['bounds'][2], self.traj_log['bounds'][3])
         # ax.plot(0.08,0.2, 'rX', linewidth=3.0, markersize=15) # 起始点
@@ -58,7 +59,9 @@ class Plotter:
         self.ax.scatter(np.ravel(self.current_state['position'][0]),np.ravel(self.current_state['position'][1]),
                         c=np.ravel(self.potential_curr.cpu()),s=np.array(200),cmap=plt.cm.jet, vmin=0, vmax=1)
         # 规划轨迹 batch_trajectories visual
-        mean_trajectory = self.simple_task.mean_trajectory.cpu().numpy()
+
+        mean_traj_greedy = self.simple_task.control_process.controller.mean_traj_greedy.cpu().numpy()
+        mean_traj_sensi = self.simple_task.control_process.controller.mean_traj_sensi.cpu().numpy()
         top_trajs = self.simple_task.top_trajs
         _, _ ,coll_cost= self.simple_task.get_current_coll(top_trajs) 
         self.traj_log['top_traj'] = top_trajs.cpu().numpy()
@@ -69,10 +72,12 @@ class Plotter:
                 c=np.ravel(coll_cost[0].cpu().numpy()[100:]),  s=np.array(2))
         # random_shooting: best_trajectory 绿线
         self.ax.plot(np.ravel(self.traj_log['top_traj'][0,:,0].flatten()), np.ravel(self.traj_log['top_traj'][0,:,1].flatten()),
-                'g-',linewidth=2,markersize=3)          
+                'g-',linewidth=1,markersize=3)          
         # MPPI : mean_trajectory 红线
-        self.ax.plot(np.ravel(mean_trajectory[:,0]),np.ravel(mean_trajectory[:,1]),
+        self.ax.plot(np.ravel(mean_traj_greedy[:,0]),np.ravel(mean_traj_greedy[:,1]),
                 'r-',linewidth=2,markersize=3)  
+        self.ax.plot(np.ravel(mean_traj_sensi[:,0]),np.ravel(mean_traj_sensi[:,1]),
+                'g-',linewidth=2,markersize=3)  
 
         #  文字标签 ----------------------------------------------------------------
         #  velocity | potential | 夹角  | MPQ Value_Function估计 

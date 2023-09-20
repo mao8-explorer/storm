@@ -114,7 +114,7 @@ class ControlProcess(object):
         self.prev_mpc_tstep = copy.deepcopy(t_step)
 
         # get mean_trajectory and best_trajectory
-        mean_trajectories = self.controller.trajectories['state_seq'][-5,]
+        # mean_trajectories = self.controller.trajectories['state_seq'][-5,]
         # best_trajectories = self.controller.trajectories['state_seq'][-4,]
         
         # get command data:
@@ -127,7 +127,7 @@ class ControlProcess(object):
         
         act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[0], self.control_dt)
         # next_command, val, info, best_action
-        return act, command_tstep_buffer, self.command[1], command_buffer ,mean_trajectories
+        return act, command_tstep_buffer, self.command[1], command_buffer
 
     def get_command(self, t_step, curr_state, debug=False, control_dt=0.01):
         if(self.opt_queue.empty()):# and self.command is None):

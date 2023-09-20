@@ -202,8 +202,10 @@ class HolonomicModel(DynamicsModelBase):
                       'nth_act_seq': nth_act_seq.to(inp_device)}
         return state_dict
 
-
-        
+    def single_step_fn(self, start_state: torch.Tensor, act_seq: torch.Tensor):
+        traj_seq = torch.zeros(1, self.num_traj_points, self.d_state, **self.tensor_args)
+        single_state_seq = self.step_fn(start_state, act_seq, traj_seq, self._dt_h, self.n_dofs, self._integrate_matrix)
+        return single_state_seq
 
     def integrate_action(self, act_seq):
         if(self.action_order == 0):

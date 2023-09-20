@@ -250,6 +250,30 @@ class OLGaussianMPC(Controller):
         act_seq = torch.cat((act_seq, append_acts), dim=0)
         return act_seq
 
+    def get_mean_trajectory(self, state):
+        """
+            Samples a batch of actions, rolls out trajectories for each particle
+            and returns the resulting observations, costs,  
+            actions
+
+            Parameters
+            ----------
+            state : dict or np.ndarray
+                Initial state to set the simulation env to
+         """
+        # 200 * 20 *2 
+        # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
+       
+        mppi_act_seq = self.mean_action
+
+        # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
+        single_trajectory = self._rollout_fn.single_state_forward(state, mppi_act_seq).squeeze(0)
+        # trajectories['actions'][-5,] == act_seq[295,]
+        # mean_trajectories = trajectories['state_seq'][-5,]
+        # best_trajectories = trajectories['state_seq'][-4,]
+
+        return single_trajectory
+
 
     def generate_rollouts(self, state):
         """
@@ -273,14 +297,13 @@ class OLGaussianMPC(Controller):
 
         return trajectories
 
-
     def generate_sensitive_rollouts(self, state):
 
         # 200 * 20 *2 
         # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
         act_seq = self.sample_enhance_actions(state=state)
         # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
-        trajectories = self._rollout_fn(state, act_seq)
+        trajectories = self._rollout_fn.short_sighted_rollout_fn(state, act_seq, self.mean_traj_greedy)
         # trajectories['actions'][-5,] == act_seq[295,]
         # mean_trajectories = trajectories['state_seq'][-5,]
         # best_trajectories = trajectories['state_seq'][-4,]

@@ -672,12 +672,12 @@ class WorldMoveableImageCollision(WorldCollision):
         _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
         self.im = im
         shift = 3
-        # self.movelist = np.float32([
-        #     [[1, 0, -shift], [0, 1, 0]],
-        #     [[1, 0,  shift], [0, 1, 0]]])
         self.movelist = np.float32([
-            [[1, 0, 0], [0, 1, -shift]],
-            [[1, 0,  0], [0, 1, shift]]])
+            [[1, 0, -shift], [0, 1, 0]],
+            [[1, 0,  shift], [0, 1, 0]]])
+        # self.movelist = np.float32([
+        #     [[1, 0, 0], [0, 1, -shift]],
+        #     [[1, 0,  0], [0, 1, shift]]])
         
         self.step_move = 20
         self.move_ind = 10

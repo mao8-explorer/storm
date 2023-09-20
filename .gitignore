@@ -186,3 +186,7 @@ docs/setup.rst
 .idea/storm.iml
 .idea/vcs.xml
 .idea/inspectionProfiles/profiles_settings.xml
+
+hands-on-RL/*
+hands-on-RL
+.gitignore

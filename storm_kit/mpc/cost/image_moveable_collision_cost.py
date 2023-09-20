@@ -113,12 +113,19 @@ class ImagemoveCollisionCost(nn.Module):
         # 根据代价函数计算cost
         # cost = self.w1 * potential #    13 2coll
         # cost = self.w2 * potential * vel_abs
-        # cost = self.w1 * potential + self.w2 * potential * vel_abs 
+        cost = self.w1 * potential + self.w2 * potential * vel_abs 
         # cost = self.w1 * potential +\
         #             self.w2 * potential * vel_abs * (1.0 + (torch.max(-torch.cos(theta), torch.tensor(0.0).to(inp_device))))
+        # cost = self.w1 * potential +\
+        #             self.w2* potential * vel_abs * (1.0 - 0.50* torch.cos(theta))
         cost = self.w1 * potential +\
-                    self.w2* potential * vel_abs * (1.0 - 0.50* torch.cos(theta))
-        cost = cost.view(batch_size, horizon, 1)
+                    self.w2 * potential * vel_abs * (1.0 +\
+                                                     1.0 * (torch.max(-torch.cos(theta), torch.tensor(0.0).to(inp_device))) +\
+                                                     0.5 * (torch.min(-torch.cos(theta), torch.tensor(0.0).to(inp_device)))
+                                                     )
+        
+
+        cost = self.weight * cost.view(batch_size, horizon, 1)
         res = cost.squeeze(-1)
         return res.to(inp_device)
 

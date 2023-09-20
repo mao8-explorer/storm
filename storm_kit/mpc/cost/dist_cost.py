@@ -38,7 +38,7 @@ class DistCost(nn.Module):
             self.vec_weight = 1.0
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
     
-    def forward(self, disp_vec, dist_type="l2", beta=1.0, RETURN_GOAL_DIST=False):
+    def forward(self, disp_vec , dist_type="l2", beta=1.0, RETURN_GOAL_DIST=False):
         inp_device = disp_vec.device
         disp_vec = self.vec_weight * disp_vec.to(self.device)
 
@@ -55,7 +55,7 @@ class DistCost(nn.Module):
             raise NotImplementedError
 
         cost = self.weight * self.proj_gaussian(dist)
-        cost = self.weight*dist
+        # cost = self.weight*dist
 
         if(RETURN_GOAL_DIST):
             return cost.to(inp_device), dist.to(inp_device)
