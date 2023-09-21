@@ -22,6 +22,7 @@
 # DEALINGS IN THE SOFTWARE.#
 
 import matplotlib
+matplotlib.use('tkagg')
 import time
 import argparse
 import numpy as np
@@ -38,7 +39,7 @@ from storm_kit.mpc.utils.mpc_process_wrapper import ControlProcess
 from storm_kit.mpc.task.simple_task import SimpleTask
 import torch
 import time
-matplotlib.use('tkagg')
+
 torch.multiprocessing.set_start_method('spawn',force=True)
 from visual.plot_simple import Plotter
 
@@ -60,7 +61,7 @@ class holonomic_robot(Plotter):
         super().__init__()
 
         self.goal_list = [
-                # [0.9098484848484849, 0.2006060606060608],
+                [0.9098484848484849, 0.2006060606060608],
                 [0.8787878787878789, 0.7824675324675325], 
                 [0.2240259740259739, 0.7851731601731602]]        
         self.goal_state = self.goal_list[-1]

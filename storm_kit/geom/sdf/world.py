@@ -672,13 +672,15 @@ class WorldMoveableImageCollision(WorldCollision):
         _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
         self.im = im
         shift = 3
-        # self.movelist = np.float32([
-        #     [[1, 0, -shift], [0, 1, 0]],
-        #     [[1, 0,  shift], [0, 1, 0]]])
-        self.movelist = np.float32([
+        self.up_down = False
+        if self.up_down: 
+            self.movelist = np.float32([
             [[1, 0, 0], [0, 1, -shift]],
             [[1, 0,  0], [0, 1, shift]]])
-        
+        else:
+            self.movelist = np.float32([
+                [[1, 0, -shift], [0, 1, 0]],
+                [[1, 0,  shift], [0, 1, 0]]])
         self.step_move = 20
         self.move_ind = 10
         
@@ -786,12 +788,12 @@ class WorldMoveableImageCollision(WorldCollision):
 
         cost_sdf = torch.zeros_like(self.scene_voxels)
         # 对dist大于0.05小于0.30的区域进行运算
-        mask_mid = (self.scene_voxels > 0.01) & (self.scene_voxels < 0.08)
+        mask_mid = (self.scene_voxels > 0.01) & (self.scene_voxels < 0.1)
         cost_sdf[mask_mid] = torch.exp(-50 * (self.scene_voxels[mask_mid] - 0.01))
         # 对dist小于等于0.05的区域直接设置为1
         cost_sdf[self.scene_voxels <= 0.01] = 1.0
         # 对dist大于0.30的区域直接设置为0
-        cost_sdf[self.scene_voxels > 0.08] = 0.0
+        cost_sdf[self.scene_voxels > 0.1] = 0.0
 
         self.scene_voxels = cost_sdf
         self.num_voxels = self.im_dims

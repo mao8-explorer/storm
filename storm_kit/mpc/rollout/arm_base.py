@@ -26,7 +26,7 @@ import torch.autograd.profiler as profiler
 from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost,PoseCostQuaternion
 from ..cost.bound_cost import BoundCost
 from ..cost.manipulability_cost import ManipulabilityCost
-from ..cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost, ScenecollisionCost
+from ..cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost
 from ..model import URDFKinematicModel
 from ...util_file import join_path, get_assets_path
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
