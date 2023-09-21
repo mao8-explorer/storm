@@ -196,8 +196,8 @@ class SimpleReacher(object):
         state_batch = state_dict['state_seq']
         #print(action_batch)
         # goal_state changed to 
-        # goal_state = self.goal_state.unsqueeze(0)
-        goal_state = mean_traj_greedy[-1,:self.n_dofs]# 可适当调节  @测试！ 20 horizon [15 20]区间测试 增加路径弹性 需要根据测试结果讨论清楚 
+        goal_state = self.goal_state.unsqueeze(0)
+        # goal_state = mean_traj_greedy[-1,:self.n_dofs]# 可适当调节  @测试！ 20 horizon [15 20]区间测试 增加路径弹性 需要根据测试结果讨论清楚 
         # * torch.cat((torch.zeros(10),torch.ones(10))).to(**self.tensor_args)
         # goal_state = mean_traj_greedy[ :,:self.n_dofs].unsqueeze(0)
         
@@ -212,7 +212,7 @@ class SimpleReacher(object):
         cost += vel_cost
         
         coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
-        cost += coll_cost * 2.0
+        cost += coll_cost * 5.0
 
         bound_contraint= self.bound_cost.forward(state_batch[:,:,:self.n_dofs])
         cost += bound_contraint

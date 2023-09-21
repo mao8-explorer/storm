@@ -262,12 +262,9 @@ class Controller(ABC):
                     """
                     sensitive_trajectory = self.generate_sensitive_rollouts(state)
 
-                    self._update_sensitive_distribution(sensitive_trajectory) 
+                    self._update_distribution(sensitive_trajectory) 
                     self.mean_traj_sensi = self.get_mean_trajectory(state)
 
-                    # sensitive_trajectory = self.generate_sensitive_rollouts(state)
-                    # self._update_sensitive_distribution(sensitive_trajectory) 
-                    # self.mean_traj_sensi = self.get_mean_trajectory(state)
                     info['rollout_time'] += trajectory['rollout_time']
                     # check if converged
                     if self.check_convergence():

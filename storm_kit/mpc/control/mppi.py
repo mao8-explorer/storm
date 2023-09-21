@@ -251,10 +251,9 @@ class MPPI(OLGaussianMPC):
                 cov_update = torch.matmul(weighted_delta, weighted_delta.T)
             else:
                 raise ValueError('Unidentified covariance type in update_distribution')
-            if (self.cov_action.sum() < cov_update.sum()).item():
-                
-                self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
-                    self.step_size_cov * cov_update
+            # if (self.cov_action.sum() < cov_update.sum()).item():
+            self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
+                self.step_size_cov * cov_update
 
 
     def _shift(self, shift_steps):
