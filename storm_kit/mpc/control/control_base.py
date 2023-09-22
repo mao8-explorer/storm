@@ -291,6 +291,66 @@ class Controller(ABC):
 
         return curr_action_seq.to(inp_device, dtype=inp_dtype), value, info
 
+
+    def multimodal_optimize(self, state, calc_val=False, shift_steps=1, n_iters=None):
+
+        n_iters = n_iters if n_iters is not None else self.n_iters
+        # get input device:
+        inp_device = state.device
+        inp_dtype = state.dtype
+        state.to(**self.tensor_args)
+
+        info = dict(rollout_time=0.0, entropy=[])
+        # shift distribution to hotstart from previous timestep
+        if self.hotstart:
+            self._multimodal_shift(shift_steps)
+        else:
+            self.multimodal_reset_distribution()
+            
+
+        with torch.cuda.amp.autocast(enabled=True):
+            with torch.no_grad():
+                for _ in range(n_iters):
+                    # sample M trajectories from mean_t-1
+                    # update_distribution to get mean_t1 (greedy path)
+
+                    # generate random simulated trajectories
+                    trajectory = self.generate_multimodal_rollouts(state)
+                    # update distribution parameters
+                    # with profiler.record_function("mppi_update"):
+                    self._multimodal_update_distribution(trajectory) 
+
+                    self.greedy_mean_traj, self.sensi_mean_traj, self.greedy_best_traj, self.sensi_best_traj,self.mean_traj = \
+                    self.get_multimodal_mean_trajectory(state)
+
+                    info['rollout_time'] += trajectory['rollout_time']
+                    # check if converged
+                    if self.check_convergence():
+                        break
+        self.trajectories = trajectory
+        #calculate best action
+        # curr_action = self._get_next_action(state, mode=self.sample_mode)
+        curr_action_seq = self._get_action_seq(mode=self.sample_mode)
+        #calculate optimal value estimate if required
+        value = torch.tensor((self.greedy_Value_w,self.sensi_Value_w))
+        # if calc_val:
+        #     trajectories = self.generate_rollouts(state)
+        #     value = self._calc_val(trajectories)
+
+        # # shift distribution to hotstart next timestep
+        # if self.hotstart:
+        #     self._shift()
+        # else:
+        #     self.reset_distribution()
+
+        info['entropy'].append(self.entropy)
+
+        self.num_steps += 1
+
+        return curr_action_seq.to(inp_device, dtype=inp_dtype), value, info
+
+
+
     def get_optimal_value(self, state):
         """
         Calculate optimal value of a state, i.e 

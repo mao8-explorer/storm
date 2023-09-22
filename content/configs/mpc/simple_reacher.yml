@@ -114,7 +114,7 @@ mppi:
   step_size_cov     : 0.6
   beta              : 1.0
   alpha             : 1
-  num_particles     : 300 #10000
+  num_particles     : 360 #10000
   update_cov        : True
   cov_type          : 'diag_AxA' # 
   kappa             : 0.0001

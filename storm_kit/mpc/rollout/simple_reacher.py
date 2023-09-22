@@ -21,6 +21,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 
+from ast import Assign
 import torch
 
 from ...mpc.cost import DistCost, ZeroCost, FiniteDifferenceCost ,SparseReward
@@ -163,7 +164,7 @@ class SimpleReacher(object):
             
         if self.exp_params['cost']['image_move_collision']['weight'] > 0: #!
             # compute collision cost:
-            coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
+            coll_cost , judge_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
             #print (coll_cost.shape)
             cost += coll_cost
 
@@ -211,7 +212,7 @@ class SimpleReacher(object):
         vel_cost = self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2])
         cost += vel_cost
         
-        coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
+        coll_cost ,judge_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
         cost += coll_cost * 5.0
 
         bound_contraint= self.bound_cost.forward(state_batch[:,:,:self.n_dofs])
@@ -235,7 +236,50 @@ class SimpleReacher(object):
             state_seq=state_dict['state_seq']
         )
         return sim_trajs
+
+    def multimodal_cost_fn(self, state_dict):
+
+        state_batch = state_dict['state_seq']
+        goal_state = self.goal_state.unsqueeze(0)
+        
+        self.target_cost = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs], assign_weights = 1.0)
     
+        self.coll_cost, self.judge_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
+
+        # 速度限制 禁止越界
+        self.terminal_reward = self.sparse_reward.forward(goal_state - state_batch[:,:,:self.n_dofs])
+        self.vel_cost = self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2])
+        self.bound_contraint= self.bound_cost.forward(state_batch[:,:,:self.n_dofs])
+        
+
+    def multimodal_rollout_fn(self, start_state, act_seq):
+        state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq) # 状态forward
+
+        """
+        1. greedy_policy
+        2. sensitive_policy
+        """
+        self.multimodal_cost_fn(state_dict)
+        greedy_cost_seq = self.target_cost * 40.0 +\
+                          self.coll_cost * 1.0 +\
+                          self.vel_cost  + self.bound_contraint + self.terminal_reward
+        
+        sensi_cost_seq = self.target_cost * 2.0 +\
+                          self.coll_cost * 5.0 +\
+                          self.vel_cost  + self.bound_contraint
+        
+        judge_cost_seq = self.target_cost * 10.0 +\
+                         self.judge_cost *2.5 
+        
+        sim_trajs = dict(
+            actions=act_seq,#.clone(),
+            greedy_costs=greedy_cost_seq,#clone(),
+            sensi_costs=sensi_cost_seq,
+            judge_costs=judge_cost_seq,
+            rollout_time=0.0,
+            state_seq=state_dict['state_seq']
+        )
+        return sim_trajs        
 
     def rollout_fn(self, start_state, act_seq):
         """

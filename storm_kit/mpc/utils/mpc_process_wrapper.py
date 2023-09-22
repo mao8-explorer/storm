@@ -86,6 +86,7 @@ class ControlProcess(object):
             curr_state = self.controller.rollout_fn.dynamics_model.get_next_state(curr_state, command, self.mpc_dt)
     
         return curr_state
+    
     def get_command_debug(self, t_step, curr_state, debug=False, control_dt=0.01):
         """ This function runs the controller in the same process and waits for optimization to  complete before return of a new command
         Args:
@@ -128,6 +129,48 @@ class ControlProcess(object):
         act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[0], self.control_dt)
         # next_command, val, info, best_action
         return act, command_tstep_buffer, self.command[1], command_buffer
+
+   
+    def get_multimodal_command_debug(self, t_step, curr_state, debug=False, control_dt=0.01):
+        """ This function runs the controller in the same process and waits for optimization to  complete before return of a new command
+        Args:
+        t_step: current timestep
+        curr_state: current state to give to mpc
+        debug: flag to enable debug commands [not implemented]
+        control_dt: dt to integrate command to acceleration space from a higher order space(jerk, snap). 
+        """
+        if(self.command is not None):
+            curr_state = self.predict_next_state(t_step, curr_state)
+
+        current_state = np.append(curr_state, t_step + self.mpc_dt)
+        shift_steps = find_first_idx(self.command_tstep, t_step + self.mpc_dt)
+        
+        state_tensor = torch.as_tensor(current_state,**self.controller.tensor_args).unsqueeze(0)
+
+
+        mpc_time = time.time()
+        command = list(self.controller.multimodal_optimize(state_tensor, shift_steps=shift_steps))
+        mpc_time = time.time() - mpc_time
+        command[0] = command[0].cpu().numpy()
+        self.command_tstep = self.traj_tstep + t_step
+        
+        self.opt_dt = mpc_time
+        self.mpc_dt = t_step - self.prev_mpc_tstep
+        self.prev_mpc_tstep = copy.deepcopy(t_step)
+
+        # get mean_trajectory and best_trajectory
+        # mean_trajectories = self.controller.trajectories['state_seq'][-5,]
+        # best_trajectories = self.controller.trajectories['state_seq'][-4,]
+        
+        # get command data:
+        self.command = command
+
+        command_buffer, command_tstep_buffer = self.truncate_command(self.command[0], t_step, self.command_tstep)
+        
+        act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[0], self.control_dt)
+        # next_command, val, info, best_action
+        return act, command_tstep_buffer, self.command[1], command_buffer
+    
 
     def get_command(self, t_step, curr_state, debug=False, control_dt=0.01):
         if(self.opt_queue.empty()):# and self.command is None):

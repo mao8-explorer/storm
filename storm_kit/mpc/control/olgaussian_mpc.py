@@ -124,6 +124,7 @@ class OLGaussianMPC(Controller):
         elif sample_params['type'] == 'multiple':
             self.sample_lib = MultipleSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args, **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2], device=self.tensor_args['device'])
+            self.multimodal_sample_shape = torch.Size([self.num_nonzero_particles - 3], device=self.tensor_args['device'])
         self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
         # initialize covariance types:
         if self.cov_type == 'full_HAxHA':
@@ -134,7 +135,8 @@ class OLGaussianMPC(Controller):
         
         self.Z_seq = torch.zeros(1, self.horizon, self.d_action, **self.tensor_args)
 
-        self.reset_distribution()
+        # self.reset_distribution()
+        self.multimodal_reset_distribution()
         if self.num_null_particles > 0:
             self.null_act_seqs = torch.zeros(self.num_null_particles, self.horizon, self.d_action, **self.tensor_args)
             
@@ -215,7 +217,67 @@ class OLGaussianMPC(Controller):
         act_seq = torch.cat((act_seq, append_acts), dim=0)
         return act_seq
 
+
+    def sample_multimodal_actions(self, state=None):
+
+        delta = self.sample_lib.get_samples(sample_shape=self.multimodal_sample_shape, base_seed=self.seed_val + self.num_steps)
+        #add zero-noise seq so mean is always a part of samples
+        delta = torch.cat((delta, self.Z_seq), dim=0)
+        
+        if self.cov_type == 'full_HAxHA':
+            # delta: N * H * A -> N * HA
+            delta = delta.view(delta.shape[0], self.horizon * self.d_action)
+            
+        scaled_delta = torch.matmul(delta, self.full_scale_tril).view(delta.shape[0],
+                                                                      self.horizon,
+                                                                      self.d_action)
        
+        sensi_random_scaled_delta = scaled_delta[:30]
+        greedy_random_scaled_delta = scaled_delta[30:60]
+
+        sensi_scaled_delta = scaled_delta[60:110]
+        greedy_scaled_delta = scaled_delta[110:160]
+        mppi_scaled_delta = scaled_delta[160:]
+
+        # debug_act = delta[:,:,0].cpu().numpy()
+
+        sensi_random_act_seq = self.sensi_best_action.unsqueeze(0) + sensi_random_scaled_delta
+        greedy_random_act_seq = self.greedy_best_action.unsqueeze(0) + greedy_random_scaled_delta
+        sensi_act_seq = self.sensi_mean.unsqueeze(0) + sensi_scaled_delta
+        greedy_act_seq = self.greedy_mean.unsqueeze(0) + greedy_scaled_delta
+        mppi_act_seq = self.mean_action.unsqueeze(0) + mppi_scaled_delta
+
+        act_seq = torch.cat((sensi_random_act_seq,greedy_random_act_seq,sensi_act_seq,greedy_act_seq,mppi_act_seq), dim=0)
+        # act_seq[-1,]==self.mean_action.unsqueeze(0)
+
+        act_seq = scale_ctrl(act_seq, self.action_lows, self.action_highs, squash_fn=self.squash_fn)
+        
+
+        #append zero actions (for stopping)
+        if self.num_null_particles > 0:
+            # zero particles:
+
+            # negative action particles:
+            neg_action = -1.0 * self.mean_action.unsqueeze(0)
+            neg_act_seqs = neg_action.expand(self.num_neg_particles,-1,-1)
+            append_acts = torch.cat((self.sensi_best_action.unsqueeze(0) , \
+                                     self.greedy_best_action.unsqueeze(0) ,\
+                                     self.null_act_seqs, neg_act_seqs),dim=0)
+
+        # mean action index_+1 : 296 = sample_shape + 1 = 295 + 1
+        # best_traj_index_+1 : 297 = sample_shape + 2 = 295 + 2
+        act_seq = torch.cat((act_seq, append_acts), dim=0)
+        return act_seq
+       
+ 
+    
+    def generate_multimodal_rollouts(self, state):
+
+        act_seq = self.sample_multimodal_actions(state=state)
+        trajectories = self._rollout_fn.multimodal_rollout_fn(state, act_seq)
+        return trajectories
+
+
     def sample_actions(self, state=None):
         delta = self.sample_lib.get_samples(sample_shape=self.sample_shape, base_seed=self.seed_val + self.num_steps)
         #add zero-noise seq so mean is always a part of samples
@@ -265,6 +327,7 @@ class OLGaussianMPC(Controller):
         # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
        
         mppi_act_seq = self.mean_action
+        
 
         # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
         single_trajectory = self._rollout_fn.single_state_forward(state, mppi_act_seq).squeeze(0)
@@ -274,7 +337,32 @@ class OLGaussianMPC(Controller):
 
         return single_trajectory
 
+    def get_multimodal_mean_trajectory(self, state):
+        """
+            Samples a batch of actions, rolls out trajectories for each particle
+            and returns the resulting observations, costs,  
+            actions
 
+            Parameters
+            ----------
+            state : dict or np.ndarray
+                Initial state to set the simulation env to
+         """
+        # 200 * 20 *2 
+        # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
+       
+        # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
+        greedy_mean_traj = self._rollout_fn.single_state_forward(state, self.greedy_mean).squeeze(0)
+        sensi_mean_traj =  self._rollout_fn.single_state_forward(state, self.sensi_mean).squeeze(0)
+        greedy_best_traj = self._rollout_fn.single_state_forward(state, self.greedy_best_action).squeeze(0)
+        sensi_best_traj =  self._rollout_fn.single_state_forward(state, self.sensi_best_action).squeeze(0)
+        mean_traj =        self._rollout_fn.single_state_forward(state, self.mean_action).squeeze(0)
+        # trajectories['actions'][-5,] == act_seq[295,]
+        # mean_trajectories = trajectories['state_seq'][-5,]
+        # best_trajectories = trajectories['state_seq'][-4,]
+
+        return greedy_mean_traj, sensi_mean_traj, greedy_best_traj, sensi_best_traj,mean_traj
+    
     def generate_rollouts(self, state):
         """
             Samples a batch of actions, rolls out trajectories for each particle
@@ -354,9 +442,60 @@ class OLGaussianMPC(Controller):
             raise NotImplementedError("invalid option for base action during shift")
         # self.mean_action = self.new_mean_action
 
+    def _multimodal_shift(self, shift_steps=1):
+        """
+            Predict mean for the next time step by
+            shifting the current mean forward by one step
+        """
+        if(shift_steps == 0):
+            return
+        # self.new_mean_action = self.mean_action.clone()
+        # self.new_mean_action[:-1] = #self.mean_action[1:]
+        self.mean_action = self.mean_action.roll(-shift_steps,0)
+        self.sensi_mean = self.sensi_mean.roll(-shift_steps,0)
+        self.greedy_mean = self.greedy_mean.roll(-shift_steps,0)
+        self.sensi_best_action = self.sensi_best_action.roll(-shift_steps,0)
+        self.greedy_best_action = self.greedy_best_action.roll(-shift_steps,0)
+
+        if self.base_action == 'random':
+            self.mean_action[-1] = self.generate_noise(shape=torch.Size((1, 1)), 
+                                                       base_seed=self.seed_val + 123*self.num_steps)
+            self.sensi_mean[-1] = self.generate_noise(shape=torch.Size((1, 1)), 
+                                                     base_seed=self.seed_val + 123*self.num_steps)
+            self.greedy_mean[-1] = self.generate_noise(shape=torch.Size((1, 1)), 
+                                                       base_seed=self.seed_val + 123*self.num_steps)
+            self.sensi_best_action[-1] = self.generate_noise(shape=torch.Size((1, 1)), 
+                                                     base_seed=self.seed_val + 123*self.num_steps)
+            self.greedy_best_action[-1] = self.generate_noise(shape=torch.Size((1, 1)), 
+                                                     base_seed=self.seed_val + 123*self.num_steps)
+            
+        elif self.base_action == 'null':
+            self.mean_action[-shift_steps:].zero_() 
+            self.sensi_mean[-shift_steps:].zero_()
+            self.greedy_mean[-shift_steps:].zero_() 
+            self.sensi_best_action[-shift_steps:].zero_()
+            self.greedy_best_action[-shift_steps:].zero_()
+        elif self.base_action == 'repeat':
+            self.mean_action[-shift_steps:] = self.mean_action[-shift_steps -1].clone()
+            self.sensi_mean[-shift_steps:] = self.sensi_mean[-shift_steps -1 ].clone()
+            self.greedy_mean[-shift_steps:] = self.greedy_mean[-shift_steps -1].clone()
+            self.sensi_best_action[-shift_steps:] = self.sensi_best_action[-shift_steps -1 ].clone()
+            self.greedy_best_action[-shift_steps:] = self.greedy_best_action[-shift_steps -1].clone()
+        else:
+            raise NotImplementedError("invalid option for base action during shift")
+        # self.mean_action = self.new_mean_action
+
+
     def reset_mean(self):
         self.mean_action = self.init_mean.clone()
         self.best_traj = self.mean_action.clone()
+
+    def multimodal_reset_mean(self):
+        self.mean_action = self.init_mean.clone()
+        self.sensi_mean = self.mean_action.clone()
+        self.greedy_mean = self.mean_action.clone()
+        self.sensi_best_action = self.sensi_mean.clone()
+        self.greedy_best_action = self.greedy_mean.clone()
 
     def reset_covariance(self):
 
@@ -394,6 +533,15 @@ class OLGaussianMPC(Controller):
         """
         self.reset_mean()
         self.reset_covariance()
+
+
+    def multimodal_reset_distribution(self):
+        """
+            Reset control distribution
+        """
+        self.multimodal_reset_mean()
+        self.reset_covariance()
+
 
     def _calc_val(self, cost_seq, act_seq):
         raise NotImplementedError("_calc_val not implemented")

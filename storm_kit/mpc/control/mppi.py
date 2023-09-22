@@ -193,6 +193,59 @@ class MPPI(OLGaussianMPC):
         # print(torch.norm(self.cov_action))
 
 
+    def _multimodal_update_distribution(self, trajectories):
+        """
+           Update moments in the direction using sampled
+           trajectories
+
+
+        """
+        greedy_costs = trajectories["greedy_costs"].to(**self.tensor_args)
+        sensi_costs = trajectories["sensi_costs"].to(**self.tensor_args)
+        judge_costs = trajectories["judge_costs"].to(**self.tensor_args)
+        state_seq = trajectories["state_seq"].to(**self.tensor_args)
+        actions = trajectories["actions"].to(**self.tensor_args)
+
+        greedy_total_costs = cost_to_go(greedy_costs, self.gamma_seq)[:,0]
+        sensi_total_costs = cost_to_go(sensi_costs, self.gamma_seq)[:,0]
+        judge_total_costs = cost_to_go(judge_costs, self.gamma_seq)[:,0]
+
+
+        self.greedy_mean , self.greedy_Value_w , self.greedy_best_action , greedy_cov_update= self.softMax_cost(greedy_total_costs, judge_total_costs, actions)
+        self.sensi_mean , self.sensi_Value_w , self.sensi_best_action , sensi_cov_update = self.softMax_cost(sensi_total_costs, judge_total_costs, actions)
+
+        # todo: V(x) - V(x)^
+        cmin = judge_total_costs.min()
+        c = torch.sum(torch.exp(-1.0/self.beta * (judge_total_costs - cmin)))
+        Value_Judge = -self.beta * (torch.log(c) - torch.log(torch.tensor(judge_total_costs.shape[0]))) + cmin
+        self.greedy_Value_w -= Value_Judge
+        self.sensi_Value_w -= Value_Judge
+        # 这里有很多错误 大量的改动需要 
+        w = torch.softmax((-1.0/self.beta) * torch.tensor((self.greedy_Value_w,self.sensi_Value_w)), dim=0).to(**self.tensor_args)
+        weighted_seq = (w.T * torch.cat((self.greedy_mean.unsqueeze(0), self.sensi_mean.unsqueeze(0))).T)
+        sum_seq = torch.sum(weighted_seq.T, dim=0)
+        new_mean = sum_seq
+
+        self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
+            self.step_size_mean * new_mean
+        
+        
+
+        #Update Covariance
+        if self.update_cov:
+            if self.cov_type == 'sigma_I':
+                raise NotImplementedError('Need to implement covariance update of form sigma*I')
+            
+            elif self.cov_type == 'diag_AxA':
+                #Diagonal covariance of size AxA
+                cov_update = w[0] * greedy_cov_update + w[1] * sensi_cov_update
+            else:
+                raise ValueError('Unidentified covariance type in update_distribution')
+            
+            self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
+                self.step_size_cov * cov_update
+
+
     def _shift(self, shift_steps):
         """
             Predict good parameters for the next time step by
@@ -245,6 +298,76 @@ class MPPI(OLGaussianMPC):
                 # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
 
 
+
+    def _multimodal_shift(self, shift_steps):
+
+        if(shift_steps == 0):
+            return
+        super()._multimodal_shift(shift_steps)
+
+        if self.update_cov:
+            if self.cov_type == 'sigma_I':
+                self.cov_action += self.kappa #* self.init_cov_action
+                self.scale_tril = torch.sqrt(self.cov_action)
+                # self.inv_cov_action = 1.0 / self.cov_action
+
+            elif self.cov_type == 'diag_AxA':
+                self.cov_action += self.kappa #* self.init_cov_action
+                #self.cov_action[self.cov_action < 0.0005] = 0.0005
+                self.scale_tril = torch.sqrt(self.cov_action)
+                # self.inv_cov_action = 1.0 / self.cov_action
+                
+            elif self.cov_type == 'full_AxA':
+                self.cov_action += self.kappa*self.I
+                self.scale_tril = matrix_cholesky(self.cov_action) # torch.cholesky(self.cov_action) #
+                # self.scale_tril = torch.cholesky(self.cov_action)
+                # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
+            
+            elif self.cov_type == 'full_HAxHA':
+                self.cov_action += self.kappa * self.I
+                shift_dim = shift_steps * self.d_action
+                I2 = torch.eye(shift_dim, **self.tensor_args)
+                self.cov_action = torch.roll(self.cov_action, shifts=(-shift_dim, -shift_dim), dims=(0,1))
+                #set bottom A rows and right A columns to zeros
+                self.cov_action[-shift_dim:,:].zero_()
+                self.cov_action[:,-shift_dim:].zero_()
+                #set bottom right AxA block to init_cov value
+                self.cov_action[-shift_dim:, -shift_dim:] = self.init_cov*I2 
+                #update cholesky decomp
+                self.scale_tril = torch.linalg.cholesky(self.cov_action)
+                # self.inv_cov_action = torch.cholesky_inverse(self.scale_tril)
+
+
+    def softMax_cost(self, total_costs, judge_costs, actions):
+
+      
+        # get value function
+        N = 40
+        _, good_idx = torch.topk(total_costs, k=N, largest=False)
+        differPolicyInJudgeCost = torch.index_select(judge_costs, 0, good_idx)
+        # greedy_Value_w = -self.beta * torch.logsumexp((-1.0/self.beta) * greedyTrajInJudgeCost,dim=0)
+        # 论文MPQ : Information Theoretic Model Predictive Q-Learning
+        cmin = differPolicyInJudgeCost.min()
+        c = torch.sum(torch.exp(-1.0/self.beta * (differPolicyInJudgeCost - cmin)))
+        greedy_Value_w = -self.beta * (torch.log(c) - torch.log(torch.tensor(differPolicyInJudgeCost.shape[0]))) + cmin
+
+        # get new mean
+        w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
+        weighted_seq = w.T * actions.T
+        sum_seq = torch.sum(weighted_seq.T, dim=0)
+        new_mean = sum_seq
+
+        # get new covariance 
+        delta = actions - new_mean.unsqueeze(0)  
+        weighted_delta = w * (delta ** 2).T
+        cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
+        # get best trajecory
+        best_idx = torch.argmax(w)
+        randomShoot_best_action = torch.index_select(actions, 0, best_idx).squeeze(0)
+        
+        return new_mean , greedy_Value_w , randomShoot_best_action, cov_update
+
+
     def _exp_util(self, costs, actions):
         """
             Calculate weights using exponential utility
@@ -259,11 +382,13 @@ class MPPI(OLGaussianMPC):
         
         # #calculate soft-max
         w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
+
         self.Valsum = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs,dim=0)
+
         # self.Valsum = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
         self.total_costs = total_costs
         return w
-
+    
     def _control_costs(self, actions):
         if self.alpha == 1:
             # if not self.time_based_weights:
@@ -301,6 +426,15 @@ class MPPI(OLGaussianMPC):
 
         # val = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
         val = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs,dim=0)
+
+        # -self.beta * torch.log(torch.sum(torch.exp(-1.0/self.beta * (greedyTrajInJudgeCost - greedyTrajInJudgeCost.min()))) / greedyTrajInJudgeCost.shape[0]) + greedyTrajInJudgeCost.min()
+
+        # cmin = greedyTrajInJudgeCost.min()
+
+        # c = torch.sum(torch.exp(-1.0/self.beta * (greedyTrajInJudgeCost - cmin)))
+        # val1 = -self.beta * (torch.log(c) - torch.log(torch.tensor(greedyTrajInJudgeCost.shape[0]))) + cmin
+
         return val
         
+
 
