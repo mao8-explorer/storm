@@ -135,8 +135,8 @@ class OLGaussianMPC(Controller):
         
         self.Z_seq = torch.zeros(1, self.horizon, self.d_action, **self.tensor_args)
 
-        # self.reset_distribution()
-        self.multimodal_reset_distribution()
+        self.reset_distribution()
+        # self.multimodal_reset_distribution()
         if self.num_null_particles > 0:
             self.null_act_seqs = torch.zeros(self.num_null_particles, self.horizon, self.d_action, **self.tensor_args)
             
@@ -391,7 +391,7 @@ class OLGaussianMPC(Controller):
         # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
         act_seq = self.sample_enhance_actions(state=state)
         # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
-        trajectories = self._rollout_fn.short_sighted_rollout_fn(state, act_seq, self.mean_traj_greedy)
+        trajectories = self._rollout_fn.short_sighted_rollout_fn(state, act_seq)
         # trajectories['actions'][-5,] == act_seq[295,]
         # mean_trajectories = trajectories['state_seq'][-5,]
         # best_trajectories = trajectories['state_seq'][-4,]
@@ -532,6 +532,7 @@ class OLGaussianMPC(Controller):
             Reset control distribution
         """
         self.reset_mean()
+        self.multimodal_reset_mean()
         self.reset_covariance()
 
 

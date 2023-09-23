@@ -61,7 +61,7 @@ class holonomic_robot(Plotter):
         super().__init__()
 
         self.goal_list = [
-                [0.9098484848484849, 0.2006060606060608],
+                # [0.9098484848484849, 0.2006060606060608],
                 [0.8787878787878789, 0.7824675324675325], 
                 [0.2240259740259739, 0.7851731601731602]]        
         self.goal_state = self.goal_list[-1]
@@ -88,7 +88,7 @@ class holonomic_robot(Plotter):
         i = 0   #调控运行steps
         t_step = 0.0 # 记录run_time
         goal_thresh = 0.04 # 目标点阈值
-        while(i < 800):
+        while(i < 1600):
             #  core_process
             self.controller.rollout_fn.image_move_collision_cost.world_coll.updateSDFPotientailGradient() #更新环境SDF
             command, value_function = self.simple_task.get_command(t_step, self.current_state, self.sim_dt, WAIT=True)

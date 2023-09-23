@@ -61,9 +61,8 @@ class holonomic_robot(Plotter_MultiModal):
         super().__init__()
 
         self.goal_list = [
-                [0.9098484848484849, 0.2006060606060608],
-                [0.8787878787878789, 0.7824675324675325], 
-                [0.2240259740259739, 0.7851731601731602]]        
+        [0.30, 0.63],
+        [0.30, 0.17]] # for escape min_distance    
         self.goal_state = self.goal_list[-1]
         self.pause = False # 标志： 键盘是否有按键按下， 图像停止路径规划
         # load
@@ -91,7 +90,7 @@ class holonomic_robot(Plotter_MultiModal):
         while(i < 800):
             #  core_process
             self.controller.rollout_fn.image_move_collision_cost.world_coll.updateSDFPotientailGradient() #更新环境SDF
-            command, value_function = self.simple_task.get_command(t_step, self.current_state, self.sim_dt, WAIT=True)
+            command, value_function = self.simple_task.get_multimodal_command(t_step, self.current_state, self.sim_dt, WAIT=True)
             self.current_state = command # or command * scale
             self.value_function = value_function
             # 这里的current_coll 反馈的不是是否发生碰撞，是forward计算的值，暂无意义

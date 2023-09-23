@@ -80,7 +80,7 @@ class Plotter_MultiModal(object):
         self.ax.plot(np.ravel(sensi_mean_traj[:,0]),np.ravel(sensi_mean_traj[:,1]),
                 'b-',linewidth=2,markersize=3)  
         self.ax.plot(np.ravel(mean_traj[:,0]),np.ravel(mean_traj[:,1]),
-                'g-',linewidth=2,markersize=3)  
+                'g-',linewidth=4,markersize=3)  
 
         #  文字标签 ----------------------------------------------------------------
         #  velocity | potential | 夹角  | MPQ Value_Function估计 
@@ -89,13 +89,14 @@ class Plotter_MultiModal(object):
         cos_theta = np.dot(self.current_state['velocity'], grad_orient) / (velocity_magnitude * grad_magnitude + 1e-7)  # 计算余弦值
         theta = np.arccos(cos_theta)  # 计算夹角（弧度）
         
-        self.ax.text(0.6, 1.01, f'potential: {np.ravel(self.potential_curr.cpu())[0]}, collcost: {np.ravel(self.potential_curr.cpu())[0] * velocity_magnitude * (-cos_theta)}', 
+        self.ax.text(0.6, 1.01, f'potential: {np.ravel(self.potential_curr.cpu())[0]:.3f}, collcost: {np.ravel(self.potential_curr.cpu())[0] * velocity_magnitude * (-cos_theta):.3f}', 
                             fontsize=12, color='red' if self.potential_curr[0] > 0 else 'black')
-        self.ax.text(0.6, 1.04, f'Velocity Magnitude: {velocity_magnitude}', fontsize=12, color='black')
-        self.ax.text(0.6, 1.07, f'angle: {np.degrees(theta)}', fontsize=12, color='red' if theta > np.pi/2.0 else 'black')
+        self.ax.text(0.6, 1.04, f'Velocity Magnitude: {velocity_magnitude:.3f}', fontsize=12, color='black')
+        self.ax.text(0.6, 1.07, f'angle: {np.degrees(theta):.3f}', fontsize=12, color='red' if theta > np.pi/2.0 else 'black')
          # MPQ value值估计 log_sum_exp
         self.ax.text(1.04, 0.5, f'value: {self.value_function.cpu().numpy()}', fontsize=12)
-        
+        self.ax.text(1.04, 0.4, f'greedy_w1: {self.controller.weights_divide.cpu().numpy()[0]:.3f}', fontsize=12)
+        self.ax.text(1.04, 0.36, f'sensi_w2: {self.controller.weights_divide.cpu().numpy()[1]:.3f}', fontsize=12)
         plt.pause(1e-10)
         self.traj_append()
 

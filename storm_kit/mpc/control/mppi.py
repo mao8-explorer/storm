@@ -222,6 +222,7 @@ class MPPI(OLGaussianMPC):
         self.sensi_Value_w -= Value_Judge
         # 这里有很多错误 大量的改动需要 
         w = torch.softmax((-1.0/self.beta) * torch.tensor((self.greedy_Value_w,self.sensi_Value_w)), dim=0).to(**self.tensor_args)
+        self.weights_divide = w
         weighted_seq = (w.T * torch.cat((self.greedy_mean.unsqueeze(0), self.sensi_mean.unsqueeze(0))).T)
         sum_seq = torch.sum(weighted_seq.T, dim=0)
         new_mean = sum_seq

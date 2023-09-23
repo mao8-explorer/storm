@@ -192,7 +192,7 @@ class SimpleReacher(object):
         else:
             return cost
 
-    def short_sighted_cost_fn(self, state_dict, mean_traj_greedy):
+    def short_sighted_cost_fn(self, state_dict):
 
         state_batch = state_dict['state_seq']
         #print(action_batch)
@@ -224,10 +224,10 @@ class SimpleReacher(object):
         single_state_seq = self.dynamics_model.single_step_fn(start_state, act_seq) # 状态forward
         return single_state_seq
                 
-    def short_sighted_rollout_fn(self, start_state, act_seq , mean_traj_greedy ):
+    def short_sighted_rollout_fn(self, start_state, act_seq):
         state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq) # 状态forward
 
-        cost_seq = self.short_sighted_cost_fn(state_dict, mean_traj_greedy)
+        cost_seq = self.short_sighted_cost_fn(state_dict)
         
         sim_trajs = dict(
             actions=act_seq,#.clone(),
@@ -264,12 +264,13 @@ class SimpleReacher(object):
                           self.coll_cost * 1.0 +\
                           self.vel_cost  + self.bound_contraint + self.terminal_reward
         
-        sensi_cost_seq = self.target_cost * 2.0 +\
+        sensi_cost_seq = self.target_cost * 5.0 +\
                           self.coll_cost * 5.0 +\
-                          self.vel_cost  + self.bound_contraint
+                          self.vel_cost  + self.bound_contraint + self.terminal_reward * 0.4
         
         judge_cost_seq = self.target_cost * 10.0 +\
-                         self.judge_cost *2.5 
+                         self.judge_cost * 2.0 +\
+                         self.terminal_reward * 0.4
         
         sim_trajs = dict(
             actions=act_seq,#.clone(),
