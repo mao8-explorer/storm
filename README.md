@@ -99,29 +99,44 @@ cost设计
 <table align="center">
   <tr>
     <td align="center">
-      <img width="500" src="zlog/091401.png">
-      <br>
-      <em>仅SDF势场 紧贴障碍物 较为危险</em>
+      <img width="700" src="zlog/091401.png">
     </td>
     <td align="center">
       <img width="500" src="zlog/091402_PV.png">
+    </td>
+  </tr>
+ 
+  <tr>
+    <td align="center">
       <br>
-      <em>240MPPI_60random_1shift_15.0goal_3coll</em>
+      <em>仅SDF势场 紧贴障碍物 较为危险 在相关CBF论文中，有Potential(t)-potential(t-1)的技巧</em>
+    </td>
+    <td align="center">
+      <br>
+      <em>robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值</em>
     </td>
   </tr>
   <tr>
     <td align="center">
       <img width="500" src="zlog/091403_PPV.png">
-      <br>
-      <em>only P 240|60_2shift_14.8goal_27coll </em>
     </td>
     <td align="center">
       <img width="500" src="zlog/091405_PPV_wholetheta.png">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
       <br>
-      <em>PPVtheta 240|60_2shift_14.1goal_7coll </em>
+      <em>较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域</em>
+    </td>
+    <td align="center">
+      <br>
+      <em>加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。</em>
     </td>
   </tr>
 </table>
+
+
 
 | <img width="500" src="zlog/091401.png"> | <img width="500" src="zlog/091402_PV.png"> |
 | :------------------------------------: | :----------------------------------------: |
