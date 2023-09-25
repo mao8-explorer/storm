@@ -73,7 +73,10 @@ class MPPI(OLGaussianMPC):
                  seed=0,
                  sample_params={'type': 'halton', 'fixed_samples': True, 'seed':0, 'filter_coeffs':None},
                  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32},
-                 visual_traj='state_seq'):
+                 visual_traj='state_seq',
+                 multimodal=None,
+                 **kwargs 
+                 ):
         
         super(MPPI, self).__init__(d_action,
                                    action_lows, 
@@ -95,12 +98,15 @@ class MPPI(OLGaussianMPC):
                                    cov_type,
                                    seed,
                                    sample_params=sample_params,
-                                   tensor_args=tensor_args)
+                                   tensor_args=tensor_args,
+                                   multimodal=multimodal,
+                                   **kwargs)
         self.beta = beta
         self.alpha = alpha  # 0 means control cost is on, 1 means off
         self.update_cov = update_cov
         self.kappa = kappa
         self.visual_traj = visual_traj
+        self.top_traj_select = multimodal['top_traj_select']
 
     def _update_distribution(self, trajectories):
         """
@@ -210,41 +216,25 @@ class MPPI(OLGaussianMPC):
         sensi_total_costs = cost_to_go(sensi_costs, self.gamma_seq)[:,0]
         judge_total_costs = cost_to_go(judge_costs, self.gamma_seq)[:,0]
 
-
         self.greedy_mean , self.greedy_Value_w , self.greedy_best_action , greedy_cov_update= self.softMax_cost(greedy_total_costs, judge_total_costs, actions)
         self.sensi_mean , self.sensi_Value_w , self.sensi_best_action , sensi_cov_update = self.softMax_cost(sensi_total_costs, judge_total_costs, actions)
 
-        # todo: V(x) - V(x)^
-        cmin = judge_total_costs.min()
-        c = torch.sum(torch.exp(-1.0/self.beta * (judge_total_costs - cmin)))
-        Value_Judge = -self.beta * (torch.log(c) - torch.log(torch.tensor(judge_total_costs.shape[0]))) + cmin
-        self.greedy_Value_w -= Value_Judge
-        self.sensi_Value_w -= Value_Judge
         # 这里有很多错误 大量的改动需要 
-        w = torch.softmax((-1.0/self.beta) * torch.tensor((self.greedy_Value_w,self.sensi_Value_w)), dim=0).to(**self.tensor_args)
+        # w = torch.softmax((-1.0/self.beta) * torch.tensor((self.greedy_Value_w,self.sensi_Value_w)), dim=0).to(**self.tensor_args)
+        # torch.exp(-1*(w_cat-w_cat.min())) / torch.sum(torch.exp(-1*(w_cat-w_cat.min())))
+        w_cat = torch.tensor((self.greedy_Value_w,self.sensi_Value_w)).to(**self.tensor_args)
+        wi = torch.exp(-1.0/self.beta*(w_cat-w_cat.min())) 
+        w = wi / torch.sum(wi)
         self.weights_divide = w
         weighted_seq = (w.T * torch.cat((self.greedy_mean.unsqueeze(0), self.sensi_mean.unsqueeze(0))).T)
         sum_seq = torch.sum(weighted_seq.T, dim=0)
         new_mean = sum_seq
-
         self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
             self.step_size_mean * new_mean
         
-        
-
-        #Update Covariance
-        if self.update_cov:
-            if self.cov_type == 'sigma_I':
-                raise NotImplementedError('Need to implement covariance update of form sigma*I')
-            
-            elif self.cov_type == 'diag_AxA':
-                #Diagonal covariance of size AxA
-                cov_update = w[0] * greedy_cov_update + w[1] * sensi_cov_update
-            else:
-                raise ValueError('Unidentified covariance type in update_distribution')
-            
-            self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
-                self.step_size_cov * cov_update
+        cov_update = w[0] * greedy_cov_update + w[1] * sensi_cov_update
+        self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
+            self.step_size_cov * cov_update
 
 
     def _shift(self, shift_steps):
@@ -341,20 +331,27 @@ class MPPI(OLGaussianMPC):
 
     def softMax_cost(self, total_costs, judge_costs, actions):
 
-      
-        # get value function
-        N = 40
+        # # get value function
+        # N = 30
+        N = self.top_traj_select
         _, good_idx = torch.topk(total_costs, k=N, largest=False)
         differPolicyInJudgeCost = torch.index_select(judge_costs, 0, good_idx)
-        # greedy_Value_w = -self.beta * torch.logsumexp((-1.0/self.beta) * greedyTrajInJudgeCost,dim=0)
-        # 论文MPQ : Information Theoretic Model Predictive Q-Learning
-        cmin = differPolicyInJudgeCost.min()
-        c = torch.sum(torch.exp(-1.0/self.beta * (differPolicyInJudgeCost - cmin)))
-        greedy_Value_w = -self.beta * (torch.log(c) - torch.log(torch.tensor(differPolicyInJudgeCost.shape[0]))) + cmin
+        top_total_costs = torch.index_select(total_costs, 0, good_idx)
+        # total_value_function = self.logsumexp(top_total_costs)
+        # policy_in_judge = self.logsumexp(differPolicyInJudgeCost + top_total_costs) - total_value_function
+        # greedy_Value_w = policy_in_judge
+        A = differPolicyInJudgeCost + top_total_costs
+        Amin = A.min()
+        B = top_total_costs
+        Bmin = B.min()
+        value_w =  -self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (A - A.min())))) +\
+                    self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (B - B.min())))) +\
+                    A.min() - B.min()
+        # error = value_w - (Amin - Bmin)
 
         # get new mean
-        w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
-        weighted_seq = w.T * actions.T
+        w = torch.softmax((-1.0/self.beta) * (total_costs - total_costs.min()), dim=0)
+        weighted_seq = w * actions.T
         sum_seq = torch.sum(weighted_seq.T, dim=0)
         new_mean = sum_seq
 
@@ -363,11 +360,17 @@ class MPPI(OLGaussianMPC):
         weighted_delta = w * (delta ** 2).T
         cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
         # get best trajecory
-        best_idx = torch.argmax(w)
-        randomShoot_best_action = torch.index_select(actions, 0, best_idx).squeeze(0)
+        randomShoot_best_action = torch.index_select(actions, 0, good_idx[0]).squeeze(0)
         
-        return new_mean , greedy_Value_w , randomShoot_best_action, cov_update
+        return new_mean , value_w , randomShoot_best_action, cov_update
 
+    def logsumexp(self,costs):
+
+        cmax = costs.max()
+        c = torch.sum(torch.exp(-1.0/self.beta * (costs - cmax)))
+        Value_function = -self.beta * (torch.log(c) - torch.log(torch.tensor(costs.shape[0]))) + cmax
+        return Value_function
+    
 
     def _exp_util(self, costs, actions):
         """

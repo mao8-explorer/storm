@@ -60,7 +60,9 @@ class OLGaussianMPC(Controller):
                  seed=0,
                  sample_params={'type': 'halton', 'fixed_samples': True, 'seed':0, 'filter_coeffs':None},
                  tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32},
-                 fixed_actions=False):
+                 fixed_actions=False,
+                 multimodal = None,
+                 **kwargs):
         """
         Parameters
         __________
@@ -142,6 +144,15 @@ class OLGaussianMPC(Controller):
             
         self.delta = None
 
+        sample_enchance = multimodal['random_shoot_particles']
+        sensi_random_num = sample_enchance['sensi_random']
+        greedy_random_num = sample_enchance['greedy_random']
+        sensi_mean_num = sample_enchance['sensi_mean']
+        greedy_mean_num = sample_enchance['greedy_mean']
+        self.sensiRand = sensi_random_num
+        self.greedRand = self.sensiRand + greedy_random_num
+        self.sensiMean = self.greedRand + sensi_mean_num
+        self.greedMean = self.sensiMean + greedy_mean_num
     def _get_action_seq(self, mode='mean'):
         if mode == 'mean':
             act_seq = self.mean_action.clone()
@@ -218,7 +229,7 @@ class OLGaussianMPC(Controller):
         return act_seq
 
 
-    def sample_multimodal_actions(self, state=None):
+    def sample_multimodal_actions(self):
 
         delta = self.sample_lib.get_samples(sample_shape=self.multimodal_sample_shape, base_seed=self.seed_val + self.num_steps)
         #add zero-noise seq so mean is always a part of samples
@@ -231,13 +242,12 @@ class OLGaussianMPC(Controller):
         scaled_delta = torch.matmul(delta, self.full_scale_tril).view(delta.shape[0],
                                                                       self.horizon,
                                                                       self.d_action)
-       
-        sensi_random_scaled_delta = scaled_delta[:30]
-        greedy_random_scaled_delta = scaled_delta[30:60]
 
-        sensi_scaled_delta = scaled_delta[60:110]
-        greedy_scaled_delta = scaled_delta[110:160]
-        mppi_scaled_delta = scaled_delta[160:]
+        sensi_random_scaled_delta = scaled_delta[:self.sensiRand]
+        greedy_random_scaled_delta = scaled_delta[self.sensiRand:self.greedRand]
+        sensi_scaled_delta = scaled_delta[self.greedRand:self.sensiMean]
+        greedy_scaled_delta = scaled_delta[self.sensiMean:self.greedMean]
+        mppi_scaled_delta = scaled_delta[self.greedMean:]
 
         # debug_act = delta[:,:,0].cpu().numpy()
 
@@ -273,7 +283,7 @@ class OLGaussianMPC(Controller):
     
     def generate_multimodal_rollouts(self, state):
 
-        act_seq = self.sample_multimodal_actions(state=state)
+        act_seq = self.sample_multimodal_actions()
         trajectories = self._rollout_fn.multimodal_rollout_fn(state, act_seq)
         return trajectories
 
@@ -338,28 +348,12 @@ class OLGaussianMPC(Controller):
         return single_trajectory
 
     def get_multimodal_mean_trajectory(self, state):
-        """
-            Samples a batch of actions, rolls out trajectories for each particle
-            and returns the resulting observations, costs,  
-            actions
 
-            Parameters
-            ----------
-            state : dict or np.ndarray
-                Initial state to set the simulation env to
-         """
-        # 200 * 20 *2 
-        # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
-       
-        # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
         greedy_mean_traj = self._rollout_fn.single_state_forward(state, self.greedy_mean).squeeze(0)
         sensi_mean_traj =  self._rollout_fn.single_state_forward(state, self.sensi_mean).squeeze(0)
         greedy_best_traj = self._rollout_fn.single_state_forward(state, self.greedy_best_action).squeeze(0)
         sensi_best_traj =  self._rollout_fn.single_state_forward(state, self.sensi_best_action).squeeze(0)
         mean_traj =        self._rollout_fn.single_state_forward(state, self.mean_action).squeeze(0)
-        # trajectories['actions'][-5,] == act_seq[295,]
-        # mean_trajectories = trajectories['state_seq'][-5,]
-        # best_trajectories = trajectories['state_seq'][-4,]
 
         return greedy_mean_traj, sensi_mean_traj, greedy_best_traj, sensi_best_traj,mean_traj
     

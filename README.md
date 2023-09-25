@@ -24,7 +24,7 @@ lean from   STOMP and [RAMP](https://samsunglabs.github.io/RAMP-project-page/).
 ## 2. Sparse Reward for MPPI motivated by RL
 learn from [Collaborative Interaction Models for Optimized Human-Robot Teamwork](https://ieeexplore.ieee.org/document/9341369)
 <p align="center">
-  <img width="300" src="docs/images/sparse_reward.jpg">
+  <img width="500" src="docs/images/sparse_reward.jpg">
 </p>
 
 `y = 1 - exp(-dist^2 / (2 * σ^2))` 是一种常用于奖励函数或代价函数设计的数学表达式，通常用于机器学习、优化和控制问题中。下面我们将介绍这个函数的设计原理。
@@ -51,24 +51,24 @@ reward 在加入前后的对轨迹的影响比较
 <table align="center">
   <tr>
     <td align="center">
-      <img width="300" src="docs/images/traj_data_nreward.png">
+      <img width="500" src="docs/images/traj_data_nreward.png">
       <br>
       <em>without reward | State[pos:vel:acc]</em>
     </td>
     <td align="center">
-      <img width="300" src="docs/images/traj_data_reward.png">
+      <img width="500" src="docs/images/traj_data_reward.png">
       <br>
       <em>with reward State[pos:vel:acc]</em>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img width="300" src="docs/images/withoutreward.png">
+      <img width="500" src="docs/images/withoutreward.png">
       <br>
       <em>without reward | yellow says collision</em>
     </td>
     <td align="center">
-      <img width="300" src="docs/images/withreward.png">
+      <img width="500" src="docs/images/withreward.png">
       <br>
       <em>with reward</em>
     </td>
@@ -80,7 +80,7 @@ reward 在加入前后的对轨迹的影响比较
 ## 3. Robot Vel with SDF Potential and Gradient
 
 <p align="center">
-  <img width="400" src="zlog/randomPlusMPPI/20230920-133010.jpg">
+  <img width="500" src="zlog/randomPlusMPPI/20230920-133010.jpg">
 </p>
 区别于传统做法，只是用SDF的Potential作为代价，这里设计基于梯度和势场的cost,更加全面的利用sdf
 
@@ -97,7 +97,7 @@ cost设计
 ```
 
 <p align="center">
-  <img width="400" src="zlog/091401.png">
+  <img width="500" src="zlog/091401.png">
 </p>
 
 $$
@@ -111,7 +111,7 @@ $$
 
 
 <p align="center">
-  <img width="400" src="zlog/091402_PV.png">
+  <img width="500" src="zlog/091402_PV.png">
 </p>
 
 $$
@@ -124,7 +124,7 @@ robot_velocity *  Potential, 尽管考虑到智能体速度的影响，但是该
 
 
 <p align="center">
-  <img width="400" src="zlog/091403_PPV.png">
+  <img width="500" src="zlog/091403_PPV.png">
 </p>
 
 
@@ -138,7 +138,7 @@ $$
 
 
 <p align="center">
-  <img width="400" src="zlog/091405_PPV_wholetheta.png">
+  <img width="500" src="zlog/091405_PPV_wholetheta.png">
 </p>
 
 $$
@@ -161,29 +161,138 @@ $$
 <table align="center">
   <tr>
     <td align="center">
-      <img width="300" src="zlog/randomPlusMPPI/300_0_move_1policy_14.8_14coll.png">
+      <img width="500" src="zlog/randomPlusMPPI/300_0_move_1policy_14.8_14coll.png">
       <br>
       <em>300MPPI_0random_1shift_14.8goal_14coll</em>
     </td>
     <td align="center">
-      <img width="300" src="zlog/randomPlusMPPI/300_60_move_2policy_15.0_3coll.png">
+      <img width="500" src="zlog/randomPlusMPPI/300_60_move_2policy_15.0_3coll.png">
       <br>
       <em>240MPPI_60random_1shift_15.0goal_3coll</em>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img width="300" src="zlog/randomPlusMPPI/300_60_2shift_14.8_27.png">
+      <img width="500" src="zlog/randomPlusMPPI/300_60_2shift_14.8_27.png">
       <br>
       <em>only P 240|60_2shift_14.8goal_27coll </em>
     </td>
     <td align="center">
-      <img width="300" src="zlog/randomPlusMPPI/300_60_2shift_14.1_7.png">
+      <img width="500" src="zlog/randomPlusMPPI/300_60_2shift_14.1_7.png">
       <br>
       <em>PPVtheta 240|60_2shift_14.1goal_7coll </em>
     </td>
   </tr>
 </table>
+
+## 5. 串行MPPI
+串行MPPI的想法很简单，就是在使用MPPI—贪婪策略规划出一条轨迹后，作为下一（MPPI-敏感的）策略的初值进行迭代。
+类似的，在MPPI规划出一条路径，然后基于该路径再进行修改的有很多，riskMPPI 和 shieldMPPI是该方法的两个典型.
+
+Risk-Aware Model Predictive Path Integral Control
+Using Conditional Value-at-Risk [RiskMPPI](https://arxiv.org/pdf/2209.12842.pdf)
+
+sample出trajectories后，再对trajectories继续散点，附加CVaR后进行轨迹的再处理
+<p align="center">
+  <img width="500" src="zlog/串行MPPI/riskMPPI框图.jpg">
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img width="600"  src="zlog/串行MPPI/riskMPPI算法.jpg">
+    </td>
+    <td align="center">
+      <div style="text-align: center;">
+        <img width="400" src="zlog/串行MPPI/riskMPPI效果.jpg">
+        <img width="400" src="zlog/串行MPPI/risk数值结果.jpg">
+      </div>
+    </td>
+  </tr>
+</table>
+
+Shield Model Predictive Path Integral: A Computationally Efficient
+Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.org/pdf/2302.11719.pdf)
+
+使用CBF控制屏障函数的方式对MPPI进行处理。一方面CBF作为Cost作为代价考量的一部分，然后对MPPI生成的轨迹再处理，继续使用CBF的方式对生成的轨迹进行一个偏导处理（或可认为是一种梯度处理），尽量避开障碍物
+<p align="center">
+  <img width="500" src="zlog/串行MPPI/sheildMPPI框图.jpg">
+</p>
+
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <div style="text-align: center;">
+        <img width="400" src="zlog/串行MPPI/sheild算法1.jpg">
+        <img width="400" src="zlog/串行MPPI/sheild算法2.jpg">
+      </div>
+    </td>
+    <td align="center">
+      <div style="text-align: center;">
+        <img width="400" src="zlog/串行MPPI/sheild效果.jpg">
+        <img width="400" src="zlog/串行MPPI/sheild数值结果.jpg">
+      </div>
+    </td>
+  </tr>
+</table>
+
+特别的，我们还能在RAMP机械臂MPPI算法中使用SDF梯度对生成的轨迹再处理的例子
+<p align="center">
+  <img width="500" src="zlog/串行MPPI/RAMP梯度再处理.png">
+</p>
+
+**可以清晰地看到，主流的使用MPPI在轨迹规划方面的创新多是对MPPI生成的轨迹进行进一步处理。**
+
+**为什么要这样做？** 这是因为MPPI所规划的轨迹可能表现出贪婪（greedy）的特点，对危险性的考虑不足，或者存在探索性不足以及碰撞感知不足等问题。因此，对生成的轨迹使用CBF、CVaR、SDF梯度等算法进行进一步处理，旨在弥补这些局限性。
+
+但不可否认的是，对MPPI规划的轨迹再处理，必须要考虑计算量的问题，特别是RiskMPPI部分，对MPPI散出的每条轨迹又sample采样了N次，这种在计算量方面付出的代价与所取得的效果成不成比例是要打一个问号的。
+
+基于上述方法，我们也随大流的提出了串行MPPI的计算方法，也就是使用Greedy-MPPI生成一段轨迹后，将其作为初始值，再使用Sensitive-MPPI对该轨迹再处理，达到safe-MPPI的特点。
+
+
+
+## 6. 并行MPPI | MultiModal MPPI
+公式推导
+<table align="center">
+  <tr>
+    <td align="center">
+      <img width="500" src="zlog/multimodalMPPI公式推导/01.jpg">
+    </td>
+    <td align="center">
+      <img width="500" src="zlog/multimodalMPPI公式推导/02.jpg">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img width="500" src="zlog/multimodalMPPI公式推导/03.jpg">
+    </td>
+    <td align="center">
+      <img width="500" src="zlog/multimodalMPPI公式推导/04.jpg">
+    </td>
+  </tr>
+  </tr>
+    <td align="center">
+      <img width="500" src="zlog/multimodalMPPI公式推导/05.jpg">
+    </td>
+    <td align="center">
+      <img width="500" src="zlog/multimodalMPPI公式推导/06.jpg">
+    </td>
+  </tr>
+</table>
+
+$$
+\begin{align*}
+
+V(Policy) &= -\lambda \cdot \log \mathbb{E} \left( \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \right) \right) \\
+&= -\lambda \cdot \log \left( \frac{1}{N} \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \right) \right) \\
+&\implies -\lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \cdot \text{SoftMax} \left( -\frac{1}{\lambda} \tilde{\text{Cost}}(i) \right) \right) \\
+&= -\lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot (\hat{\text{Cost}}(i) + \tilde{\text{Cost}}(i)) \right) \\
+&\quad + \lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \tilde{\text{Cost}}(i) \right) \\
+\\
+w(i) &= \text{softmax}\left( -\frac{1}{\lambda} \cdot V(Policy(i)) \right)
+\end{align*}
+$$
 
 ## Updates
 Jan. 2022 - Add CoRL citation, merge torch.size() bug (thanks [@maxpahn](https://github.com/maxspahn)).

@@ -61,8 +61,9 @@ class holonomic_robot(Plotter_MultiModal):
         super().__init__()
 
         self.goal_list = [
-        [0.30, 0.63],
-        [0.30, 0.17]] # for escape min_distance    
+        # [0.9098484848484849, 0.2006060606060608],
+        [0.8787878787878789, 0.7824675324675325], 
+        [0.2240259740259739, 0.7851731601731602]] 
         self.goal_state = self.goal_list[-1]
         self.pause = False # 标志： 键盘是否有按键按下， 图像停止路径规划
         # load
@@ -101,7 +102,7 @@ class holonomic_robot(Plotter_MultiModal):
                 self.simple_task.update_params(goal_state=self.goal_state) # 目标更变
                 goal_flagi += 1
                 print("next goal",goal_flagi)
-
+                
             self.plot_setting()
             if self.pause:
                 while True:

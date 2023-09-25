@@ -92,6 +92,7 @@ class Plotter:
         self.ax.text(0.6, 1.07, f'angle: {np.degrees(theta)}', fontsize=12, color='red' if theta > np.pi/2.0 else 'black')
          # MPQ value值估计 log_sum_exp
         self.ax.text(1.04, 0.5, f'value: {self.value_function.cpu().numpy()}', fontsize=12)
+        self.ax.text(1.04, 0.32, f'cov: {self.controller.cov_action.cpu().numpy()[0]:.4f} , {self.controller.cov_action.cpu().numpy()[1]:.4f}', fontsize=12)
         
         plt.pause(1e-10)
         self.traj_append()

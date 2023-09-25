@@ -294,6 +294,20 @@ class Controller(ABC):
 
     def multimodal_optimize(self, state, calc_val=False, shift_steps=1, n_iters=None):
 
+        """
+        1. generate trajectories based on multi-Policies include 
+            "mean_action | greedy_mean_action | sensi_mean_action & greedy_best_action | sensi_best_action"
+        2. compute  each-policy costs from the same trajectories : greedy 、sensi and judge cost
+        3. SoftMax each policy-cost to get each policy-action : greedy_mean_action and sensi_mean_action | greedy_covariance and sensi_covariance
+        4. from each-policy's top-N trajectories to compute greedy_mean_action and sensi_mean_action's Value Function Of Judge Policy 
+        5. echo policy-JudgeValueFunction is the weight proportion of the final path: 
+            mean_action = (1-step_mean)*old_mean_action + step_mean( w1 * greedy_mean_action + w2 * sensi_mean_mean)
+            covariance  = (1-step_covariance)*old_covariance + step_covariance( w1 * greedy_covariance + w2 * sensi_covariance)
+        
+        execute mean_action[0]
+        shift mean_action as hotstart for next loop
+
+        """
         n_iters = n_iters if n_iters is not None else self.n_iters
         # get input device:
         inp_device = state.device
@@ -311,23 +325,19 @@ class Controller(ABC):
         with torch.cuda.amp.autocast(enabled=True):
             with torch.no_grad():
                 for _ in range(n_iters):
-                    # sample M trajectories from mean_t-1
-                    # update_distribution to get mean_t1 (greedy path)
+                    
+                    # 1. samle multiPolicy_actions and compute differPolicy cost
+                    trajectories = self.generate_multimodal_rollouts(state)
 
-                    # generate random simulated trajectories
-                    trajectory = self.generate_multimodal_rollouts(state)
-                    # update distribution parameters
-                    # with profiler.record_function("mppi_update"):
-                    self._multimodal_update_distribution(trajectory) 
+                    self._multimodal_update_distribution(trajectories) 
 
                     self.greedy_mean_traj, self.sensi_mean_traj, self.greedy_best_traj, self.sensi_best_traj,self.mean_traj = \
                     self.get_multimodal_mean_trajectory(state)
 
-                    info['rollout_time'] += trajectory['rollout_time']
-                    # check if converged
+                    info['rollout_time'] += trajectories['rollout_time']
                     if self.check_convergence():
                         break
-        self.trajectories = trajectory
+        self.trajectories = trajectories
         #calculate best action
         # curr_action = self._get_next_action(state, mode=self.sample_mode)
         curr_action_seq = self._get_action_seq(mode=self.sample_mode)

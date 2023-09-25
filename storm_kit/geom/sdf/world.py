@@ -656,7 +656,6 @@ class WorldImageCollision(WorldCollision):
         return pt_coll
 
 
-
       
 class WorldMoveableImageCollision(WorldCollision):
     def __init__(self, bounds, world_image, tensor_args={'device':"cpu", 'dtype':torch.float32}):
