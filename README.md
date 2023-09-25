@@ -96,103 +96,15 @@ cost设计
                     self.w1*8.0* potential * vel_abs * (1.0 - 0.50* torch.cos(theta))
 ```
 
-<p align="center">
-  <img width="500" src="zlog/091401.png">
-</p>
 
-$$
-\begin{align*}
-    J(x) &= w1 \cdot SDFPotential 
-\end{align*}
-$$
+| <img width="500" src="zlog/091401.png"> | <img width="500" src="zlog/091402_PV.png"> |
+| :------------------------------------: | :----------------------------------------: |
+|  **$J(x) = w1 \cdot SDFPotential$**<br>仅SDF势场 紧贴障碍物 较为危险 在相关CBF论文中，有Potential(t)-potential(t-1)的技巧 | **$J(x) = w2 \cdot SDFPotential \cdot RobotVel$**<br>robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值 |
 
-仅SDF势场 紧贴障碍物 较为危险
+| <img width="500" src="zlog/091403_PPV.png"> | <img width="500" src="zlog/091405_PPV_wholetheta.png"> |
+| :----------------------------------------: | :-------------------------------------------------: |
+| **$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel$**<br>较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域 | **$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta))$**<br>加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。 |
 
-
-
-<p align="center">
-  <img width="500" src="zlog/091402_PV.png">
-</p>
-
-$$
-\begin{align*}
-    J(x) &= w2 \cdot SDFPotential \cdot RobotVel\
-\end{align*}
-$$
-
-robot_velocity *  Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值
-
-
-<p align="center">
-  <img width="500" src="zlog/091403_PPV.png">
-</p>
-
-
-$$
-\begin{align*}
-    J(x) &= w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel
-\end{align*}
-$$
-
-较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域
-
-| <p align="center">图像</p> | <p align="center">描述</p> |
-|---|---|
-| <img width="500" src="zlog/091402_PV.png"> | 
-  $$ J(x) = w2 \cdot SDFPotential \cdot RobotVel $$ 
-  robot_velocity * Potential。尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值。 |
-
-| <p align="center">图像</p> | <p align="center">描述</p> |
-|---|---|
-| <img width="500" src="zlog/091403_PPV.png"> | 
-  $$ J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel $$ 
-  较为理想的完成了任务，合并方案1，2的长处。相比于方案2，垫上独立的potential有助跳出局部最小值，跳出障碍区域。 |
-
-<table>
-  <tr>
-    <td align="center">
-      <img width="500" src="zlog/091402_PV.png">
-      <em>$$ J(x) = w2 \cdot SDFPotential \cdot RobotVel $$</em>
-    </td>
-    <td>
-      $$ J(x) = w2 \cdot SDFPotential \cdot RobotVel $$
-      <br>
-      robot_velocity * Potential，尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img width="500" src="zlog/091403_PPV.png">
-    </td>
-    <td>
-      $$ J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel $$
-      <br>
-      较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential有助跳出局部最小值，跳出障碍区域
-    </td>
-  </tr>
-</table>
-
-
-| Description | Formula | Image |
-| --- | --- | --- |
-| robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值 | $$J(x) = w2 \cdot SDFPotential \cdot RobotVel$$ | <img width="500" src="zlog/091402_PV.png"> |
-| 较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential有助跳出局部最小值，跳出障碍区域 | $$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel$$ | <img width="500" src="zlog/091403_PPV.png"> |
-
-
-<p align="center">
-  <img width="500" src="zlog/091405_PPV_wholetheta.png">
-</p>
-
-$$
-\begin{align*}
-    J(x) &= w1 \cdot SDFPotential \\
-         &+ w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta)) \\\\
-    theta &= arccos (SDFGradient * RobotVelOrient) \\
-    a  &\in [0, 1] \\
-\end{align*}
-$$
-
-加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。
 
 ## 4. Random_shooting Plus MPPI
 这是一次并行化不同mean值的测试，是初始阶段，也即 Multi Mean ON same Cost_Policy \
@@ -323,20 +235,9 @@ Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.o
   </tr>
 </table>
 
-$$
-\begin{align*}
-
-V(Policy) &= -\lambda \cdot \log \mathbb{E} \left( \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \right) \right) \\
-&= -\lambda \cdot \log \left( \frac{1}{N} \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \right) \right) \\
-&\implies -\lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \cdot \text{SoftMax} \left( -\frac{1}{\lambda} \tilde{\text{Cost}}(i) \right) \right) \\
-&= -\lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot (\hat{\text{Cost}}(i) + \tilde{\text{Cost}}(i)) \right) \\
-&\quad + \lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \tilde{\text{Cost}}(i) \right) \\
-\\
-w(i) &= \text{softmax}\left( -\frac{1}{\lambda} \cdot V(Policy(i)) \right)
-\end{align*}
-$$
-
-$$\begin{align*}V(Policy) &= -\lambda \cdot \log \mathbb{E} \left( \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \right) \right) \\&= -\lambda \cdot \log \left( \frac{1}{N} \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \right) \right) \\&\implies -\lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \cdot \text{SoftMax} \left( -\frac{1}{\lambda} \tilde{\text{Cost}}(i) \right) \right) \\&= -\lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot (\hat{\text{Cost}}(i) + \tilde{\text{Cost}}(i)) \right) \\&\quad + \lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \tilde{\text{Cost}}(i) \right) \\\\w(i) &= \text{softmax}\left( -\frac{1}{\lambda} \cdot V(Policy(i)) \right)\end{align*}$$
+<p align="center">
+  <img width="500" src="zlog/multimodalMPPI公式推导/公式图片.jpg">
+</p>
 
 ## Updates
 Jan. 2022 - Add CoRL citation, merge torch.size() bug (thanks [@maxpahn](https://github.com/maxspahn)).
