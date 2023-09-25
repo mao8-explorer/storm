@@ -80,7 +80,7 @@ reward 在加入前后的对轨迹的影响比较
 ## 3. Robot Vel with SDF Potential and Gradient
 
 <p align="center">
-  <img width="500" src="zlog/randomPlusMPPI/20230920-133010.jpg">
+  <img width="400" height="410" src="zlog/randomPlusMPPI/20230920-133010.jpg">
 </p>
 区别于传统做法，只是用SDF的Potential作为代价，这里设计基于梯度和势场的cost,更加全面的利用sdf
 
@@ -95,6 +95,18 @@ cost设计
         cost = self.w1 * potential +\
                     self.w1*8.0* potential * vel_abs * (1.0 - 0.50* torch.cos(theta))
 ```
+
+$$
+\begin{align*}
+    J1(x) &= w1 \cdot SDFPotential \\
+    J2(x) &= w2 \cdot SDFPotential \cdot RobotVel \\
+    J3(x) &= w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel \\
+    J4(x) &= w1 \cdot SDFPotential \\
+         &+ w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta)) \\
+    theta &= arccos (SDFGradient * RobotVelOrient) \\
+    a  &\in [0, 1] \\
+\end{align*}
+$$
 
 <table align="center">
   <tr>
@@ -135,17 +147,6 @@ cost设计
     </td>
   </tr>
 </table>
-
-
-
-| <img width="500" src="zlog/091401.png"> | <img width="500" src="zlog/091402_PV.png"> |
-| :------------------------------------: | :----------------------------------------: |
-|  **$J(x) = w1 \cdot SDFPotential$**<br>仅SDF势场 紧贴障碍物 较为危险 在相关CBF论文中，有Potential(t)-potential(t-1)的技巧 | **$J(x) = w2 \cdot SDFPotential \cdot RobotVel$**<br>robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值 |
-
-| <img width="500" src="zlog/091403_PPV.png"> | <img width="500" src="zlog/091405_PPV_wholetheta.png"> |
-| :----------------------------------------: | :-------------------------------------------------: |
-| **$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel$**<br>较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域 | **$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta))$**<br>加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。 |
-
 
 ## 4. Random_shooting Plus MPPI
 这是一次并行化不同mean值的测试，是初始阶段，也即 Multi Mean ON same Cost_Policy \
