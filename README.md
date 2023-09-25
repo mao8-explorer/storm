@@ -136,6 +136,48 @@ $$
 
 较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域
 
+| <p align="center">图像</p> | <p align="center">描述</p> |
+|---|---|
+| <img width="500" src="zlog/091402_PV.png"> | 
+  $$ J(x) = w2 \cdot SDFPotential \cdot RobotVel $$ 
+  robot_velocity * Potential。尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值。 |
+
+| <p align="center">图像</p> | <p align="center">描述</p> |
+|---|---|
+| <img width="500" src="zlog/091403_PPV.png"> | 
+  $$ J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel $$ 
+  较为理想的完成了任务，合并方案1，2的长处。相比于方案2，垫上独立的potential有助跳出局部最小值，跳出障碍区域。 |
+
+<table>
+  <tr>
+    <td align="center">
+      <img width="500" src="zlog/091402_PV.png">
+      <em>$$ J(x) = w2 \cdot SDFPotential \cdot RobotVel $$</em>
+    </td>
+    <td>
+      $$ J(x) = w2 \cdot SDFPotential \cdot RobotVel $$
+      <br>
+      robot_velocity * Potential，尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img width="500" src="zlog/091403_PPV.png">
+    </td>
+    <td>
+      $$ J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel $$
+      <br>
+      较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential有助跳出局部最小值，跳出障碍区域
+    </td>
+  </tr>
+</table>
+
+
+| Description | Formula | Image |
+| --- | --- | --- |
+| robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值 | $$J(x) = w2 \cdot SDFPotential \cdot RobotVel$$ | <img width="500" src="zlog/091402_PV.png"> |
+| 较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential有助跳出局部最小值，跳出障碍区域 | $$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel$$ | <img width="500" src="zlog/091403_PPV.png"> |
+
 
 <p align="center">
   <img width="500" src="zlog/091405_PPV_wholetheta.png">
@@ -216,7 +258,7 @@ Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.o
 
 使用CBF控制屏障函数的方式对MPPI进行处理。一方面CBF作为Cost作为代价考量的一部分，然后对MPPI生成的轨迹再处理，继续使用CBF的方式对生成的轨迹进行一个偏导处理（或可认为是一种梯度处理），尽量避开障碍物
 <p align="center">
-  <img width="500" src="zlog/串行MPPI/sheildMPPI框图.jpg">
+  <img width="1000" src="zlog/串行MPPI/sheildMPPI框图.jpg">
 </p>
 
 
@@ -293,6 +335,8 @@ V(Policy) &= -\lambda \cdot \log \mathbb{E} \left( \exp \left( -\frac{1}{\lambda
 w(i) &= \text{softmax}\left( -\frac{1}{\lambda} \cdot V(Policy(i)) \right)
 \end{align*}
 $$
+
+$$\begin{align*}V(Policy) &= -\lambda \cdot \log \mathbb{E} \left( \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \right) \right) \\&= -\lambda \cdot \log \left( \frac{1}{N} \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \right) \right) \\&\implies -\lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \hat{\text{Cost}}(i) \cdot \text{SoftMax} \left( -\frac{1}{\lambda} \tilde{\text{Cost}}(i) \right) \right) \\&= -\lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot (\hat{\text{Cost}}(i) + \tilde{\text{Cost}}(i)) \right) \\&\quad + \lambda \cdot \log  \sum_{i=1}^N \exp \left( -\frac{1}{\lambda} \cdot \tilde{\text{Cost}}(i) \right) \\\\w(i) &= \text{softmax}\left( -\frac{1}{\lambda} \cdot V(Policy(i)) \right)\end{align*}$$
 
 ## Updates
 Jan. 2022 - Add CoRL citation, merge torch.size() bug (thanks [@maxpahn](https://github.com/maxspahn)).
