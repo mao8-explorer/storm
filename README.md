@@ -96,14 +96,36 @@ cost设计
                     self.w1*8.0* potential * vel_abs * (1.0 - 0.50* torch.cos(theta))
 ```
 
-
-| <img width="500" src="zlog/091401.png"> | <img width="500" src="zlog/091402_PV.png"> |
-| :------------------------------------: | :----------------------------------------: |
-|  **$J(x) = w1 \cdot SDFPotential$**<br>仅SDF势场 紧贴障碍物 较为危险 在相关CBF论文中，有Potential(t)-potential(t-1)的技巧 | **$J(x) = w2 \cdot SDFPotential \cdot RobotVel$**<br>robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值 |
-
-| <img width="500" src="zlog/091403_PPV.png"> | <img width="500" src="zlog/091405_PPV_wholetheta.png"> |
-| :----------------------------------------: | :-------------------------------------------------: |
-| **$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel$**<br>较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域 | **$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta))$**<br>加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。 |
+<table>
+  <tr>
+    <td><img src="zlog/091401.png" alt="Image 1" width="500"></td>
+    <td><img src="zlog/091402_PV.png" alt="Image 2" width="500"></td>
+  </tr>
+  <tr>
+    <td>
+      <strong>$J(x) = w1 \cdot SDFPotential$</strong><br>
+      仅SDF势场 紧贴障碍物 较为危险 在相关CBF论文中，有Potential(t)-potential(t-1)的技巧
+    </td>
+    <td>
+      <strong>$J(x) = w2 \cdot SDFPotential \cdot RobotVel$</strong><br>
+      robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值
+    </td>
+  </tr>
+  <tr>
+    <td><img src="zlog/091403_PPV.png" alt="Image 3" width="500"></td>
+    <td><img src="zlog/091405_PPV_wholetheta.png" alt="Image 4" width="500"></td>
+  </tr>
+  <tr>
+    <td>
+      <strong>$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel$</strong><br>
+      较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域
+    </td>
+    <td>
+      <strong>$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta))$</strong><br>
+      加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。
+    </td>
+  </tr>
+</table>
 
 
 ## 4. Random_shooting Plus MPPI
@@ -140,15 +162,14 @@ cost设计
 </table>
 
 ## 5. 串行MPPI
-串行MPPI的想法很简单，就是在使用MPPI—贪婪策略规划出一条轨迹后，作为下一（MPPI-敏感的）策略的初值进行迭代。
-类似的，在MPPI规划出一条路径，然后基于该路径再进行修改的有很多，riskMPPI 和 shieldMPPI是该方法的两个典型.
+串行MPPI的想法很简单，就是在**使用MPPI—贪婪策略规划出一条轨迹后，作为下一（MPPI-敏感的）策略的初值进行迭代。**
+类似的，在**MPPI规划出一条路径，然后基于该路径再进行修改的有很多**。riskMPPI 和 shieldMPPI是该方法的两个典型.
 
-Risk-Aware Model Predictive Path Integral Control
-Using Conditional Value-at-Risk [RiskMPPI](https://arxiv.org/pdf/2209.12842.pdf)
+1. **Risk-Aware Model Predictive Path Integral Control Using Conditional Value-at-Risk [RiskMPPI](https://arxiv.org/pdf/2209.12842.pdf)**
 
 sample出trajectories后，再对trajectories继续散点，附加CVaR后进行轨迹的再处理
 <p align="center">
-  <img width="500" src="zlog/串行MPPI/riskMPPI框图.jpg">
+  <img width="1000" src="zlog/串行MPPI/riskMPPI框图.jpg">
 </p>
 
 <table align="center">
@@ -165,8 +186,7 @@ sample出trajectories后，再对trajectories继续散点，附加CVaR后进行�
   </tr>
 </table>
 
-Shield Model Predictive Path Integral: A Computationally Efficient
-Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.org/pdf/2302.11719.pdf)
+2. **Shield Model Predictive Path Integral: A Computationally Efficient Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.org/pdf/2302.11719.pdf)**
 
 使用CBF控制屏障函数的方式对MPPI进行处理。一方面CBF作为Cost作为代价考量的一部分，然后对MPPI生成的轨迹再处理，继续使用CBF的方式对生成的轨迹进行一个偏导处理（或可认为是一种梯度处理），尽量避开障碍物
 <p align="center">
@@ -191,10 +211,11 @@ Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.o
   </tr>
 </table>
 
-特别的，我们还能在RAMP机械臂MPPI算法中使用SDF梯度对生成的轨迹再处理的例子
+3. **我们还能在RAMP机械臂MPPI算法中使用SDF梯度对生成的轨迹再处理的例子**
 <p align="center">
   <img width="500" src="zlog/串行MPPI/RAMP梯度再处理.png">
 </p>
+
 
 **可以清晰地看到，主流的使用MPPI在轨迹规划方面的创新多是对MPPI生成的轨迹进行进一步处理。**
 
@@ -203,6 +224,7 @@ Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.o
 但不可否认的是，对MPPI规划的轨迹再处理，必须要考虑计算量的问题，特别是RiskMPPI部分，对MPPI散出的每条轨迹又sample采样了N次，这种在计算量方面付出的代价与所取得的效果成不成比例是要打一个问号的。
 
 基于上述方法，我们也随大流的提出了串行MPPI的计算方法，也就是使用Greedy-MPPI生成一段轨迹后，将其作为初始值，再使用Sensitive-MPPI对该轨迹再处理，达到safe-MPPI的特点。
+
 
 
 
