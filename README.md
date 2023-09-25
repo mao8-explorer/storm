@@ -98,7 +98,7 @@ cost设计
 
 <table>
   <tr>
-    <td><img src="zlog/091401.png" alt="Image 1" width="500"></td>
+    <td><img src="zlog/randomPlusMPPI/20230920-133010.jpg" alt="Image 1" width="500"></td>
     <td><img src="zlog/091402_PV.png" alt="Image 2" width="500"></td>
   </tr>
   <tr>
