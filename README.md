@@ -96,36 +96,40 @@ cost设计
                     self.w1*8.0* potential * vel_abs * (1.0 - 0.50* torch.cos(theta))
 ```
 
-<table>
+<table align="center">
   <tr>
-    <td><img src="zlog/randomPlusMPPI/20230920-133010.jpg" alt="Image 1" width="500"></td>
-    <td><img src="zlog/091402_PV.png" alt="Image 2" width="500"></td>
-  </tr>
-  <tr>
-    <td>
-      <strong>$J(x) = w1 \cdot SDFPotential$</strong><br>
-      仅SDF势场 紧贴障碍物 较为危险 在相关CBF论文中，有Potential(t)-potential(t-1)的技巧
+    <td align="center">
+      <img width="500" src="zlog/091401.png">
+      <br>
+      <em>仅SDF势场 紧贴障碍物 较为危险</em>
     </td>
-    <td>
-      <strong>$J(x) = w2 \cdot SDFPotential \cdot RobotVel$</strong><br>
-      robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值
+    <td align="center">
+      <img width="500" src="zlog/091402_PV.png">
+      <br>
+      <em>240MPPI_60random_1shift_15.0goal_3coll</em>
     </td>
   </tr>
   <tr>
-    <td><img src="zlog/091403_PPV.png" alt="Image 3" width="500"></td>
-    <td><img src="zlog/091405_PPV_wholetheta.png" alt="Image 4" width="500"></td>
-  </tr>
-  <tr>
-    <td>
-      <strong>$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel$</strong><br>
-      较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域
+    <td align="center">
+      <img width="500" src="zlog/091403_PPV.png">
+      <br>
+      <em>only P 240|60_2shift_14.8goal_27coll </em>
     </td>
-    <td>
-      <strong>$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta))$</strong><br>
-      加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。
+    <td align="center">
+      <img width="500" src="zlog/091405_PPV_wholetheta.png">
+      <br>
+      <em>PPVtheta 240|60_2shift_14.1goal_7coll </em>
     </td>
   </tr>
 </table>
+
+| <img width="500" src="zlog/091401.png"> | <img width="500" src="zlog/091402_PV.png"> |
+| :------------------------------------: | :----------------------------------------: |
+|  **$J(x) = w1 \cdot SDFPotential$**<br>仅SDF势场 紧贴障碍物 较为危险 在相关CBF论文中，有Potential(t)-potential(t-1)的技巧 | **$J(x) = w2 \cdot SDFPotential \cdot RobotVel$**<br>robot_velocity * Potential, 尽管考虑到智能体速度的影响，但是该cost偏向于在障碍区域速度置零，以规避碰撞，但极容易陷入局部最小值 |
+
+| <img width="500" src="zlog/091403_PPV.png"> | <img width="500" src="zlog/091405_PPV_wholetheta.png"> |
+| :----------------------------------------: | :-------------------------------------------------: |
+| **$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel$**<br>较为理想的完成了任务，合并方案1，2的长处，相比于方案2，垫上独立的potential 有助跳出局部最小值 跳出障碍区域 | **$J(x) = w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta))$**<br>加入梯度方向，可以较好的加速收敛，实验发现，a = 0.50时，路径能完成14个目标点，超过上述方案一般13个目标点，且无碰撞发生。 |
 
 
 ## 4. Random_shooting Plus MPPI
@@ -260,6 +264,10 @@ sample出trajectories后，再对trajectories继续散点，附加CVaR后进行�
 <p align="center">
   <img width="500" src="zlog/multimodalMPPI公式推导/公式图片.jpg">
 </p>
+
+
+
+
 
 ## Updates
 Jan. 2022 - Add CoRL citation, merge torch.size() bug (thanks [@maxpahn](https://github.com/maxspahn)).
