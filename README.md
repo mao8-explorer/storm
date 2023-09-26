@@ -96,17 +96,9 @@ cost设计
                     self.w1*8.0* potential * vel_abs * (1.0 - 0.50* torch.cos(theta))
 ```
 
-$$
-\begin{align*}
-    J1(x) &= w1 \cdot SDFPotential \\
-    J2(x) &= w2 \cdot SDFPotential \cdot RobotVel \\
-    J3(x) &= w1 \cdot SDFPotential + w2 \cdot SDFPotential \cdot RobotVel \\
-    J4(x) &= w1 \cdot SDFPotential \\
-         &+ w2 \cdot SDFPotential \cdot RobotVel \cdot (1 - a\cdot cos(theta)) \\
-    theta &= arccos (SDFGradient * RobotVelOrient) \\
-    a  &\in [0, 1] \\
-\end{align*}
-$$
+<p align="center">
+  <img width="500" src="zlog/SDF公式推导.jpg">
+</p>
 
 <table align="center">
   <tr>
@@ -206,7 +198,8 @@ sample出trajectories后，再对trajectories继续散点，附加CVaR后进行�
   </tr>
 </table>
 
-2. **Shield Model Predictive Path Integral: A Computationally Efficient Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.org/pdf/2302.11719.pdf)**
+
+1. **Shield Model Predictive Path Integral: A Computationally Efficient Robust MPC Approach Using Control Barrier Functions [sheildMPPI](https://arxiv.org/pdf/2302.11719.pdf)**
 
 使用CBF控制屏障函数的方式对MPPI进行处理。一方面CBF作为Cost作为代价考量的一部分，然后对MPPI生成的轨迹再处理，继续使用CBF的方式对生成的轨迹进行一个偏导处理（或可认为是一种梯度处理），尽量避开障碍物
 <p align="center">
@@ -279,6 +272,13 @@ sample出trajectories后，再对trajectories继续散点，附加CVaR后进行�
 
 <p align="center">
   <img width="500" src="zlog/multimodalMPPI公式推导/公式图片.jpg">
+</p>
+
+<p align="center">
+  <img width="500" src="zlog/multimodalMPPI公式推导/全公式.png">
+</p>
+<p align="center">
+  <img width="500" src="zlog/multimodalMPPI公式推导/全公式2.png">
 </p>
 
 
