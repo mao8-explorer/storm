@@ -237,6 +237,10 @@ sample出trajectories后，再对trajectories继续散点，附加CVaR后进行�
 但不可否认的是，对MPPI规划的轨迹再处理，必须要考虑计算量的问题，特别是RiskMPPI部分，对MPPI散出的每条轨迹又sample采样了N次，这种在计算量方面付出的代价与所取得的效果成不成比例是要打一个问号的。
 
 基于上述方法，我们也随大流的提出了串行MPPI的计算方法，也就是使用Greedy-MPPI生成一段轨迹后，将其作为初始值，再使用Sensitive-MPPI对该轨迹再处理，达到safe-MPPI的特点。
+<p align="center">
+  <img width="1000" src="zlog/串行MPPI/串行框架图.png">
+</p>
+
 
 
 
@@ -271,15 +275,12 @@ sample出trajectories后，再对trajectories继续散点，附加CVaR后进行�
 </table>
 
 <p align="center">
-  <img width="500" src="zlog/multimodalMPPI公式推导/公式图片.jpg">
-</p>
-
-<p align="center">
-  <img width="500" src="zlog/multimodalMPPI公式推导/全公式.png">
+  <img width="1000" src="zlog/multimodalMPPI公式推导/全公式.png">
 </p>
 <p align="center">
   <img width="500" src="zlog/multimodalMPPI公式推导/全公式2.png">
 </p>
+
 
 
 
