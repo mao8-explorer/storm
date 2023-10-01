@@ -246,6 +246,12 @@ sample出trajectories后，再对trajectories继续散点，附加CVaR后进行�
 
 
 ## 6. 并行MPPI | MultiModal MPPI
+
+<p align="center">
+  <img width="1200" src="zlog/multimodalMPPI公式推导/并行框图.png">
+</p>
+
+
 公式推导
 <table align="center">
   <tr>
