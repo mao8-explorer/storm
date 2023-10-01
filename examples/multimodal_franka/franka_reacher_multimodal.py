@@ -243,7 +243,7 @@ class MPCRobotController:
         qd_des = None
         t_step = gym_instance.get_sim_time()
 
-        envpc_filter = filterPointCloud() #sceneCollisionNet 句柄 现在只是用来获取点云
+        envpc_filter = filterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
         ee_pose = gymapi.Transform()
 
         loop_last_time = time.time_ns()
@@ -262,8 +262,8 @@ class MPCRobotController:
                 loop_last_time = time.time_ns()
 
                 # get_env_pointcloud
-                self.robot_sim._observe_all_cameras()
-                obs.update(self.robot_sim._build_pc_observation())
+                self.robot_sim.updateCamImage()
+                obs.update(self.robot_sim.ImageToPointCloud()) #耗时大！
                 envpc_filter._update_state(obs) 
                 if i > 500 : scene_pc_time += (time.time_ns() - loop_last_time)/1e+6
 

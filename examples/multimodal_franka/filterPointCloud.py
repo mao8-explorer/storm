@@ -8,6 +8,7 @@ np.set_printoptions(suppress=True)
 class filterPointCloud(object):
     def __init__(
         self,
+        camera_pose=None,
         device=0,
     ):
         self.device = device
@@ -21,7 +22,7 @@ class filterPointCloud(object):
             "tabel":20
         }
 
-        self.camera_pose = None
+        self.camera_pose = tra.euler_matrix(np.pi / 2, 0, 0) @ camera_pose
 
     def _update_state(self, obs):
         """
@@ -41,15 +42,11 @@ class filterPointCloud(object):
         )
         # self.scene_pc_mask = scene_labels ==  label_map['env']
         # Transform into robot frame (z up)
-        self.camera_pose = tra.euler_matrix(np.pi / 2, 0, 0) @ obs["camera_pose"][self.cam_type]
         self.scene_pc = tra.transform_points(orig_scene_pc, self.camera_pose)
 
         new_pc = torch.from_numpy(self.scene_pc).float().to(self.device)
         vis_mask = torch.from_numpy(self.scene_pc_mask).to(self.device)
         self.cur_scene_pc = new_pc[vis_mask]
     
-    def filterPointCloud_init(self, obs):
-        pass
-
 
 
