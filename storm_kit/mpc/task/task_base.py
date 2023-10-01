@@ -94,8 +94,7 @@ class BaseTask():
         self.prev_qdd_des = qdd_des
         cmd_des = self.state_filter.integrate_acc(qdd_des)
 
-        return cmd_des, info
-    
+        return cmd_des
 
 
     def _state_to_tensor(self, state):

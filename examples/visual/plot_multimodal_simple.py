@@ -19,6 +19,7 @@ class Plotter_MultiModal(object):
         self.coordinates = torch.as_tensor(coordinates, **self.tensor_args)
         self.fig.canvas.mpl_connect('button_press_event', self.press_call_back)
         self.fig.canvas.mpl_connect('key_press_event', self.key_call_back)
+        self.collision_count = 0
 
     def plot_setting(self):
 
@@ -45,6 +46,7 @@ class Plotter_MultiModal(object):
         curr_pose = torch.as_tensor(self.current_state['position'], **self.tensor_args).unsqueeze(0)
         grad_y_curr,grad_x_curr = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(curr_pose) # 当前SDF梯度
         self.potential_curr = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_value(curr_pose) # 当前势场
+        if self.potential_curr[0] > 0.99 : self.collision_count += 1
         self.ax.quiver(np.ravel(self.current_state['position'][0]), np.ravel(self.current_state['position'][1]),
                     np.ravel(grad_x_curr.cpu()),np.ravel(grad_y_curr.cpu()),color='red') # 当前位置所在SDF梯度
         
@@ -100,6 +102,13 @@ class Plotter_MultiModal(object):
         self.ax.text(1.04, 0.36, f'sensi_w2: {self.controller.weights_divide.cpu().numpy()[1]:.3f}', fontsize=12 ,
                      color='red' if self.controller.weights_divide.cpu().numpy()[1] > 0.5 else 'black')
         self.ax.text(1.04, 0.32, f'cov: {self.controller.cov_action.cpu().numpy()[0]:.4f} , {self.controller.cov_action.cpu().numpy()[1]:.4f}', fontsize=12)
+        self.ax.text(1.04, 0.32, f'cov: {self.controller.cov_action.cpu().numpy()[0]:.4f} , {self.controller.cov_action.cpu().numpy()[1]:.4f}', fontsize=12)
+        self.ax.text(1.04, 0.90, f'lap_count: {self.goal_flagi / len(self.goal_list)}', fontsize=12, color='black')
+        self.ax.text(1.04, 0.87, f'whileloop_count: {self.loop_step}', fontsize=12, color='black')
+        self.ax.text(1.04, 0.84, f'opt_runtime: {self.run_time}', fontsize=12, color='black')
+        self.ax.text(1.04, 0.81, f'opt_hz: {self.loop_step /self.run_time}', fontsize=12, color='black')
+        self.ax.text(1.04, 0.78, f'collision_count: {self.collision_count}', fontsize=12, color='black')
+
         plt.pause(1e-10)
         self.traj_append()
 
@@ -120,7 +129,7 @@ class Plotter_MultiModal(object):
         self.traj_log['acc'].append(self.current_state['acceleration'])
         self.traj_log['coll_cost'].append(self.potential_curr.cpu()[0])
         self.traj_log['des'].append(copy.deepcopy(self.goal_state))
-
+        self.traj_log['weights'].append(self.controller.weights_divide.cpu().numpy())
 
 
     def plot_traj(self):
@@ -131,11 +140,13 @@ class Plotter_MultiModal(object):
         print((coll==1.0).sum())
         acc = np.matrix(self.traj_log['acc'])
         des = np.matrix(self.traj_log['des'])
-        axs = [plt.subplot(3,1,i+1) for i in range(3)]
+        weights = np.matrix(self.traj_log['weights'])
+        axs = [plt.subplot(4,1,i+1) for i in range(4)]
         if(len(axs) >= 3):
             axs[0].set_title('Position')
             axs[1].set_title('Velocity')
             axs[2].set_title('Acceleration')
+            axs[3].set_title('weights')
             # axs[3].set_title('Trajectory Position')
             axs[0].plot(position[:,0], 'r', label='x')
             axs[0].plot(position[:,1], 'g',label='y')
@@ -146,6 +157,9 @@ class Plotter_MultiModal(object):
             axs[1].plot(vel[:,1], 'g', label='y')
             axs[2].plot(acc[:,0], 'r', label='acc')
             axs[2].plot(acc[:,1], 'g', label='acc')
+            axs[3].plot(weights[:,0], 'r', label='greedy')
+            axs[3].plot(weights[:,1], 'g', label='sensi')
+            axs[3].legend()
         plt.savefig('trajectory.png')
 
         plt.figure()

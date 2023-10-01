@@ -143,16 +143,16 @@ class OLGaussianMPC(Controller):
             self.null_act_seqs = torch.zeros(self.num_null_particles, self.horizon, self.d_action, **self.tensor_args)
             
         self.delta = None
-
-        sample_enchance = multimodal['random_shoot_particles']
-        sensi_random_num = sample_enchance['sensi_random']
-        greedy_random_num = sample_enchance['greedy_random']
-        sensi_mean_num = sample_enchance['sensi_mean']
-        greedy_mean_num = sample_enchance['greedy_mean']
-        self.sensiRand = sensi_random_num
-        self.greedRand = self.sensiRand + greedy_random_num
-        self.sensiMean = self.greedRand + sensi_mean_num
-        self.greedMean = self.sensiMean + greedy_mean_num
+        if multimodal is not None:
+            sample_enchance = multimodal['random_shoot_particles']
+            sensi_random_num = sample_enchance['sensi_random']
+            greedy_random_num = sample_enchance['greedy_random']
+            sensi_mean_num = sample_enchance['sensi_mean']
+            greedy_mean_num = sample_enchance['greedy_mean']
+            self.sensiRand = sensi_random_num
+            self.greedRand = self.sensiRand + greedy_random_num
+            self.sensiMean = self.greedRand + sensi_mean_num
+            self.greedMean = self.sensiMean + greedy_mean_num
     def _get_action_seq(self, mode='mean'):
         if mode == 'mean':
             act_seq = self.mean_action.clone()

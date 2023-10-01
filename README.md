@@ -275,14 +275,20 @@ sample出trajectories后，再对trajectories继续散点，附加CVaR后进行�
 </table>
 
 <p align="center">
-  <img width="1000" src="zlog/multimodalMPPI公式推导/全公式.png">
+  <img width="800" src="zlog/multimodalMPPI公式推导/全公式.png">
 </p>
 <p align="center">
   <img width="500" src="zlog/multimodalMPPI公式推导/全公式2.png">
 </p>
 
 
-
+## 7. 机械臂迁移
+todo:
+* 1 . Camera_pose gym pointcloud Filter (easy work)
+* 2 . franka_multimodal 代码流程优化 (easy work)
+* 3 . 并行验证 基于SDF_Potential （hard work）
+* 4 . 基于梯度的SDF代价函数设计 （hard work）
+  
 
 
 

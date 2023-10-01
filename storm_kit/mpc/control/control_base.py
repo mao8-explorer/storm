@@ -250,7 +250,100 @@ class Controller(ABC):
                     # update distribution parameters
                     # with profiler.record_function("mppi_update"):
                     self._update_distribution(trajectory) 
+                    # self.mean_traj_greedy = self.get_mean_trajectory(state)
+                    # self.mean_traj_sensi =  self.mean_traj_greedy
+                    """
+                    1. sample N trajectories from mean_t1
+                    2. update_distribution to get mean_t2 (sensitive path)
+    
+                    # sample N trajectories from mean_t1
+                    generate_rollouts 包括sample based on mean&cov 以及 compute cost 两部分
+                    compute cost 是重点修改部分，现阶段设计较为容易，进修改 target_cost 与 collision_cost的权重实现 差异化竞争
+                    要实现对 权重的 修改
+                    """
+                    # sensitive_trajectory = self.generate_sensitive_rollouts(state)
+
+                    # self._update_distribution(sensitive_trajectory) 
+                    # self.mean_traj_sensi = self.get_mean_trajectory(state)
+
+                    info['rollout_time'] += trajectory['rollout_time']
+                    # check if converged
+                    if self.check_convergence():
+                        break
+        self.trajectories = trajectory
+        #calculate best action
+        # curr_action = self._get_next_action(state, mode=self.sample_mode)
+        curr_action_seq = self._get_action_seq(mode=self.sample_mode)
+        #calculate optimal value estimate if required
+        # if calc_val:
+        #     trajectories = self.generate_rollouts(state)
+        #     value = self._calc_val(trajectories)
+
+        # # shift distribution to hotstart next timestep
+        # if self.hotstart:
+        #     self._shift()
+        # else:
+        #     self.reset_distribution()
+
+        info['entropy'].append(self.entropy)
+
+        self.num_steps += 1
+
+        return curr_action_seq.to(inp_device, dtype=inp_dtype), info
+
+
+
+
+    def series_optimize(self, state, calc_val=False, shift_steps=1, n_iters=None):
+        """
+        Optimize for best action at current state
+
+        Parameters
+        ----------
+        state : torch.Tensor
+            state to calculate optimal action from
+        
+        calc_val : bool
+            If true, calculate the optimal value estimate
+            of the state along with action
+                
+        Returns
+        -------
+        action : torch.Tensor
+            next action to execute
+        value: float
+            optimal value estimate (default: 0.)
+        info: dict
+            dictionary with side-information
+        """
+
+        n_iters = n_iters if n_iters is not None else self.n_iters
+        # get input device:
+        inp_device = state.device
+        inp_dtype = state.dtype
+        state.to(**self.tensor_args)
+
+        info = dict(rollout_time=0.0, entropy=[])
+        # shift distribution to hotstart from previous timestep
+        if self.hotstart:
+            self._shift(shift_steps)
+        else:
+            self.reset_distribution()
+            
+
+        with torch.cuda.amp.autocast(enabled=True):
+            with torch.no_grad():
+                for _ in range(n_iters):
+                    # sample M trajectories from mean_t-1
+                    # update_distribution to get mean_t1 (greedy path)
+
+                    # generate random simulated trajectories
+                    trajectory = self.generate_rollouts(state)
+                    # update distribution parameters
+                    # with profiler.record_function("mppi_update"):
+                    self._update_distribution(trajectory) 
                     self.mean_traj_greedy = self.get_mean_trajectory(state)
+                    # self.mean_traj_sensi =  self.mean_traj_greedy
                     """
                     1. sample N trajectories from mean_t1
                     2. update_distribution to get mean_t2 (sensitive path)
@@ -274,7 +367,6 @@ class Controller(ABC):
         # curr_action = self._get_next_action(state, mode=self.sample_mode)
         curr_action_seq = self._get_action_seq(mode=self.sample_mode)
         #calculate optimal value estimate if required
-        value = self.Valsum
         # if calc_val:
         #     trajectories = self.generate_rollouts(state)
         #     value = self._calc_val(trajectories)
@@ -289,8 +381,8 @@ class Controller(ABC):
 
         self.num_steps += 1
 
-        return curr_action_seq.to(inp_device, dtype=inp_dtype), value, info
-
+        return curr_action_seq.to(inp_device, dtype=inp_dtype), info
+    
 
     def multimodal_optimize(self, state, calc_val=False, shift_steps=1, n_iters=None):
 

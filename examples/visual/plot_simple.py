@@ -19,6 +19,7 @@ class Plotter:
         self.coordinates = torch.as_tensor(coordinates, **self.tensor_args)
         self.fig.canvas.mpl_connect('button_press_event', self.press_call_back)
         self.fig.canvas.mpl_connect('key_press_event', self.key_call_back)
+        self.collision_count = 0
 
     def plot_setting(self):
 
@@ -45,6 +46,7 @@ class Plotter:
         curr_pose = torch.as_tensor(self.current_state['position'], **self.tensor_args).unsqueeze(0)
         grad_y_curr,grad_x_curr = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(curr_pose) # 当前SDF梯度
         self.potential_curr = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_value(curr_pose) # 当前势场
+        if self.potential_curr[0] > 0.99 : self.collision_count += 1
         self.ax.quiver(np.ravel(self.current_state['position'][0]), np.ravel(self.current_state['position'][1]),
                     np.ravel(grad_x_curr.cpu()),np.ravel(grad_y_curr.cpu()),color='red') # 当前位置所在SDF梯度
         
@@ -91,9 +93,12 @@ class Plotter:
         self.ax.text(0.6, 1.04, f'Velocity Magnitude: {velocity_magnitude}', fontsize=12, color='black')
         self.ax.text(0.6, 1.07, f'angle: {np.degrees(theta)}', fontsize=12, color='red' if theta > np.pi/2.0 else 'black')
          # MPQ value值估计 log_sum_exp
-        self.ax.text(1.04, 0.5, f'value: {self.value_function.cpu().numpy()}', fontsize=12)
         self.ax.text(1.04, 0.32, f'cov: {self.controller.cov_action.cpu().numpy()[0]:.4f} , {self.controller.cov_action.cpu().numpy()[1]:.4f}', fontsize=12)
-        
+        self.ax.text(1.04, 0.90, f'lap_count: {self.goal_flagi / len(self.goal_list)}', fontsize=12, color='black')
+        self.ax.text(1.04, 0.87, f'whileloop_count: {self.loop_step}', fontsize=12, color='black')
+        self.ax.text(1.04, 0.84, f'opt_runtime: {self.run_time}', fontsize=12, color='black')
+        self.ax.text(1.04, 0.81, f'opt_hz: {self.loop_step /self.run_time}', fontsize=12, color='black')
+        self.ax.text(1.04, 0.78, f'collision_count: {self.collision_count}', fontsize=12, color='black')
         plt.pause(1e-10)
         self.traj_append()
 
@@ -122,7 +127,6 @@ class Plotter:
         position = np.matrix(self.traj_log['position'])
         vel = np.matrix(self.traj_log['velocity'])
         coll = np.matrix(self.traj_log['coll_cost'])
-        print((coll==1.0).sum())
         acc = np.matrix(self.traj_log['acc'])
         des = np.matrix(self.traj_log['des'])
         axs = [plt.subplot(3,1,i+1) for i in range(3)]

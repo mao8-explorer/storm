@@ -84,33 +84,41 @@ class holonomic_robot(Plotter):
 
     def run(self):
         # temp parameters
-        goal_flagi = 0 # 调控目标点
-        i = 0   #调控运行steps
+        self.goal_flagi = -1 # 调控目标点
+        self.loop_step = 0   #调控运行steps
         t_step = 0.0 # 记录run_time
         goal_thresh = 0.04 # 目标点阈值
-        while(i < 800):
+        self.run_time = 0.0
+        lap_count = 10 # 跑5轮次
+        first_time = time.time()
+        while(self.goal_flagi / len(self.goal_list) != lap_count):
             #  core_process
             self.controller.rollout_fn.image_move_collision_cost.world_coll.updateSDFPotientailGradient() #更新环境SDF
-            command, value_function = self.simple_task.get_command(t_step, self.current_state, self.sim_dt, WAIT=True)
+            last = time.time()
+            command = self.simple_task.get_command(t_step, self.current_state, self.sim_dt, WAIT=True)
+            self.run_time += time.time() - last
             self.current_state = command # or command * scale
-            self.value_function = value_function
             # 这里的current_coll 反馈的不是是否发生碰撞，是forward计算的值，暂无意义
             _, goal_dist,_ = self.simple_task.get_current_error(self.current_state) 
             # goal_reacher update
             if goal_dist[0] < goal_thresh:
-                self.goal_state = self.goal_list[goal_flagi % len(self.goal_list)]
+                self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
                 self.simple_task.update_params(goal_state=self.goal_state) # 目标更变
-                goal_flagi += 1
-                print("next goal",goal_flagi)
+                self.goal_flagi += 1
+                print("next goal",self.goal_flagi)
             
+            t_step += self.sim_dt
+            self.loop_step += 1
             self.plot_setting()
             if self.pause:
                 while True:
                     time.sleep(1.0)
                     self.plot_setting()
                     if not self.pause: break
-            t_step += self.sim_dt
-            i += 1
+
+            
+        whole_time = time.time() - first_time
+        print(whole_time)
         plt.savefig('runend.png')
         self.plot_traj()
 

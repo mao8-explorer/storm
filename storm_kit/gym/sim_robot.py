@@ -30,7 +30,6 @@ import numpy as np
 from . import helpers 
 from quaternion import from_rotation_matrix, as_float_array, as_rotation_matrix, as_quat_array
 
-from scenecollisionnet.policy import utils
 try:
     from  isaacgym import gymapi
     from isaacgym import gymutil
@@ -226,42 +225,6 @@ class RobotSim():
         return joint_state
     
 
-    def _get_gym_state(self):
-        env_states = []
-
-        gym_state = {}
-        for i in range(self.gym.get_actor_count(self.env)):
-            actor_name = self.gym.get_actor_name(self.env, i)
-            dof_dict = self.gym.get_actor_rigid_body_dict(self.env, i)
-            body_states = self.gym.get_actor_rigid_body_states(
-                self.env,
-                i,
-                gymapi.STATE_ALL,
-            )
-            if actor_name == "robot":
-                robot_dof_names = self.gym.get_actor_dof_names(self.env, i)
-                dof_states = self.gym.get_actor_dof_states(
-                    self.env, i, gymapi.STATE_POS
-                )["pos"]
-                assert len(dof_states) == len(robot_dof_names)
-                links_pose = {
-                    name: state
-                    for name, state in zip(robot_dof_names, dof_states)
-                }
-            else:
-                links_pose = {
-                    k: utils.gym_pose_to_matrix(body_states["pose"][:][v])
-                    for k, v in dof_dict.items()
-                }
-            if len(links_pose) == 1:
-                gym_state[actor_name] = list(links_pose.values())[0]
-            else:
-                gym_state[actor_name] = links_pose
-        env_states.append(gym_state)
-        
-        return env_states
-        
-
     def command_robot(self, tau, env_handle, robot_handle):
         self.gym.apply_actor_dof_efforts(env_handle, robot_handle, np.float32(tau))
         
@@ -407,7 +370,7 @@ class RobotSim():
         
         camera_handle = self.camera_handle
 
-        w_c_mat = self.gym.get_camera_view_matrix(self.sim, self.env, camera_handle).T
+        # w_c_mat = self.gym.get_camera_view_matrix(self.sim, self.env, camera_handle).T
 
         #print('View matrix',w_c_mat)
         #p = gymapi.Vec3(w_c_mat[3,0], w_c_mat[3,1], w_c_mat[3,2])
@@ -468,6 +431,30 @@ class RobotSim():
                        'view_matrix':view_matrix,  
                     }
         return camera_data
+
+    def camera_props_get(self):
+
+        self.gym.render_all_camera_sensors(self.sim)
+
+    
+        self.current_observations = []
+        camera_handle = self._cameras[0] # one camera handle : 0
+        camera_pose = self.gym.get_camera_transform(
+            self.sim, self.env, camera_handle
+        )
+
+        self.proj_matrix = self.gym.get_camera_proj_matrix(
+            self.sim, self.env, camera_handle
+        ) # like 相机内参 相机矩阵就是建立这种三维到二维的投影关系
+
+        q = camera_pose.r
+        p = camera_pose.p
+        camera_pose = helpers.gym_pose_to_matrix(
+            {"r": [q.x, q.y, q.z, q.w], "p": [p.x, p.y, p.z]}
+        )
+        self.camera_pose = camera_pose.dot(tra.euler_matrix(np.pi, 0, 0))
+
+
 
 
     def _observe_all_cameras(self):

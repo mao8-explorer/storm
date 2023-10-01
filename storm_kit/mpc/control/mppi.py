@@ -23,6 +23,7 @@
 # DEALINGS IN THE SOFTWARE.#
 
 import copy
+from re import M
 
 import numpy as np
 import scipy.special
@@ -106,7 +107,8 @@ class MPPI(OLGaussianMPC):
         self.update_cov = update_cov
         self.kappa = kappa
         self.visual_traj = visual_traj
-        self.top_traj_select = multimodal['top_traj_select']
+        if multimodal is not None:
+            self.top_traj_select = multimodal['top_traj_select']
 
     def _update_distribution(self, trajectories):
         """
@@ -138,21 +140,16 @@ class MPPI(OLGaussianMPC):
         # self.bad_traj = torch.index_select(actions,0,bad_idx).squeeze(0)
 
         weighted_seq = w.T * actions.T
-
         sum_seq = torch.sum(weighted_seq.T, dim=0)
-
         new_mean = sum_seq
-
         self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
             self.step_size_mean * new_mean
-        
         delta = actions - self.mean_action.unsqueeze(0)  
 
         # self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
         #     self.step_size_mean * new_mean
         
         # self.mean_action 放的位置 对delta有影响
-
         #Update Covariance
         if self.update_cov:
             if self.cov_type == 'sigma_I':
@@ -344,10 +341,13 @@ class MPPI(OLGaussianMPC):
         Amin = A.min()
         B = top_total_costs
         Bmin = B.min()
-        value_w =  -self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (A - A.min())))) +\
-                    self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (B - B.min())))) +\
-                    A.min() - B.min()
-        # error = value_w - (Amin - Bmin)
+        value_w =  -self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (A - Amin)))) +\
+                    self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (B - Bmin)))) +\
+                    Amin - Bmin
+        # A = differPolicyInJudgeCost
+        # Amin = A.min()
+        # value_w =  -self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (A - A.min())))) + A.min() 
+        # # error = value_w - (Amin - Bmin)
 
         # get new mean
         w = torch.softmax((-1.0/self.beta) * (total_costs - total_costs.min()), dim=0)
@@ -387,7 +387,7 @@ class MPPI(OLGaussianMPC):
         # #calculate soft-max
         w = torch.softmax((-1.0/self.beta) * total_costs, dim=0)
 
-        self.Valsum = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs,dim=0)
+        # self.Valsum = -self.beta * torch.logsumexp((-1.0/self.beta) * total_costs,dim=0)
 
         # self.Valsum = -self.beta * scipy.special.logsumexp((-1.0/self.beta) * total_costs, b=(1.0/total_costs.shape[0]))
         self.total_costs = total_costs
