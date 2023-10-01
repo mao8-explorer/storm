@@ -25,15 +25,15 @@ world_model:
     sphere:
       sphere1:
         radius: 0.1 #5 # meters
-        position: [0.4, 0.4, 0.8]
+        position: [-0.4, 0.4, 0.2]
     cube:
-      cube1:
-        dims: [0.3, 0.1, 0.4] # x, y, z
-        pose: [0.4, 0.2, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+      # cube1:
+      #   dims: [0.3, 0.1, 0.4] # x, y, z
+      #   pose: [0.4, 0.2, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
 
-      cube2:
-        dims: [0.3, 0.1, 0.5] # x, y, z
-        pose: [0.4, -0.3, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+      # cube2:
+      #   dims: [0.3, 0.1, 0.5] # x, y, z
+      #   pose: [0.4, -0.3, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
         
       cube3:
         dims: [2.0, 2.0, 0.2] # x, y, z

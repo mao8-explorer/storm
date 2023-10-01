@@ -125,8 +125,8 @@ class ArmBase(RolloutBase):
         if(exp_params['cost']['primitive_collision']['weight'] > 0.0):
             self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['primitive_collision'])
 
-        if(exp_params['cost']['scene_collision']['weight'] > 0.0):
-            self.scene_collision_cost = ScenecollisionCost(mppi_params = mppi_params, robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['scene_collision'])
+        # if(exp_params['cost']['scene_collision']['weight'] > 0.0):
+        #     self.scene_collision_cost = ScenecollisionCost(mppi_params = mppi_params, robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['scene_collision'])
 
 
         if(exp_params['cost']['robot_self_collision']['weight'] > 0.0):

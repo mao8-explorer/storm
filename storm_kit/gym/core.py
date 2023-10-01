@@ -157,8 +157,6 @@ class World(object):
             object_pose.r = gymapi.Quat(0, 0, 0,1)
             object_pose = w_T_r * object_pose
 
-            #
-
             obj_asset = gym_instance.create_sphere(sim_instance,radius, asset_options)
             obj_handle = gym_instance.create_actor(env_ptr, obj_asset, object_pose, obj, 2, 2, self.ENV_SEG_LABEL)
             gym_instance.set_rigid_body_color(env_ptr, obj_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, obj_color)

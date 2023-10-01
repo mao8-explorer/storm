@@ -47,10 +47,10 @@ class ArmTask(BaseTask):
         return rollout_fn
 
     def init_mppi(self, task_file, robot_file, collision_file):
-        robot_yml = join_path(get_gym_configs_path(), robot_file)
+        # robot_yml = join_path(get_gym_configs_path(), robot_file)
         
-        with open(robot_yml) as file:
-            robot_params = yaml.load(file, Loader=yaml.FullLoader)
+        # with open(robot_yml) as file:
+        #     robot_params = yaml.load(file, Loader=yaml.FullLoader)
 
         world_yml = join_path(get_gym_configs_path(), collision_file)
         with open(world_yml) as file:
