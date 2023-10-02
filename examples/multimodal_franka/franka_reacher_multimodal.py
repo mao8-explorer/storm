@@ -94,7 +94,8 @@ class MPCRobotController(setfrankaEnv):
                 self.updateGymVisual(curr_state_tensor)
                 # robot_sim.command_robot_position(q_des, env_ptr, robot_ptr)
                 successed = self.robot_sim.set_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
-                if not successed : break
+                if not successed :  
+                    break
                 # 实验： dynamic object moveDesign
                 # actor  :  collision_obj_base_handle 
                 self._dynamic_object_moveDesign()
