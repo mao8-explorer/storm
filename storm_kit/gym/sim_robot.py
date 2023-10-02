@@ -224,7 +224,6 @@ class RobotSim():
         joint_state['position'] = np.ravel(joint_state['position'])
         joint_state['velocity'] = np.ravel(joint_state['velocity'])
         joint_state['acceleration'] = np.ravel(joint_state['velocity'])*0.0
-        
         return joint_state
     
 
@@ -236,7 +235,7 @@ class RobotSim():
         return self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(q_des))
 
 
-    def set_robot_state(self, q_des, qd_des, env_handle, robot_handle):
+    def command_robot_state(self, q_des, qd_des, env_handle, robot_handle):
 
         for evt in self.gym.query_viewer_action_events(self.viewer):
             if evt.action == "PAUSE" and evt.value > 0:

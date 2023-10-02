@@ -21,7 +21,7 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-class setfrankaEnv(object):
+class FrankaEnvBase(object):
     def __init__(self,args, gym_instance):
 
         self.mpc_config = args.robot + '_reacher.yml'
@@ -36,11 +36,12 @@ class setfrankaEnv(object):
         self.sim = gym_instance.sim
         self.env_ptr = gym_instance.env_list[0]
         self.viewer = gym_instance.viewer
+        self.collision_grid = None
+        self.curr_state_tensor = None
         self._initialize_robot_simulation() # robot_sim 
         self._initialize_world_and_camera() # world_instance
         self._initialize_mpc_control() # mpc_control 
         self._initialize_env_objects() # 设置 gym 可操作物
-
         self._initialize_rospy()
         self.init_point_transform() # use for trans trajs_pos in robotCoordinate to world coordinate
 
@@ -103,6 +104,8 @@ class setfrankaEnv(object):
         franka_bl_state = np.array([-0.3, 0.3, 0.2, -2.0, 0.0, 2.4, 0.0,
                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self.mpc_control.update_params(goal_state=franka_bl_state)
+        self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
+        self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
     def _initialize_env_objects(self):
              
@@ -182,20 +185,6 @@ class setfrankaEnv(object):
         self.pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
         self.pub_robot_link_pc = rospy.Publisher('robot_link_pc', PointCloud2, queue_size=5)
         
-    def pub_pointcloud(self,pc,pub_handle):
-
-        self.msg.header.stamp = rospy.Time().now()
-        if len(pc.shape) == 3:
-            self.msg.height = pc.shape[1]
-            self.msg.width = pc.shape[0]
-        else:
-            self.msg.height = 1
-            self.msg.width = len(pc)
-
-        self.msg.row_step = self.msg.point_step * pc.shape[0]
-        self.msg.data = np.asarray(pc, np.float32).tobytes()
-
-        pub_handle.publish(self.msg)   
 
     def init_point_transform(self):
         w_T_robot = torch.eye(4)
@@ -207,13 +196,12 @@ class setfrankaEnv(object):
         w_T_robot[:3,:3] = rot[0]
         self.w_robot_coord = CoordinateTransform(trans=w_T_robot[0:3,3].unsqueeze(0),
                                             rot=w_T_robot[0:3,0:3].unsqueeze(0))    
-        
     
-    def updateGymVisual(self,curr_state_tensor):
+    def updateGymVisual(self):
                
         # trans ee_pose in robot_coordinate to world coordinate
         ee_pose = gymapi.Transform()
-        pose_state = self.mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
+        pose_state = self.mpc_control.controller.rollout_fn.get_ee_pose(self.curr_state_tensor)
         e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
         e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
         ee_pose.p = gymapi.Vec3(e_pos[0], e_pos[1], e_pos[2])
@@ -233,3 +221,48 @@ class setfrankaEnv(object):
             color[0] = float(k) / float(top_trajs.shape[0])
             color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
             self.gym_instance.draw_lines(pts, color=color)
+        
+    def pub_pointcloud(self,pc,pub_handle):
+
+        self.msg.header.stamp = rospy.Time().now()
+        if len(pc.shape) == 3:
+            self.msg.height = pc.shape[1]
+            self.msg.width = pc.shape[0]
+        else:
+            self.msg.height = 1
+            self.msg.width = len(pc)
+
+        self.msg.row_step = self.msg.point_step * pc.shape[0]
+        self.msg.data = np.asarray(pc, np.float32).tobytes()
+
+        pub_handle.publish(self.msg)   
+
+    def updateRosMsg(self):
+        # ROS Publish
+        robot_collision_cost = self.mpc_control.controller.rollout_fn \
+                                    .robot_self_collision_cost(self.curr_state_tensor.unsqueeze(0)[:,:,:7]) \
+                                    .squeeze().cpu().numpy()
+        self.coll_msg.data = robot_collision_cost
+        self.coll_robot_pub.publish(self.coll_msg)
+        # pub env_pointcloud and robot_link_spheres
+        w_batch_link_spheres = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
+        spheres = [s[0][:, :3].cpu().numpy() for s in w_batch_link_spheres]
+        # 将所有球体位置信息合并为一个NumPy数组
+        robotsphere_positions = np.concatenate(spheres, axis=0)
+        self.pub_pointcloud(robotsphere_positions, self.pub_robot_link_pc)
+        collision_grid_pc = self.collision_grid.cpu().numpy() 
+        self.pub_pointcloud(collision_grid_pc, self.pub_env_pc)
+
+    def monitorGoalupdate(self):
+        pose = self.world_instance.get_pose(self.target_body_handle)
+        pose = self.w_T_r.inverse() * pose #将world坐标系下的目标点转到robot坐标系下
+        if (np.linalg.norm(self.g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (
+                np.linalg.norm(self.g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z])) > 0.0)):
+            self.g_pos[0] = pose.p.x
+            self.g_pos[1] = pose.p.y
+            self.g_pos[2] = pose.p.z
+            self.g_q[1] = pose.r.x   
+            self.g_q[2] = pose.r.y
+            self.g_q[3] = pose.r.z
+            self.g_q[0] = pose.r.w
+            self.mpc_control.update_params(goal_ee_pos=self.g_pos,goal_ee_quat=self.g_q)

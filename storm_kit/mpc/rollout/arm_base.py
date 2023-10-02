@@ -277,7 +277,8 @@ class ArmBase(RolloutBase):
         current_state = current_state.to(**self.tensor_args)
          
         
-        ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model.compute_fk_and_jacobian(current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.exp_params['model']['ee_link_name'])
+        ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model. \
+            compute_fk_and_jacobian(current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.exp_params['model']['ee_link_name'])
 
         ee_quat = matrix_to_quaternion(ee_rot_batch)
         state = {'ee_pos_seq':ee_pos_batch, 'ee_rot_seq':ee_rot_batch,

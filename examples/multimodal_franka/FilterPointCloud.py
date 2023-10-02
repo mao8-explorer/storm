@@ -5,7 +5,7 @@ import torch
 np.set_printoptions(suppress=True)
 
 
-class filterPointCloud(object):
+class FilterPointCloud(object):
     def __init__(
         self,
         camera_pose=None,
