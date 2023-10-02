@@ -66,8 +66,10 @@ class Gym(object):
             # self.gym.add_ground(self.sim, gymapi.PlaneParams())
 
             self.gym.subscribe_viewer_keyboard_event(
-                self.viewer, gymapi.KEY_P, "pause"
+                self.viewer, gymapi.KEY_SPACE, "PAUSE"
             )
+            self.gym.subscribe_viewer_keyboard_event(
+                self.viewer, gymapi.KEY_ESCAPE, "QUIT")
             self.gym.subscribe_viewer_keyboard_event(
                 self.viewer, gymapi.KEY_N, "next_target"
             )

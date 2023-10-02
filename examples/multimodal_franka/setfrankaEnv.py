@@ -8,6 +8,7 @@ from storm_kit.gym.core import Gym, World
 from storm_kit.gym.sim_robot import RobotSim
 from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path
 from storm_kit.mpc.task.reacher_task import ReacherTask
+from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
 import matplotlib.pyplot as plt
 import rospy
 from std_msgs.msg import Float32
@@ -23,8 +24,6 @@ torch.backends.cudnn.allow_tf32 = True
 class setfrankaEnv(object):
     def __init__(self,args, gym_instance):
 
-        # yml配置
-        self.robot_coll_description = 'franka.yml' #没啥用 通过franka_reacher.yml 中的"collision_spheres"指定
         self.mpc_config = args.robot + '_reacher.yml'
         self.world_description = 'collision_primitives_3d.yml'
 
@@ -43,6 +42,7 @@ class setfrankaEnv(object):
         self._initialize_env_objects() # 设置 gym 可操作物
 
         self._initialize_rospy()
+        self.init_point_transform() # use for trans trajs_pos in robotCoordinate to world coordinate
 
     def _initialize_robot_simulation(self):
         # Initialize the robot simulation
@@ -65,6 +65,8 @@ class setfrankaEnv(object):
             device=torch.device('cuda', 0) )
         # create gym environment: 
         self.robot_ptr = self.robot_sim.spawn_robot(self.gym_instance.env_list[0], robot_pose, coll_id=2)
+        # ensure world_robot transform
+        self.w_T_r = self.robot_sim.spawn_robot_pose
 
 
     def _initialize_world_and_camera(self):
@@ -88,14 +90,13 @@ class setfrankaEnv(object):
             self.gym_instance.sim,
             self.gym_instance.env_list[0],
             world_params,
-            w_T_r=self.robot_sim.spawn_robot_pose
+            w_T_r=self.w_T_r 
         )
 
     def _initialize_mpc_control(self):
         # Initialize the MPC control
         self.mpc_control = ReacherTask(
-            self.mpc_config, 
-            self.robot_coll_description, 
+            self.mpc_config,
             self.world_description, 
             self.tensor_args)
         # update goal_joint_space:
@@ -195,3 +196,40 @@ class setfrankaEnv(object):
         self.msg.data = np.asarray(pc, np.float32).tobytes()
 
         pub_handle.publish(self.msg)   
+
+    def init_point_transform(self):
+        w_T_robot = torch.eye(4)
+        quat = torch.tensor([self.w_T_r.r.w, self.w_T_r.r.x, self.w_T_r.r.y, self.w_T_r.r.z]).unsqueeze(0)
+        rot = quaternion_to_matrix(quat)
+        w_T_robot[0,3] = self.w_T_r.p.x
+        w_T_robot[1,3] = self.w_T_r.p.y
+        w_T_robot[2,3] = self.w_T_r.p.z
+        w_T_robot[:3,:3] = rot[0]
+        self.w_robot_coord = CoordinateTransform(trans=w_T_robot[0:3,3].unsqueeze(0),
+                                            rot=w_T_robot[0:3,0:3].unsqueeze(0))    
+        
+    
+    def updateGymVisual(self,curr_state_tensor):
+               
+        # trans ee_pose in robot_coordinate to world coordinate
+        ee_pose = gymapi.Transform()
+        pose_state = self.mpc_control.controller.rollout_fn.get_ee_pose(curr_state_tensor)
+        e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
+        e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
+        ee_pose.p = gymapi.Vec3(e_pos[0], e_pos[1], e_pos[2])
+        ee_pose.r = gymapi.Quat(e_quat[1], e_quat[2], e_quat[3], e_quat[0])
+        ee_pose = self.w_T_r * ee_pose
+        self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, ee_pose)
+
+        # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
+        top_trajs = self.mpc_control.top_trajs.cpu().float()  # .numpy()
+        n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
+        w_pts = self.w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
+
+        top_trajs = w_pts.cpu().numpy()
+        color = np.array([0.0, 1.0, 0.0])
+        for k in range(top_trajs.shape[0]):
+            pts = top_trajs[k, :, :]
+            color[0] = float(k) / float(top_trajs.shape[0])
+            color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
+            self.gym_instance.draw_lines(pts, color=color)

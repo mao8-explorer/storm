@@ -239,8 +239,10 @@ class RobotSim():
     def set_robot_state(self, q_des, qd_des, env_handle, robot_handle):
 
         for evt in self.gym.query_viewer_action_events(self.viewer):
-            if evt.action == "pause" and evt.value > 0:
+            if evt.action == "PAUSE" and evt.value > 0:
                 self.playing = not self.playing
+            if evt.action == "QUIT" and evt.value > 0:
+                return False
                 
         if self.playing :
             robot_dof_states = copy.deepcopy(self.gym.get_actor_dof_states(env_handle, robot_handle,
@@ -255,6 +257,7 @@ class RobotSim():
                                                                         gymapi.STATE_ALL))
             self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(robot_dof_states['pos']))
 
+        return True
 
     def update_collision_model(self, link_poses, env_ptr, robot_handle):
         w_T_r = self.spawn_robot_pose

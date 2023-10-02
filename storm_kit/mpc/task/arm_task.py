@@ -34,24 +34,20 @@ from .task_base import BaseTask
 
 
 class ArmTask(BaseTask):
-    def __init__(self, task_file='ur10.yml', robot_file='ur10_reacher.yml', world_file='collision_env.yml', tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    def __init__(self, task_file='ur10.yml', world_file='collision_env.yml', tensor_args={'device':"cpu", 'dtype':torch.float32}):
 
         super().__init__(tensor_args=tensor_args)
         
         
-        self.controller = self.init_mppi(task_file, robot_file, world_file)
+        self.controller = self.init_mppi(task_file, world_file)
         self.init_aux()
         
     def get_rollout_fn(self, **kwargs):
         rollout_fn = ArmBase(**kwargs)
         return rollout_fn
 
-    def init_mppi(self, task_file, robot_file, collision_file):
-        # robot_yml = join_path(get_gym_configs_path(), robot_file)
+    def init_mppi(self, task_file, collision_file):
         
-        # with open(robot_yml) as file:
-        #     robot_params = yaml.load(file, Loader=yaml.FullLoader)
-
         world_yml = join_path(get_gym_configs_path(), collision_file)
         with open(world_yml) as file:
             world_params = yaml.load(file, Loader=yaml.FullLoader)
