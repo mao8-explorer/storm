@@ -22,33 +22,35 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 class FrankaEnvBase(object):
-    def __init__(self,args, gym_instance):
-
-        self.mpc_config = args.robot + '_reacher.yml'
+    def __init__(self, gym_instance):
+        self.mpc_config = 'franka_reacher.yml'
         self.world_description = 'collision_primitives_3d.yml'
-
         self.gym_instance = gym_instance
-        self.args = args
         self.device = torch.device('cuda', 0)
         self.tensor_args = {'device': self.device, 'dtype': torch.float32}
-
         self.gym = gym_instance.gym
         self.sim = gym_instance.sim
         self.env_ptr = gym_instance.env_list[0]
         self.viewer = gym_instance.viewer
         self.collision_grid = None
         self.curr_state_tensor = None
+
+    def _environment_init(self):
         self._initialize_robot_simulation() # robot_sim 
         self._initialize_world_and_camera() # world_instance
         self._initialize_mpc_control() # mpc_control 
-        self._initialize_env_objects() # 设置 gym 可操作物
+        self._initialize_env_objects() # 设置 gym 可操作物 handle
         self._initialize_rospy()
-        self.init_point_transform() # use for trans trajs_pos in robotCoordinate to world coordinate
-
+        self._init_point_transform() # use for trans trajs_pos in robotCoordinate to world coordinate
+    
     def _initialize_robot_simulation(self):
+        """
+        contains a generic robot class
+            that can load a robot asset into sim and 
+            gives access to robot's state and receive command_of_policy.
+        """
         # Initialize the robot simulation
-  
-        robot_yml = join_path(get_gym_configs_path(), self.args.robot + '.yml')
+        robot_yml = join_path(get_gym_configs_path(), 'franka.yml')
         with open(robot_yml) as file:
             robot_params = yaml.load(file, Loader=yaml.FullLoader)
         sim_params = robot_params['sim_params']  # get from -->'/home/zm/MotionPolicyNetworks/storm_ws/src/storm/content/configs/gym/franka.yml'
@@ -71,8 +73,10 @@ class FrankaEnvBase(object):
 
 
     def _initialize_world_and_camera(self):
-        # Initialize the world instance and camera_pose
-
+        """
+        Initialize the world instance and camera_pose
+        加载静态模型 包括桌面 球体 方块        
+        """
         # spawn camera:
         external_transform = tra.euler_matrix(0, 0, np.pi / 9).dot(
                 tra.euler_matrix(0, np.pi / 2, 0)
@@ -147,16 +151,16 @@ class FrankaEnvBase(object):
         object_pose.r = gymapi.Quat(0.392,0.608,-0.535,0.436)
         self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, object_pose)
 
-        object_pose.p = gymapi.Vec3(0.580,0.626, -0.274)
+        object_pose.p = gymapi.Vec3(0.700 , 0.16,  0.704)
         object_pose.r = gymapi.Quat(0.278,0.668,-0.604,0.334)
         self.gym.set_rigid_transform(self.env_ptr, self.collision_obj_base_handle, object_pose)
-     
 
+
+     
     def _dynamic_object_moveDesign(self):
         # Update velocity vector based on move bounds and current pose
-        if self.move_pose.p.x <= self.move_bounds[0][0] or self.move_pose.p.x >= self.move_bounds[1][0]:
+        if np.abs(self.move_pose.p.x) >= self.move_bounds:
             self.velocity_vector *= -1
-
         # Move the object based on the velocity vector
         dt_scale = 0.01
         self.move_pose.p.x += self.velocity_vector[0][0] * dt_scale
@@ -164,8 +168,7 @@ class FrankaEnvBase(object):
         self.move_pose.p.z += self.velocity_vector[0][2] * dt_scale
         w_move = self.w_T_r * self.move_pose
         self.gym.set_rigid_transform(
-            self.env_ptr, self.collision_obj_base_handle, w_move
-        )
+            self.env_ptr, self.collision_obj_base_handle, w_move)
 
     def _initialize_rospy(self):
         #  all ros_related
@@ -178,15 +181,13 @@ class FrankaEnvBase(object):
         self.msg.is_bigendian = False
         self.msg.point_step = 12
         self.msg.is_dense = False
-
         self.coll_msg = Float32()
-
         self.coll_robot_pub = rospy.Publisher('robot_collision', Float32, queue_size=10)
         self.pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
         self.pub_robot_link_pc = rospy.Publisher('robot_link_pc', PointCloud2, queue_size=5)
         
 
-    def init_point_transform(self):
+    def _init_point_transform(self):
         w_T_robot = torch.eye(4)
         quat = torch.tensor([self.w_T_r.r.w, self.w_T_r.r.x, self.w_T_r.r.y, self.w_T_r.r.z]).unsqueeze(0)
         rot = quaternion_to_matrix(quat)
@@ -196,8 +197,14 @@ class FrankaEnvBase(object):
         w_T_robot[:3,:3] = rot[0]
         self.w_robot_coord = CoordinateTransform(trans=w_T_robot[0:3,3].unsqueeze(0),
                                             rot=w_T_robot[0:3,0:3].unsqueeze(0))    
-    
-    def updateGymVisual(self):
+ 
+    def update_goal_state(self):
+        goal_state = self.goal_state
+        object_pose = self.world_instance.get_pose(self.target_body_handle)
+        object_pose.p = gymapi.Vec3(goal_state[0],goal_state[1],goal_state[2])
+        self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, object_pose)
+
+    def updateGymVisual_GoalUpdate(self):
                
         # trans ee_pose in robot_coordinate to world coordinate
         ee_pose = gymapi.Transform()
@@ -208,6 +215,13 @@ class FrankaEnvBase(object):
         ee_pose.r = gymapi.Quat(e_quat[1], e_quat[2], e_quat[3], e_quat[0])
         ee_pose = self.w_T_r * ee_pose
         self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, ee_pose)
+
+        # if current_ee_pose in goal_pose thresh ,update to next goal_pose
+        if (np.linalg.norm(np.array(self.goal_state) - np.ravel([ee_pose.p.x, ee_pose.p.y, ee_pose.p.z])) < 0.01):
+            self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
+            self.update_goal_state()
+            self.goal_flagi += 1
+            print("next goal",self.goal_flagi)
 
         # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
         top_trajs = self.mpc_control.top_trajs.cpu().float()  # .numpy()
@@ -254,6 +268,9 @@ class FrankaEnvBase(object):
         self.pub_pointcloud(collision_grid_pc, self.pub_env_pc)
 
     def monitorGoalupdate(self):
+        """
+        谁控制了target_body_handle 谁控制了MPC_Policy_Goal 不管是通过Gym还是通过代码的方式 都可以
+        """
         pose = self.world_instance.get_pose(self.target_body_handle)
         pose = self.w_T_r.inverse() * pose #将world坐标系下的目标点转到robot坐标系下
         if (np.linalg.norm(self.g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (
@@ -266,3 +283,5 @@ class FrankaEnvBase(object):
             self.g_q[3] = pose.r.z
             self.g_q[0] = pose.r.w
             self.mpc_control.update_params(goal_ee_pos=self.g_pos,goal_ee_quat=self.g_q)
+
+
