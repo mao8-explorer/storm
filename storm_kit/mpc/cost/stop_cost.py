@@ -44,10 +44,7 @@ class StopCost(nn.Module):
             sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
             delta_vel = self.traj_dt * max_nlimit
             self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
-        elif(max_limit is not None):
-            sum_matrix = torch.tril(torch.ones((self.horizon, self.horizon), **self.tensor_args)).T
-            delta_vel = torch.ones_like(self.traj_dt) * max_limit
-            self.max_vel = ((sum_matrix @ delta_vel).unsqueeze(-1))
+
         
     def forward(self, vels):
         inp_device = vels.device

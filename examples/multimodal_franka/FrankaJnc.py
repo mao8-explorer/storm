@@ -8,10 +8,12 @@ import numpy as np
 from storm_kit.gym.core import Gym
 from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml
 import rospy
+import queue
 
-class IKsolver:
+
+
+class IKSolve:
     def __init__(self):
-        # glabal Joint_des 进程设计
         self.num_proc = 1
         self.maxsize = 5
         self.output_queue = LimitedQueue(self.maxsize)
@@ -28,20 +30,22 @@ class IKsolver:
 
 
 class MPCRobotController(FrankaEnvBase):
-    def __init__(self, gym_instance,iksover):
+    def __init__(self, gym_instance , ik_mSolve):
         super().__init__(gym_instance = gym_instance)
         self._environment_init()
+        self.thresh = 0.03 # goal next thresh in Cart
         x,z,y = 0.50 , 0.40 , 0.519
         self.goal_list = [
              [x,y,-z],
              [x,y,z],
-             [-x,y,z],
-             [-x,y,-z]]
+             [-x,y,z]]
         self.goal_state = self.goal_list[0]
         self.update_goal_state()
         self.rollout_fn = self.mpc_control.controller.rollout_fn
         self.goal_ee_transform = np.eye(4)
-        self.iksover = iksover
+        # 暂行多进程方案是通过传参的方式 引导ik_proc句柄 保证ik_proc在主进程启动 避免无法共享内存的问题
+        self.ik_mSolve = ik_mSolve
+
 
     def run(self):
         self.goal_flagi = 0 # 调控目标点
@@ -58,9 +62,10 @@ class MPCRobotController(FrankaEnvBase):
                 current_robot_state = self.robot_sim.get_state(self.env_ptr, self.robot_ptr) # "dict: pos | vel | acc"
 
                 qinit = current_robot_state['position'] # shape is (7,)
-                self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos
-                self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot
-
+                self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()
+                self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
+                # 逆解获取请求发布 input_queue
+                self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
                 command = self.mpc_control.get_command(t_step, current_robot_state, control_dt=sim_dt, WAIT=True)
                 # get position command:
                 q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
@@ -70,6 +75,19 @@ class MPCRobotController(FrankaEnvBase):
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 
+
+                # 逆解获取查询 output_queue
+                try :
+                    output = self.ik_mSolve.output_queue.get()
+                    if output[1] is not None: # 无解
+                        self.rollout_fn.goal_jnq = torch.as_tensor(output[1], **self.tensor_args).unsqueeze(0) # 1 x n_dof
+                        print("--")
+                    else : 
+                        self.rollout_fn.goal_jnq = None
+                        print("无解")
+                except queue.Empty:
+                    "针对 output_queue队列为空的问题 会出现queue.Empty的情况发生"
+                    continue
 
             except KeyboardInterrupt:
                 print('Closing')
@@ -82,13 +100,18 @@ class MPCRobotController(FrankaEnvBase):
         
 if __name__ == '__main__':
 
-    rospy.init_node('pointcloud_publisher_node')
 
+    ik_mSolve = IKSolve() # 多进程的问题 （应该是没有正确的解决 含有糊弄的成分 主要就像要让 IKProc在主进程启动 同时 在spawn之前启动）
+    torch.multiprocessing.set_start_method('spawn', force=True)
+    torch.set_num_threads(8)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    rospy.init_node('pointcloud_publisher_node')
     sim_params = load_yaml(join_path(get_gym_configs_path(), 'physx.yml'))
     sim_params['headless'] = False
     gym_instance = Gym(**sim_params)
 
-    iksover = IKsolver()
-    controller = MPCRobotController(gym_instance,iksover)
+    controller = MPCRobotController(gym_instance , ik_mSolve)
     
     controller.run()

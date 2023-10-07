@@ -24,8 +24,9 @@ import torch
 import torch.autograd.profiler as profiler
 
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
-from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost,terminalCost
+from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost,terminalCost , FrankaSparseReward
 from ...mpc.rollout.arm_base import ArmBase
+import queue
 
 class ArmReacher(ArmBase):
     """
@@ -42,6 +43,7 @@ Todo:
         self.goal_state = None
         self.goal_ee_pos = None
         self.goal_ee_rot = None
+        self.goal_jnq = None
 
         device = self.tensor_args['device']
         float_dtype = self.tensor_args['dtype']
@@ -55,6 +57,9 @@ Todo:
         self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
                                   tensor_args=self.tensor_args)
         
+        self.franka_sparse_reward = FrankaSparseReward(**exp_params['cost']['franka_sparse_reward'], # 目标限制
+                                  tensor_args=self.tensor_args)
+
         
         self.terminal_cost = terminalCost(**exp_params['cost']['terminal_pos'],
                                   tensor_args=self.tensor_args)
@@ -69,18 +74,28 @@ Todo:
         goal_ee_rot = self.goal_ee_rot
         retract_state = self.retract_state
         goal_state = self.goal_state
+
+        if self.goal_jnq is not None:
+            disp_vec = state_batch[:,:,0:self.n_dofs] - self.goal_jnq[:,0:self.n_dofs]
+            if(self.exp_params['cost']['joint_l2']['weight'] > 0.0):
+                cost += self.dist_cost.forward(disp_vec)
+
+            if self.exp_params['cost']['franka_sparse_reward']['weight'] > 0: #!
+                cost += self.franka_sparse_reward.forward(disp_vec)
         
         # 500*30 500*1 500*30*1
-        goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                                                    goal_ee_pos, goal_ee_rot)
+        else: 
+            if(self.exp_params['cost']['goal_pose']['weight'][0] > 0.0):
+                goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
+                                                                        goal_ee_pos, goal_ee_rot)
+                cost += goal_cost
 
-
-        cost += goal_cost
+            
         
         # joint l2 cost
-        if(self.exp_params['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None):
-            disp_vec = state_batch[:,:,0:self.n_dofs] - goal_state[:,0:self.n_dofs]
-            cost += self.dist_cost.forward(disp_vec)
+        # if(self.exp_params['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None):
+        #     disp_vec = state_batch[:,:,0:self.n_dofs] - goal_state[:,0:self.n_dofs]
+        #     cost += self.dist_cost.forward(disp_vec)
 
         if(return_dist):
             return cost, goal_cost, rot_err_norm, goal_dist

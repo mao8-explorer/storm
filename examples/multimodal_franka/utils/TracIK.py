@@ -2,7 +2,6 @@
 import multiprocessing as mp
 import queue
 from tracikpy import TracIKSolver
-import numpy as np
 import time
 
 # 1. 若使用collections.deque 尽管能实现类似容量限制 先进先出等，但是进程间无法共享内存
@@ -50,7 +49,7 @@ class IKProc(mp.Process):
             "panda_link0",
             "ee_link",
             timeout=0.05,
-            solve_type= self.solve_types[2],
+            solve_type= self.solve_types[1],
         )
 
     def _ik(self, ee_pose, qinit):

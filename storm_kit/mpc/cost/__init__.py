@@ -22,6 +22,7 @@
 # DEALINGS IN THE SOFTWARE.#
 from .dist_cost import DistCost
 from .sparse_reward import SparseReward
+from .franka_sparse_reward import FrankaSparseReward
 from .finite_difference_cost import FiniteDifferenceCost
 from .jacobian_cost import JacobianCost
 from .pose_cost import PoseCost
@@ -44,4 +45,4 @@ except ImportError:
     pass
 
 __all__ = ['DistCost', 'FiniteDifferenceCost', 'JacobianCost', 'PoseCost', 'ProjectedDistCost','PoseCostQuaternion' \
-           'ZeroCost', 'get_inv_null_cost','get_transpose_null_cost', 'terminalCost','SparseReward']
+           'ZeroCost', 'get_inv_null_cost','get_transpose_null_cost', 'terminalCost','SparseReward','FrankaSparseReward']

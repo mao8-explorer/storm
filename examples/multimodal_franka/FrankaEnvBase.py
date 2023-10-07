@@ -1,4 +1,5 @@
 
+import copy
 from isaacgym import gymapi
 import torch
 import trimesh.transformations as tra
@@ -14,11 +15,6 @@ from std_msgs.msg import Float32
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import PointField
 np.set_printoptions(precision=2)
-torch.multiprocessing.set_start_method('spawn', force=True)
-torch.set_num_threads(8)
-torch.backends.cudnn.benchmark = False
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
 
 class FrankaEnvBase(object):
     def __init__(self, gym_instance):
@@ -134,7 +130,7 @@ class FrankaEnvBase(object):
         self.target_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, target_object, 0)
         self.target_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, target_object, 6)
 
-        self.ee_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, current_ee_obj, 0)
+        self.ee_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, current_ee_obj, 0)
       
         # set different color for three type objects RGB       
         self.gym.set_rigid_body_color(self.env_ptr, target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.8, 0.1, 0.1))
@@ -183,27 +179,49 @@ class FrankaEnvBase(object):
         self.w_robot_coord = CoordinateTransform(trans=w_T_robot[0:3,3].unsqueeze(0),
                                             rot=w_T_robot[0:3,0:3].unsqueeze(0))    
  
+    def monitorGoalupdate(self):
+        """
+        谁控制了target_body_handle 谁控制了MPC_Policy_Goal 不管是通过Gym还是通过代码的方式 都可以
+        检测 gym目标变化情况, 一旦变化， 更新MPC 目标
+        """
+        pose_w = copy.deepcopy(self.world_instance.get_pose(self.target_body_handle))
+        # self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, pose_w)
+        pose = self.w_T_r.inverse() * pose_w #将world坐标系下的目标点转到robot坐标系下
+        if (np.linalg.norm(self.g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (
+                np.linalg.norm(self.g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z])) > 0.0)):
+            self.g_pos[0] = pose.p.x
+            self.g_pos[1] = pose.p.y
+            self.g_pos[2] = pose.p.z
+            self.g_q[1] = pose.r.x   
+            self.g_q[2] = pose.r.y
+            self.g_q[3] = pose.r.z
+            self.g_q[0] = pose.r.w
+            self.mpc_control.update_params(goal_ee_pos=self.g_pos,goal_ee_quat=self.g_q)
+
     def update_goal_state(self):
         goal_state = self.goal_state
-        object_pose = self.world_instance.get_pose(self.target_body_handle)
-        object_pose.p = gymapi.Vec3(goal_state[0],goal_state[1],goal_state[2])
-        self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, object_pose)
+        world_T_body_des = copy.deepcopy(self.world_instance.get_pose(self.target_body_handle))
+        body_T_world = copy.deepcopy(world_T_body_des).inverse()
+        world_T_base = copy.deepcopy(self.world_instance.get_pose(self.target_base_handle))
+        world_T_body_des.p = gymapi.Vec3(goal_state[0],goal_state[1],goal_state[2])
+        set_world_T_base = world_T_body_des * body_T_world * world_T_base
+        self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, set_world_T_base)
+        # self.gym.set_rigid_transform(self.env_ptr, self.target_body_handle, object_pose)
 
     def updateGymVisual_GoalUpdate(self):
                
         # trans ee_pose in robot_coordinate to world coordinate
         ee_pose = gymapi.Transform()
         pose_state = self.mpc_control.controller.rollout_fn.get_ee_pose(self.curr_state_tensor)
-        e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
-        e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
-        ee_pose.p = gymapi.Vec3(e_pos[0], e_pos[1], e_pos[2])
-        ee_pose.r = gymapi.Quat(e_quat[1], e_quat[2], e_quat[3], e_quat[0])
+        cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
+        cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
+        ee_pose.p = gymapi.Vec3(cur_e_pos[0], cur_e_pos[1], cur_e_pos[2])
+        ee_pose.r = gymapi.Quat(cur_e_quat[1], cur_e_quat[2], cur_e_quat[3], cur_e_quat[0])
         ee_pose = self.w_T_r * ee_pose
-        self.gym.set_rigid_transform(self.env_ptr, self.ee_body_handle, ee_pose)
+        self.gym.set_rigid_transform(self.env_ptr, self.ee_base_handle, ee_pose)
 
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
-        thresh = 0.005
-        if (np.linalg.norm(np.array(self.goal_state) - np.ravel([ee_pose.p.x, ee_pose.p.y, ee_pose.p.z])) < thresh):
+        if (np.linalg.norm(np.array(self.g_pos -cur_e_pos)) < self.thresh):
             self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
             self.update_goal_state()
             self.goal_flagi += 1
@@ -221,24 +239,6 @@ class FrankaEnvBase(object):
             color[0] = float(k) / float(top_trajs.shape[0])
             color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
             self.gym_instance.draw_lines(pts, color=color)
-
-    def monitorGoalupdate(self):
-        """
-        谁控制了target_body_handle 谁控制了MPC_Policy_Goal 不管是通过Gym还是通过代码的方式 都可以
-        """
-        pose = self.world_instance.get_pose(self.target_body_handle)
-        pose = self.w_T_r.inverse() * pose #将world坐标系下的目标点转到robot坐标系下
-        if (np.linalg.norm(self.g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (
-                np.linalg.norm(self.g_q - np.ravel([pose.r.w, pose.r.x, pose.r.y, pose.r.z])) > 0.0)):
-            self.g_pos[0] = pose.p.x
-            self.g_pos[1] = pose.p.y
-            self.g_pos[2] = pose.p.z
-            self.g_q[1] = pose.r.x   
-            self.g_q[2] = pose.r.y
-            self.g_q[3] = pose.r.z
-            self.g_q[0] = pose.r.w
-            self.mpc_control.update_params(goal_ee_pos=self.g_pos,goal_ee_quat=self.g_q)
-
 
        
     def pub_pointcloud(self,pc,pub_handle):

@@ -34,6 +34,7 @@ class IKProc(mp.Process):
     def __init__(
         self,
         output_queue,
+        input_queue_maxsize = 5,
     ):
         """
         Args:
@@ -43,7 +44,7 @@ class IKProc(mp.Process):
         super().__init__()
         self.solve_types = ['Speed', 'Distance', 'Manipulation1', 'Manipulation2'] 
         self.output_queue = output_queue
-        self.input_queue = LimitedQueue(maxsize=5)
+        self.input_queue = LimitedQueue(input_queue_maxsize)
         self.ik_solver = TracIKSolver(
             "content/assets/urdf/franka_description/franka_panda_no_gripper.urdf",
             "panda_link0",
@@ -84,12 +85,14 @@ class MPPI:
     def __init__(self , num_proc = 1):
         
         self.num_proc = num_proc
-        self.output_queue = LimitedQueue(maxsize=5)
+        self.maxsize = 5
+        self.output_queue = LimitedQueue(self.maxsize)
         self.ik_procs = []
         for i in range(num_proc):
             self.ik_procs.append(
                 IKProc(
                     self.output_queue,
+                    input_queue_maxsize=self.maxsize,
                 )
             )
             self.ik_procs[-1].daemon = True #守护进程 主进程结束 IKProc进程随之结束
@@ -102,8 +105,7 @@ class MPPI:
         for i, p in enumerate(final_poses):
             # self.ik_procs[i % self.num_proc].ik(p, qinit, ind = i)
             self.ik_procs[-1].ik(p, qinit, ind = i)
-            
-            time.sleep(0.02) # like mpc_policy run
+            time.sleep(0.04) # like mpc_policy run
             try :
                 # print("output_queue请求中 ... ...")
                 output = self.output_queue.get()
@@ -129,7 +131,6 @@ def main():
     policy = MPPI()
     policy.test(repeated_ee_pose, qinit)
     time.sleep(1)
-
 
 
 if __name__ == "__main__":
