@@ -1,11 +1,9 @@
 """ Example spawning a robot in gym 
-只关心 运动规划问题 mpc with TrackIK_Guild
-无碰撞
-无SDF参与
-无MultiModal
 
+SDF collision design
 """
 from FrankaEnvBase import FrankaEnvBase
+from FilterPointCloud import FilterPointCloud
 from utils import LimitedQueue , IKProc
 import torch
 import numpy as np
@@ -14,8 +12,6 @@ from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml
 import rospy
 import queue
 import time
-
-
 
 class IKSolve:
     def __init__(self):
@@ -28,26 +24,37 @@ class IKSolve:
                 IKProc(
                     self.output_queue,
                     input_queue_maxsize=self.maxsize,
-                )
-            )
+                ))
             self.ik_procs[-1].daemon = True #守护进程 主进程结束 IKProc进程随之结束
             self.ik_procs[-1].start()       
 
+        # self.goal_list = [
+        #         [0.10,0.30,-0.65],
+        #         [0.10,0.30,0.65],
+        #         [-x,y,z],
+        #         [0.10,0.30,0.65],
+        #         [0.10,0.30,-0.65],
+        #         [-x,y,-z],]
+        # self.goal_list = [
+        #      [x,y,-z],
+        #      [x,y,z],]
 
 class MPCRobotController(FrankaEnvBase):
     def __init__(self, gym_instance , ik_mSolve):
         super().__init__(gym_instance = gym_instance)
         self._environment_init()
-        self.thresh = 0.03 # goal next thresh in Cart
-        x,z,y = 0.45 , 0.45 , 0.45
+        self.coll_movebound = [0.43,0.75]
+        self.coll_dt_scale = 0.008
+        self.uporient = 1.0
+        self.thresh = 0.05 # goal next thresh in Cart
+        x,z,y = 0.46 , 0.50 , 0.45 # y,z 翻个个
+
         self.goal_list = [
-             [x,y,-z],
-             [x,y,z],
-             [-x,y,z],
-            #  [-0.1,y,-0.5]
-             ]
+             [0.10,0.30,-0.65],
+             [0.10,0.30,0.65],]
         self.goal_state = self.goal_list[0]
         self.update_goal_state()
+        self.update_collision_state([x,y,0.0])
         self.rollout_fn = self.mpc_control.controller.rollout_fn
         self.goal_ee_transform = np.eye(4)
         # 暂行多进程方案是通过传参的方式 引导ik_proc句柄 保证ik_proc在主进程启动 避免无法共享内存的问题
@@ -57,18 +64,30 @@ class MPCRobotController(FrankaEnvBase):
         self.goal_flagi = 0 # 调控目标点
         sim_dt = self.mpc_control.exp_params['control_dt']
         t_step = gym_instance.get_sim_time()
-        lap_count = 10 # 跑5轮次
+        envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
+        obs = {}
+        lap_count = 8 # 跑5轮次
         self.jnq_des = np.zeros(7)
         last = time.time()
+        # 指标性元素
         opt_step_count = 0 
         self.curr_collision = 0
         while not rospy.is_shutdown() and \
-                self.goal_flagi / len(self.goal_list) != lap_count:
+            self.goal_flagi / len(self.goal_list) != lap_count:
             try:
                 opt_step_count += 1
                 self.gym_instance.step()
                 self.gym_instance.clear_lines()
-                
+                # generate pointcloud
+                self.robot_sim.updateCamImage()
+                obs.update(self.robot_sim.ImageToPointCloud()) #耗时大！
+                envpc_filter._update_state(obs) 
+                # compute pointcloud to sdf_map
+                # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
+                # self.collision_grid = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
+                #                      _compute_dynamic_voxeltosdf(envpc_filter.cur_scene_pc, visual = True)
+                self.collision_grid = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
+                                     _opt_compute_dynamic_voxeltosdf(envpc_filter.cur_scene_pc, visual = True)
                 # monitor ee_pose_gym and update goal_param_mpc
                 self.monitorMPCGoalupdate()
                 # seed goal to MPC_Policy _ get Command
@@ -87,9 +106,16 @@ class MPCRobotController(FrankaEnvBase):
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
                 self.updateGymVisual_GymGoalUpdate()
+                self.updateRosMsg()
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 
+
+                curr_coll = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_state_collision
+                if (curr_coll > 0.95).any() : 
+                    self.curr_collision += 1
+                    print(self.curr_collision, torch.nonzero(curr_coll>0.95).flatten().cpu().numpy())
+                self._dynamic_object_moveDesign()
                 self.traj_append()
                 # 逆解获取查询 output_queue
                 try :
@@ -104,19 +130,18 @@ class MPCRobotController(FrankaEnvBase):
                 except queue.Empty:
                     "针对 output_queue队列为空的问题 会出现queue.Empty的情况发生"
                     continue
+
             except KeyboardInterrupt:
                 print('Closing')
-        print("whole_time is ",time.time() - last, "opt_step_count :",opt_step_count)
 
-        self.mpc_control.close()
+        print("whole_time is ",time.time() - last, "opt_step_count :",opt_step_count ," collison_count: ",self.curr_collision)
+        # self.mpc_control.close()
         self.coll_robot_pub.unregister() 
         self.pub_env_pc.unregister()
         self.pub_robot_link_pc.unregister()
         self.plot_traj()
         print("mpc_close...")
-
-
-
+        
 if __name__ == '__main__':
 
 
@@ -130,7 +155,5 @@ if __name__ == '__main__':
     sim_params = load_yaml(join_path(get_gym_configs_path(), 'physx.yml'))
     sim_params['headless'] = False
     gym_instance = Gym(**sim_params)
-
-    controller = MPCRobotController(gym_instance , ik_mSolve)
-    
+    controller = MPCRobotController(gym_instance , ik_mSolve)    
     controller.run()

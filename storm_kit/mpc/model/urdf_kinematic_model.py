@@ -27,7 +27,7 @@ import torch.autograd.profiler as profiler
 from ...differentiable_robot_model.differentiable_robot_model import DifferentiableRobotModel
 from urdfpy import URDF
 from .model_base import DynamicsModelBase
-from .integration_utils import build_int_matrix, build_fd_matrix, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
+from .integration_utils import build_int_matrix, build_fd_matrix, build_fd_matrix_sphere, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 
 class URDFKinematicModel(DynamicsModelBase):
     def __init__(self, urdf_path, dt, batch_size=1000, horizon=5,
@@ -86,6 +86,9 @@ class URDFKinematicModel(DynamicsModelBase):
 
         self._fd_matrix = build_fd_matrix(self.num_traj_points, device=self.device,
                                           dtype=self.float_dtype, order=1)
+        
+        self._fd_matrix_sphere = build_fd_matrix_sphere(self.num_traj_points, device=self.device,
+                                          dtype=self.float_dtype)
         if(dt_traj_params is None):
             dt_array = [self.dt] * int(1.0 * self.num_traj_points) 
         else:
@@ -158,7 +161,8 @@ class URDFKinematicModel(DynamicsModelBase):
         act = act.to(self.device, dtype=self.float_dtype)
         nth_act_seq = self.integrate_action(act)
         
-        
+        # self._integrate_matrix torch.Size([30, 30])
+        #  self._fd_matrix torch.Size([30, 30])
         #print(state.shape)
         state_seq = self.step_fn(state, nth_act_seq, state_seq, self._dt_h, self.n_dofs, self._integrate_matrix, self._fd_matrix)
         #state_seq = self.enforce_bounds(state_seq)

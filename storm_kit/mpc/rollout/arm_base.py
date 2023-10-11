@@ -71,6 +71,7 @@ class ArmBase(RolloutBase):
         # rollout traj_dt starts from dt->dt*(horizon+1) as tstep 0 is the current state
         #self.traj_dt = torch.arange(self.dt, (mppi_params['horizon'] + 1) * self.dt, self.dt, device=device, dtype=float_dtype)
         self.traj_dt = self.dynamics_model.traj_dt
+        self._fd_matrix_sphere = self.dynamics_model._fd_matrix_sphere
         #print(self.traj_dt)
         
         if 'smooth' in self.exp_params['cost']:
@@ -123,7 +124,11 @@ class ArmBase(RolloutBase):
                                                            **self.exp_params['cost']['voxel_collision'])
             
         if(exp_params['cost']['primitive_collision']['weight'] > 0.0):
-            self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['primitive_collision'])
+         self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, 
+                                                                tensor_args=self.tensor_args, 
+                                                                **self.exp_params['cost']['primitive_collision'],
+                                                                traj_dt=self.traj_dt,
+                                                                _fd_matrix_sphere = self._fd_matrix_sphere)
 
         # if(exp_params['cost']['scene_collision']['weight'] > 0.0):
         #     self.scene_collision_cost = ScenecollisionCost(mppi_params = mppi_params, robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['scene_collision'])
@@ -210,7 +215,8 @@ class ArmBase(RolloutBase):
             if self.exp_params['cost']['primitive_collision']['weight'] > 0:
                 # loop_last_time = time.time_ns()
 
-                coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
+                # coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
+                coll_cost = self.primitive_collision_cost.optimal_forward(link_pos_batch, link_rot_batch)
                 cost += coll_cost
                 
                 # loop_time = (time.time_ns() - loop_last_time)/1e+6

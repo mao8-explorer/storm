@@ -22,11 +22,9 @@
 # DEALINGS IN THE SOFTWARE.#
 import torch
 import torch.nn as nn
-import yaml
 from ...geom.geom_types import tensor_circle
 from .gaussian_projection import GaussianProjection
 from ...util_file import get_assets_path, join_path
-from ...geom.sdf.world import WorldImageCollision
 from ...geom.sdf.world import WorldMoveableImageCollision
 
 class ImagemoveCollisionCost(nn.Module):

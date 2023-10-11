@@ -52,9 +52,7 @@ class StopCost(nn.Module):
         
         vel_abs = torch.abs(vels.to(**self.tensor_args))
 
-
         # max velocity threshold:
-        
 
         vel_abs = vel_abs - self.max_vel
         vel_abs[vel_abs < 0.0] = 0.0

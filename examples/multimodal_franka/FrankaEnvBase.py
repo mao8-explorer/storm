@@ -5,7 +5,7 @@ import torch
 import trimesh.transformations as tra
 import yaml
 import numpy as np
-from storm_kit.gym.core import Gym, World
+from storm_kit.gym.core import  World
 from storm_kit.gym.sim_robot import RobotSim
 from storm_kit.util_file import get_gym_configs_path, join_path, get_assets_path
 from storm_kit.mpc.task.reacher_task import ReacherTask
@@ -14,6 +14,7 @@ import rospy
 from std_msgs.msg import Float32
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import PointField
+import matplotlib.pyplot as plt
 np.set_printoptions(precision=2)
 
 class FrankaEnvBase(object):
@@ -29,6 +30,7 @@ class FrankaEnvBase(object):
         self.viewer = gym_instance.viewer
         self.collision_grid = None
         self.curr_state_tensor = None
+        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[]}
 
     def _environment_init(self):
         self._initialize_robot_simulation() # robot_sim 
@@ -124,7 +126,7 @@ class FrankaEnvBase(object):
         current_ee_obj = self.world_instance.spawn_object(current_asset_file, obj_asset_root, object_pose, 
                                                 name='ee_current_as_mug')    
 
-        self.collision_obj_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, collision_obj, 0)
+        self.collision_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, collision_obj, 0)
         self.collision_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, collision_obj, 6)
 
         self.target_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, target_object, 0)
@@ -148,7 +150,7 @@ class FrankaEnvBase(object):
 
         object_pose.p = gymapi.Vec3(0.700 , 0.16,  0.704)
         object_pose.r = gymapi.Quat(0.278,0.668,-0.604,0.334)
-        self.gym.set_rigid_transform(self.env_ptr, self.collision_obj_base_handle, object_pose)
+        self.gym.set_rigid_transform(self.env_ptr, self.collision_base_handle, object_pose)
 
 
     def _initialize_rospy(self):
@@ -179,7 +181,8 @@ class FrankaEnvBase(object):
         self.w_robot_coord = CoordinateTransform(trans=w_T_robot[0:3,3].unsqueeze(0),
                                             rot=w_T_robot[0:3,0:3].unsqueeze(0))    
  
-    def monitorGoalupdate(self):
+
+    def monitorMPCGoalupdate(self):
         """
         谁控制了target_body_handle 谁控制了MPC_Policy_Goal 不管是通过Gym还是通过代码的方式 都可以
         检测 gym目标变化情况, 一旦变化， 更新MPC 目标
@@ -199,6 +202,7 @@ class FrankaEnvBase(object):
             self.mpc_control.update_params(goal_ee_pos=self.g_pos,goal_ee_quat=self.g_q)
 
     def update_goal_state(self):
+        # target_base 与 body的讨论见草稿 10.07
         goal_state = self.goal_state
         world_T_body_des = copy.deepcopy(self.world_instance.get_pose(self.target_body_handle))
         body_T_world = copy.deepcopy(world_T_body_des).inverse()
@@ -206,9 +210,8 @@ class FrankaEnvBase(object):
         world_T_body_des.p = gymapi.Vec3(goal_state[0],goal_state[1],goal_state[2])
         set_world_T_base = world_T_body_des * body_T_world * world_T_base
         self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, set_world_T_base)
-        # self.gym.set_rigid_transform(self.env_ptr, self.target_body_handle, object_pose)
 
-    def updateGymVisual_GoalUpdate(self):
+    def updateGymVisual_GymGoalUpdate(self):
                
         # trans ee_pose in robot_coordinate to world coordinate
         ee_pose = gymapi.Transform()
@@ -225,7 +228,8 @@ class FrankaEnvBase(object):
             self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
             self.update_goal_state()
             self.goal_flagi += 1
-            print("next goal",self.goal_flagi)
+            print("next goal",self.goal_flagi , " lap_count: ",self.goal_flagi / len(self.goal_list), " collison_count: ",self.curr_collision)
+            
 
         # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
         top_trajs = self.mpc_control.top_trajs.cpu().float()  # .numpy()
@@ -259,11 +263,11 @@ class FrankaEnvBase(object):
 
     def updateRosMsg(self):
         # ROS Publish
-        robot_collision_cost = self.mpc_control.controller.rollout_fn \
-                                    .robot_self_collision_cost(self.curr_state_tensor.unsqueeze(0)[:,:,:7]) \
-                                    .squeeze().cpu().numpy()
-        self.coll_msg.data = robot_collision_cost
-        self.coll_robot_pub.publish(self.coll_msg)
+        # robot_collision_cost = self.mpc_control.controller.rollout_fn \
+        #                             .robot_self_collision_cost(self.curr_state_tensor.unsqueeze(0)[:,:,:7]) \
+        #                             .squeeze().cpu().numpy()
+        # self.coll_msg.data = robot_collision_cost
+        # self.coll_robot_pub.publish(self.coll_msg)
         # pub env_pointcloud and robot_link_spheres
         w_batch_link_spheres = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
         spheres = [s[0][:, :3].cpu().numpy() for s in w_batch_link_spheres]
@@ -276,14 +280,49 @@ class FrankaEnvBase(object):
      
     def _dynamic_object_moveDesign(self):
         # Update velocity vector based on move bounds and current pose
-        if np.abs(self.move_pose.p.x) >= self.move_bounds:
-            self.velocity_vector *= -1
+        collision_T = copy.deepcopy(self.world_instance.get_pose(self.collision_body_handle))
+        if collision_T.p.y < self.coll_movebound[0] or \
+           collision_T.p.y > self.coll_movebound[1] :
+            self.uporient *= -1
         # Move the object based on the velocity vector
-        dt_scale = 0.01
-        self.move_pose.p.x += self.velocity_vector[0][0] * dt_scale
-        self.move_pose.p.y += self.velocity_vector[0][1] * dt_scale
-        self.move_pose.p.z += self.velocity_vector[0][2] * dt_scale
-        w_move = self.w_T_r * self.move_pose
+        collision_T.p.y += self.uporient * self.coll_dt_scale
         self.gym.set_rigid_transform(
-            self.env_ptr, self.collision_obj_base_handle, w_move)
+            self.env_ptr, self.collision_base_handle, collision_T)
 
+    def update_collision_state(self,pose):
+        # target_base 与 body的讨论见草稿 10.07
+        collision_T = copy.deepcopy(self.world_instance.get_pose(self.collision_body_handle))
+        collision_T.p = gymapi.Vec3(pose[0],pose[1],pose[2])
+        self.gym.set_rigid_transform(self.env_ptr, self.collision_base_handle, collision_T)
+
+
+    def traj_append(self):
+        self.traj_log['position'].append(self.command['position'])
+        self.traj_log['velocity'].append(self.command['velocity'])
+        self.traj_log['acc'].append(self.command['acceleration'])
+        self.traj_log['des'].append(self.jnq_des)
+
+
+    def plot_traj(self):
+        plt.figure()
+        position = np.matrix(self.traj_log['position'])
+        vel = np.matrix(self.traj_log['velocity'])
+        acc = np.matrix(self.traj_log['acc'])
+        des = np.matrix(self.traj_log['des'])
+        axs = [plt.subplot(2,1,i+1) for i in range(2)]
+        if(len(axs) >= 2):
+            axs[0].set_title('Position')
+            axs[1].set_title('Velocity')
+            # axs[3].set_title('Trajectory Position')
+            axs[0].plot(position[:,0], 'r', label='joint1')
+            axs[0].plot(position[:,2], 'g',label='joint3')
+            axs[0].plot(des[:,0], 'r-.', label='joint1_des')
+            axs[0].plot(des[:,2],'g-.', label='joint3_des')
+            axs[0].legend()
+            axs[1].plot(vel[:,0], 'r',label='joint1')
+            axs[1].plot(vel[:,2], 'g', label='joint3')
+            axs[1].legend()
+            # axs[2].plot(acc[:,0], 'r',label='joint1')
+            # axs[2].plot(acc[:,2], 'g', label='joint3')
+        plt.savefig('trajectory.png')
+        plt.show()

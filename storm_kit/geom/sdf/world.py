@@ -30,6 +30,7 @@ import torch
 import matplotlib
 import matplotlib.pyplot as plt
 from scipy.ndimage import distance_transform_edt
+import copy
 matplotlib.use('tkagg')
 
 
@@ -57,11 +58,13 @@ class WorldGridCollision(WorldCollision):
         self.pitch = self.grid_resolution
         self.scene_sdf = None
         self.scene_sdf_matrix = None
+        
 
     def update_world_sdf(self):
         sdf_grid = self._compute_sdfgrid() # compute costly
         self.scene_sdf_matrix = sdf_grid
         self.scene_sdf = sdf_grid.flatten()
+        self.scene_voxels = copy.deepcopy(self.scene_sdf) #32768
 
     def get_signed_distance(self, pts):
         """This needs to be implemented
@@ -208,23 +211,56 @@ class WorldGridCollision(WorldCollision):
         self.scene_sdf[unique_indices] = torch.tensor(1.0, **self.tensor_args)
         # step 0 ~ 4 make the voxel map ， now I turn voxel_map to sdf _ 
         #   lean from   STOMP and RAMP:https://samsunglabs.github.io/RAMP-project-page/
-
         # step 5: flatten scene_sdf to 3d voxel grid
         self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
-
         # step 6: 计算内部点到外部点的距离变换 EDT 2Hz
         distances_inside = distance_transform_edt((self.scene_sdf_matrix == 0).cpu())
+        # # 计算外部点到内部点的距离变换
+        # distances_outside = distance_transform_edt((self.scene_sdf_matrix).cpu())
+        # # # 将两个距离变换结果相减，得到SDF
+        # sdf = distances_inside - distances_outside
         # 需要将distances_inside 转成 类似self.scene_sdf 的格式，这样就生成了一个sdf_map 
         self.scene_sdf  = torch.tensor(distances_inside.flatten(), **self.tensor_args)
+        if visual: # visual pointcloud  in voxel grid
+            return self.pt_matrix[unique_indices]
 
-        # # 计算外部点到内部点的距离变换
-        # distances_outside = distance_transform_edt((self.scene_sdf_matrix == 1).cpu())
-        # # 将两个距离变换结果相减，得到SDF
-        # sdf = distances_inside - distances_outside
+    
+    def _opt_compute_dynamic_voxeltosdf(self, pts,visual = False):
+        """
+        Update the scene_sdf based on the given points using rounding method.
 
+        Args:
+            pts (torch.Tensor): A tensor of shape (N, 3) representing the point cloud.
+
+        Returns:
+            None
+        """
+        pts = torch.tensor(pts, **self.tensor_args)
+        self.scene_sdf.fill_(1)
+        in_bounds = (pts >= self.bounds[0]).all(dim=-1) & (pts < self.bounds[1]).all(dim=-1)
+        pts = pts[in_bounds]
+        pt = self.proj_pt_idx.transform_point(pts)
+        pt = (pt).to(dtype=torch.int64)
+        ind_pt = (pt[..., 0]) * (self.num_voxels[1] * self.num_voxels[2]) + pt[..., 1] * self.num_voxels[2] + pt[..., 2]
+        unique_indices = torch.unique(ind_pt).to(dtype=torch.int64)
+        self.scene_sdf[unique_indices] = torch.tensor(0, **self.tensor_args)
+        #   lean from   STOMP and RAMP:https://samsunglabs.github.io/RAMP-project-page/
+        # step 5: flatten scene_sdf to 3d voxel grid
+        self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
+        # step 6: 计算内部点到外部点的距离变换 EDT 2Hz
+        distances_inside = distance_transform_edt((self.scene_sdf_matrix).cpu())
+        self.scene_voxels  = torch.tensor(distances_inside, **self.tensor_args).flatten() * self.grid_resolution
+        # 对dist大于0.05小于0.30的区域进行运算
+        mask_mid = (self.scene_voxels > 0.07) & (self.scene_voxels < 0.20)
+        self.scene_sdf[mask_mid] = torch.exp(-15 * (self.scene_voxels[mask_mid] - 0.07))
+        # 对dist小于等于0.05的区域直接设置为1
+        self.scene_sdf[self.scene_voxels <= 0.07] = 1.0
+        # 对dist大于0.30的区域直接设置为0
+        self.scene_sdf[self.scene_voxels > 0.20] = 0.0 
         if visual: # visual pointcloud  in voxel grid
             return self.pt_matrix[unique_indices]
         
+
     def get_scene_sdf_matrix(self):
         self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
 
@@ -257,6 +293,7 @@ class WorldGridCollision(WorldCollision):
         mlab.show()
        
     def view_scene_sdf(self):
+        # 不知道是谁写的 可能是我吧 但是非常有用
         from mayavi import mlab
         from scipy.ndimage import distance_transform_edt
 
@@ -278,18 +315,16 @@ class WorldGridCollision(WorldCollision):
         # Show the figure
         mlab.show()
 
-        # # Create a loop to change the contour level dynamically  循环显示等高线
-        # for contour_level in np.linspace(0.01, 0.5, num=10):
-        #     # Clear the figure
-        #     mlab.clf()
+        # Create a loop to change the contour level dynamically  循环显示等高线
+        for contour_level in np.linspace(0.01, 0.5, num=10):
+            # Clear the figure
+            mlab.clf()
 
-        #     # Create contour lines using mlab.contour3d
-        #     contour = mlab.contour3d(normalized_distances, contours=[contour_level], colormap='coolwarm', opacity=0.3)
+            # Create contour lines using mlab.contour3d
+            contour = mlab.contour3d(normalized_distances, contours=[contour_level], colormap='coolwarm', opacity=0.3)
 
-        #     # Show the figure
-        #     mlab.show()
-
-       
+            # Show the figure
+            mlab.show()
 
     def check_pts_sdf(self, pts):
         '''

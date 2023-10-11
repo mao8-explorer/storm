@@ -60,6 +60,14 @@ def build_fd_matrix(horizon, device='cpu', dtype=torch.float32, order=1, PREV_ST
 
     return fd_mat
 
+def build_fd_matrix_sphere(horizon, device='cpu', dtype=torch.float32):
+
+    one_t = torch.ones(horizon, device=device, dtype=dtype)
+    fd_mat = -1.0 * torch.diag_embed(one_t)
+    fd_mat += torch.diag_embed(one_t[:-1], offset=1)
+    H1_H = fd_mat[:-1] # 29 * 30
+    H_H = torch.cat((H1_H[0].unsqueeze(0),H1_H)) # 30 * 30
+    return H_H
 
 def build_int_matrix(horizon, diagonal=0, device='cpu', dtype=torch.float32, order=1,
                      traj_dt=None):
@@ -106,9 +114,27 @@ def euler_integrate(q_0, u, diag_dt, integrate_matrix):
     q_new = q_0 + torch.matmul(integrate_matrix, torch.matmul(diag_dt, u))
     return q_new
 
-#@torch.jit.script
-def tensor_step_acc(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix=None):
-    #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Optional[Tensor]) -> Tensor
+# 就不传参 直接给!
+@torch.jit.script
+def sphere_pos_sphere_vel(state_pos_seq, dt_h, _fd_matrix_sphere=None):
+    # (Tensor, Tensor, Tensor) -> Tensor
+
+    # # 首先将 dt_h 扩展为与 vel 的形状相同
+    # dt_h_expanded = dt_h.view(1, dt_h.shape[0], 1).expand(state_pos_seq.shape)
+    # # 对 vel 进行逐元素除法以考虑时间
+    # final = torch.matmul(_fd_matrix_sphere, state_pos_seq) * 1 / dt_h_expanded
+    # 使用广播来进行逐元素除法
+    h = _fd_matrix_sphere.shape[0]
+    b_h = state_pos_seq.shape[0] 
+    b = b_h // h
+    state_vel_seq = (torch.matmul(_fd_matrix_sphere, state_pos_seq.view(b,h,-1)) / dt_h.view(1, -1, 1)).view(b_h,-1,3)
+    final = torch.norm(state_vel_seq, dim=-1,keepdim=True) # 15000 * 8 * 3
+    return torch.cat((state_vel_seq,final),dim=-1) #15000 * 8 * 4
+
+# state_seq = self.step_fn(state, nth_act_seq, state_seq, self._dt_h, self.n_dofs, self._integrate_matrix, self._fd_matrix)
+@torch.jit.script
+def tensor_step_acc(state, act, state_seq, dt_h, n_dofs: int, integrate_matrix, fd_matrix=None):
+    # (Tensor, Tensor, Tensor, Tensor, int, Tensor, Optional[Tensor]) -> Tensor
     # This is batch,n_dof
     q = state[:,:n_dofs]
     qd = state[:, n_dofs:2 * n_dofs]
@@ -121,6 +147,7 @@ def tensor_step_acc(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_ma
     state_seq[:,:, n_dofs * 2: n_dofs * 3] = qdd_new
     
     return state_seq
+
 
 #@torch.jit.script
 def tensor_step_vel(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix):

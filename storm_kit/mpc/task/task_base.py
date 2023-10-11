@@ -47,7 +47,7 @@ class BaseTask():
     
     def update_params(self, **kwargs):
         self.controller.rollout_fn.update_params(**kwargs)
-        self.control_process.update_params(**kwargs)
+        # self.control_process.update_params(**kwargs)
         return True
 
 

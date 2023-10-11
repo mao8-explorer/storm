@@ -2,21 +2,20 @@ import torch
 import torch.nn as nn
 
 
-class FrankaSparseReward(nn.Module):
-    def __init__(self, weight=None, vec_weight=None, sigma =None, device=torch.device('cpu'), float_dtype=torch.float32, **kwargs):
-        super(FrankaSparseReward, self).__init__()
-        self.device = device
-        self.float_dtype = float_dtype
-        self.weight = torch.as_tensor(weight, device=device, dtype=float_dtype)
+class JnqSparseReward(nn.Module):
+    def __init__(self, weight=None, vec_weight=None, sigma=None, tensor_args={'device':"cpu", 'dtype':torch.float32}, **kwargs):
+        super(JnqSparseReward, self).__init__()
+        self.tensor_args = tensor_args
+        self.weight = torch.as_tensor(weight, **self.tensor_args)
         self.sigma = sigma
         if(vec_weight is not None):
-            self.vec_weight = torch.as_tensor(vec_weight, device=device, dtype=float_dtype)
+            self.vec_weight = torch.as_tensor(vec_weight, **self.tensor_args)
         else:
             self.vec_weight = 1.0
     
     def forward(self, disp_vec):
         inp_device = disp_vec.device
-        disp_vec = self.vec_weight * disp_vec.to(self.device)
+        disp_vec = self.vec_weight * disp_vec.to(**self.tensor_args)
         dist_sq = torch.sum(disp_vec**2, dim=-1, keepdim=False)
 
         # 现在有这样的需求： 在获得了 数据大小为 batch * horizon 的 distance后，这些distance表示的是小车当前位置状态与目标点的欧拉距离，

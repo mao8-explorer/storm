@@ -24,7 +24,7 @@ import torch
 import torch.autograd.profiler as profiler
 
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
-from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost,terminalCost , FrankaSparseReward
+from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost,terminalCost , JnqSparseReward,CartSparseReward
 from ...mpc.rollout.arm_base import ArmBase
 import queue
 
@@ -57,9 +57,11 @@ Todo:
         self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
                                   tensor_args=self.tensor_args)
         
-        self.franka_sparse_reward = FrankaSparseReward(**exp_params['cost']['franka_sparse_reward'], # 目标限制
+        self.jnq_sparse_reward = JnqSparseReward(**exp_params['cost']['Jnq_sparse_reward'], # 目标限制
                                   tensor_args=self.tensor_args)
-
+        
+        self.cart_sparse_reward = CartSparseReward(**exp_params['cost']['Cart_sparse_reward'], # 目标限制
+                                  tensor_args=self.tensor_args)
         
         self.terminal_cost = terminalCost(**exp_params['cost']['terminal_pos'],
                                   tensor_args=self.tensor_args)
@@ -75,23 +77,28 @@ Todo:
         retract_state = self.retract_state
         goal_state = self.goal_state
 
+        # 为什么要存在 因为逆解不存在时，也就是全局规划无解时，可以使用该方式引导
+        goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
+                                                                goal_ee_pos, goal_ee_rot)
+        cost += goal_cost
+
+        #  pose sparse_reward design 加快末端位置收敛 
+        if self.exp_params['cost']['Cart_sparse_reward']['weight'] > 0: #!
+            cost += self.cart_sparse_reward.forward(ee_pos_batch,goal_ee_pos)
+
         if self.goal_jnq is not None:
             disp_vec = state_batch[:,:,0:self.n_dofs] - self.goal_jnq[:,0:self.n_dofs]
             if(self.exp_params['cost']['joint_l2']['weight'] > 0.0):
                 cost += self.dist_cost.forward(disp_vec)
 
-            if self.exp_params['cost']['franka_sparse_reward']['weight'] > 0: #!
-                cost += self.franka_sparse_reward.forward(disp_vec)
+            if self.exp_params['cost']['Jnq_sparse_reward']['weight'] > 0: #!
+                cost += self.jnq_sparse_reward.forward(disp_vec)
         
-        # 500*30 500*1 500*30*1
-        else: 
-            if(self.exp_params['cost']['goal_pose']['weight'][0] > 0.0):
-                goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                                                        goal_ee_pos, goal_ee_rot)
-                cost += goal_cost
 
-            
-        
+        # 500*30 500*1 500*30*1
+        # else: 
+
+    
         # joint l2 cost
         # if(self.exp_params['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None):
         #     disp_vec = state_batch[:,:,0:self.n_dofs] - goal_state[:,0:self.n_dofs]

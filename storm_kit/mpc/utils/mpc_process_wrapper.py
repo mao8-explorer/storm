@@ -42,7 +42,7 @@ class ControlProcess(object):
         except Exception:
             pass
             
-        torch.save(controller, 'control_instance.p')
+        # torch.jit.save(controller, 'control_instance.pt')
         
         try:
             controller.rollout_fn.dynamics_model.robot_model.load_lxml_objects()
@@ -64,13 +64,13 @@ class ControlProcess(object):
         self.control_space = control_space
         
         #
-        self.result_queue = Queue(maxsize=1)
-        self.opt_queue = Queue(maxsize=1)
+        # self.result_queue = Queue(maxsize=1)
+        # self.opt_queue = Queue(maxsize=1)
 
         
-        self.opt_process = Process(target=optimize_process, args=('control_instance.p', self.opt_queue,self.result_queue))
-        self.opt_process.daemon = True
-        self.opt_process.start()
+        # self.opt_process = Process(target=optimize_process, args=('control_instance.p', self.opt_queue,self.result_queue))
+        # self.opt_process.daemon = True
+        # self.opt_process.start()
         self.controller = controller
         self.control_dt = control_dt
         self.prev_mpc_tstep = 0.0
@@ -234,15 +234,15 @@ class ControlProcess(object):
         return command[f_idx:], command_tstep[f_idx:]
 
     def update_params(self, **kwargs):
-        
         self.params = kwargs
 
  
-    def close(self):
-        self.done = True
-        opt_data = {'state': None, 'dt':None, 'done':self.done, 'params':None}
-        self.opt_queue.put(opt_data)
-        self.opt_process.join()
+    # def close(self):
+    #     print("close是什么意思")
+    #     self.done = True
+    #     opt_data = {'state': None, 'dt':None, 'done':self.done, 'params':None}
+    #     self.opt_queue.put(opt_data)
+    #     self.opt_process.join()
 
 def optimize_process(control_string, opt_queue, result_queue):
     """
@@ -259,14 +259,17 @@ def optimize_process(control_string, opt_queue, result_queue):
     """
     controller = torch.load(control_string)
     try:
+        print("这个有啥用 ---")
         controller.rollout_fn.dynamics_model.robot_model.load_lxml_objects()
     except Exception:
+        print("一直pass吗 ---")
         pass
     i = 0
     start_time = time.time()
     state_tensor = torch.zeros((1, 2 * controller.rollout_fn.dynamics_model.n_dofs), **controller.tensor_args)
     goal_count = 0
     while (True):
+        print("这个有啥用 ---")
         opt_data = opt_queue.get()
         if(opt_data['done']):
             break
@@ -299,4 +302,5 @@ def optimize_process(control_string, opt_queue, result_queue):
                   'top_values':top_values, 'top_trajs':top_trajs, 'top_idx':top_idx}
         result_queue.put(result)
         i = time.time() - start_time
+        
     return True

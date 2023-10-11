@@ -33,6 +33,7 @@ from ...differentiable_robot_model.urdf_utils import URDFRobotModel
 from ...geom.geom_types import tensor_capsule, tensor_sphere
 from ...util_file import join_path, get_mpc_configs_path
 from ...geom.nn_model.robot_self_collision import RobotSelfCollisionNet
+from ...mpc.model.integration_utils import sphere_pos_sphere_vel
 from typing import List
 
 class RobotCapsuleCollision:
@@ -265,7 +266,8 @@ class RobotSphereCollision:
         All points are stored in the world reference frame, obtained by using update_pose calls.
     """
     
-    def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32}):
+    def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32},
+                 traj_dt=None,_fd_matrix_sphere=None):
         """ Initialize with robot collision parameters, look at franka_reacher.py for an example.
 
         Args:
@@ -276,6 +278,10 @@ class RobotSphereCollision:
         # read capsules
         self.batch_size = batch_size
         self.tensor_args = tensor_args
+
+        # used for sphere vel compute
+        self.traj_dt = traj_dt
+        self._fd_matrix_sphere = _fd_matrix_sphere
 
         
         # keep track of their pose in world frame
@@ -361,6 +367,27 @@ class RobotSphereCollision:
                 self._batch_link_spheres.append(self._link_spheres[i].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
         self.w_batch_link_spheres = copy.deepcopy(self._batch_link_spheres)
         
+    def _env_build_batch_features(self, clone_objs=False, clone_pose=True, batch_size=None):
+        """clones poses/object instances for computing across batch. Use this once per batch size change to avoid re-initialization over repeated calls.
+
+        Args:
+            clone_objs (bool, optional): clones objects. Defaults to False.
+            clone_pose (bool, optional): clones pose. Defaults to True.
+            batch_size ([type], optional): batch_size to clone. Defaults to None.
+        """        
+        print("调用了--batch_features")
+        if(batch_size is not None):
+            self.batch_size = batch_size
+        if(clone_objs):
+            self._batch_link_spheres = []
+            tmp = []
+            for i in range(len(self._link_spheres)):
+                self._batch_link_spheres.append(self._link_spheres[i][:,:3].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
+                tmp.append(self._link_spheres[i][:,:4].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
+        self.w_batch_link_spheres = copy.deepcopy(self._batch_link_spheres)
+        self.w_batch_link_spheres_vel = copy.deepcopy(tmp)
+
+         
     def update_batch_robot_collision_pose(self, links_pos, links_rot):
         """
         Update link collision poses
@@ -415,12 +442,31 @@ class RobotSphereCollision:
         links_pos: bxnx3
         links_rot: bxnx3x3
         '''
-        
         b, n, _ = links_pos.shape
-        
         for i in range(n):
             # link_pts = self._batch_link_spheres[i][:,:,:3]
-            self.w_batch_link_spheres[i][:,:,:3] = transform_point(self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+            self.w_batch_link_spheres[i] = transform_point(self._batch_link_spheres[i], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+
+    def _vel_update_batch_robot_collision_objs(self, links_pos, links_rot):
+        '''update pose of link spheres
+
+        Args:
+        links_pos: bxnx3
+        links_rot: bxnx3x3
+
+        traj_dt
+        state_current as pos(0)
+        transform_vel_jt
+
+        '''
+        b, n, _ = links_pos.shape
+        horizon = self._fd_matrix_sphere.shape[0]
+        rollout_traj = b // horizon
+        for i in range(n):
+            self.w_batch_link_spheres[i] = transform_point(self._batch_link_spheres[i], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+            # 15000*8*3 | 30 | 30*30   -> 15000 * 8 * 3 
+            self.w_batch_link_spheres_vel[i] = sphere_pos_sphere_vel(self.w_batch_link_spheres[i], self.traj_dt, self._fd_matrix_sphere)
+
 
     def check_self_collisions_nn(self, q):
         """compute signed distance using NN, uses an instance of :class:`.nn_model.robot_self_collision.RobotSelfCollisionNet`
@@ -458,7 +504,7 @@ class RobotSphereCollision:
         raise NotImplementedError
 
     def get_batch_robot_link_spheres(self):
-        return self.w_batch_link_spheres
+        return self.w_batch_link_spheres , self.w_batch_link_spheres_vel
 
     def get_robot_link_points(self):
         return self.w_link_points

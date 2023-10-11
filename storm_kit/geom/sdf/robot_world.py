@@ -75,8 +75,11 @@ class RobotWorldCollisionCapsule(RobotWorldCollision):
 class RobotWorldCollisionPrimitive(RobotWorldCollision):
     def __init__(self, robot_collision_params, world_collision_params, robot_batch_size=1,
                  world_batch_size=1, tensor_args={'device': "cpu", 'dtype': torch.float32},
-                 bounds=None, grid_resolution=None):
-        robot_collision = RobotSphereCollision(robot_collision_params, robot_batch_size, tensor_args)
+                 bounds=None, grid_resolution=None, 
+                 traj_dt=None,_fd_matrix_sphere=None):
+
+        robot_collision = RobotSphereCollision(robot_collision_params, robot_batch_size, tensor_args,
+                                               traj_dt=traj_dt,_fd_matrix_sphere=_fd_matrix_sphere)
 
         world_collision = WorldPrimitiveCollision(world_collision_params, tensor_args=tensor_args,
                                                   batch_size=world_batch_size, bounds=bounds,
@@ -88,7 +91,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
 
     def build_batch_features(self, batch_size, clone_pose=True, clone_points=True):
         self.batch_size = batch_size
-        self.robot_coll.build_batch_features(clone_objs=clone_points, batch_size=batch_size)
+        self.robot_coll._env_build_batch_features(clone_objs=clone_points, batch_size=batch_size)
 
     def check_robot_sphere_collisions(self, link_trans, link_rot):
         """get signed distance from stored grid [very fast]
@@ -231,10 +234,106 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
             # compute distance between world objs and link spheres
             sdf = self.world_coll.check_pts_sdf(spheres[:, :3]) * 0.05 - spheres[:, 3] # 球体point对应的sdf +  radius
             sdf = sdf.view(b, n)
-            dist[:, i] = torch.max(sdf, dim=-1)[0]
+            # dist[:, i] = torch.max(sdf, dim=-1)[0]  # why max distance 
+            dist[:, i] = torch.min(sdf, dim=-1)[0]  # why max distance 
 
         return dist
-    
+
+
+    def optimal_check_robot_sphere_collisions_voxeltosdf(self, link_trans, link_rot):
+        """
+        check_pts_sdf(every_link)
+        1. transform (points of every link) to map "robot points" in "robot_frame"
+        2. directly check_pts_sdf 
+
+        """
+        batch_size = link_trans.shape[0]
+        # update link pose:
+        if (self.robot_batch_size != batch_size):
+            self.robot_batch_size = batch_size
+            self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
+
+        self.robot_coll._vel_update_batch_robot_collision_objs(link_trans, link_rot)  # 根据关节位置 解算每个link对应的球体位置
+
+        w_batch_link_spheres,w_batch_link_spheres_vel = self.robot_coll.get_batch_robot_link_spheres() 
+
+
+        n_links = len(w_batch_link_spheres) # 7 
+
+        if (self.dist is None or self.dist.shape[0] != n_links):
+            self.dist = torch.zeros((batch_size, n_links), **self.tensor_args)
+            self.vel = torch.zeros((batch_size, n_links,4), **self.tensor_args)
+            # dimensions_accumulated = torch.cumsum(torch.tensor([s.shape[1] for s in w_link_spheres]), dim=0)
+            # sphere_indiced = torch.cat([torch.tensor([0]), dimensions_accumulated])
+        dist = self.dist
+        vel = self.vel
+
+        # # 将所有链接的球体合并为一个张量
+        # all_spheres = torch.cat([s.view(-1, 4) for s in w_link_spheres])
+        # # 计算所有链接的球体与世界对象之间的SDF
+        # sdf = self.world_coll.check_pts_sdf(all_spheres[:, :3])
+        # for i in range(n_links):
+        #     sdf_clip = sdf[batch_size*sphere_indiced[i]:batch_size*sphere_indiced[i+1]].view(batch_size, -1)
+        #     dist[:, i] = torch.min(sdf_clip, dim=-1)[0]
+        for i in range(n_links): # 按link分组查事先建立的SDF，找到最小值，作为当前link的min_distance 
+            spheres = w_batch_link_spheres[i]  # spheres shape : 15000*8*3
+            vel_spheres = w_batch_link_spheres_vel[i] # vel_spheres shape : 15000*8*4 15000个数据集，每个集合8个球，4表示是球的速度信息
+            b, n, _ = spheres.shape
+            spheres = spheres.view(b * n, 3)
+            # compute distance between world objs and link spheres
+            sdf = self.world_coll.check_pts_sdf(spheres) # flatten 15000*8 to fast pts check
+            sdf = sdf.view(b, n) # sdf shape ： 15000 * 8
+            dist[:, i],index = torch.min(sdf, dim=-1)  # 从sdf每条数据集的8个球中，找到对应最小的min_distance，并返回该球索引
+            # /chatgpt : 现在需要根据从sdf查到的min索引，找到vel_spheres中相应的值 ，最后得到的结果shape应为: 15000 * 4，表示该球对应的4个速度信息
+            vel[:,i] = vel_spheres.gather(1, index.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4)).squeeze(1)
+
+
+        return dist,vel
+
+    def _check_robot_sdf_PPV(self, link_trans, link_rot):
+        """
+        check_pts_sdf(every_link)
+        1. transform (points of every link) to map "robot points" in "robot_frame"
+        2. directly check_pts_sdf 
+
+        """
+        batch_size = link_trans.shape[0]
+        # update link pose:
+        if (self.robot_batch_size != batch_size):
+            self.robot_batch_size = batch_size
+            self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
+
+        self.robot_coll.update_batch_robot_collision_objs(link_trans, link_rot)  # 根据关节位置 解算每个link对应的球体位置
+
+        w_link_spheres = self.robot_coll.get_batch_robot_link_spheres() 
+
+
+        n_links = len(w_link_spheres) # 7 
+
+        if (self.dist is None or self.dist.shape[0] != n_links):
+            self.dist = torch.zeros((batch_size, n_links), **self.tensor_args)
+            # dimensions_accumulated = torch.cumsum(torch.tensor([s.shape[1] for s in w_link_spheres]), dim=0)
+            # sphere_indiced = torch.cat([torch.tensor([0]), dimensions_accumulated])
+        dist = self.dist
+
+        # # 将所有链接的球体合并为一个张量
+        # all_spheres = torch.cat([s.view(-1, 4) for s in w_link_spheres])
+        # # 计算所有链接的球体与世界对象之间的SDF
+        # sdf = self.world_coll.check_pts_sdf(all_spheres[:, :3])
+        # for i in range(n_links):
+        #     sdf_clip = sdf[batch_size*sphere_indiced[i]:batch_size*sphere_indiced[i+1]].view(batch_size, -1)
+        #     dist[:, i] = torch.min(sdf_clip, dim=-1)[0]
+        for i in range(n_links): # 按link分组查事先建立的SDF，找到最小值，作为当前link的min_distance 
+            spheres = w_link_spheres[i]
+            b, n, _ = spheres.shape
+            spheres = spheres.view(b * n, 4)
+
+            # compute distance between world objs and link spheres
+            sdf = self.world_coll.check_pts_sdf(spheres[:, :3])
+            sdf = sdf.view(b, n)
+            dist[:, i] = torch.min(sdf, dim=-1)[0]  # 取每个link对应的球体集合的min值作为该link的sdf
+
+        return dist
 
     def get_robot_env_sdf(self, link_trans, link_rot):
         """Compute signed distance via analytic functino
