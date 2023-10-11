@@ -108,7 +108,7 @@ class MPCRobotController(FrankaEnvBase):
                 print('Closing')
         print("whole_time is ",time.time() - last, "opt_step_count :",opt_step_count)
 
-        self.mpc_control.close()
+        # self.mpc_control.close()
         self.coll_robot_pub.unregister() 
         self.pub_env_pc.unregister()
         self.pub_robot_link_pc.unregister()

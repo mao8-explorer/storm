@@ -213,8 +213,8 @@ class URDFKinematicModelBaseline(DynamicsModelBase):
         num_traj_points = self.num_traj_points
         link_pos_seq = self.link_pos_seq
         link_rot_seq = self.link_rot_seq
-        lin_jac_seq = self.lin_jac_seq
-        ang_jac_seq = self.ang_jac_seq
+        # lin_jac_seq = self.lin_jac_seq
+        # ang_jac_seq = self.ang_jac_seq
         for t in range(horizon):
             # state_seq[:, t] = curr_state.clone()
             # ee_pos_seq[:,t] = curr_ee_pos.clone()
@@ -224,8 +224,8 @@ class URDFKinematicModelBaseline(DynamicsModelBase):
             state_seq[:, t,-1] = self._traj_tstep[t]
             ee_pos_seq[:,t,:] = curr_ee_pos
             ee_rot_seq[:,t,:,:] = curr_ee_rot
-            lin_jac_seq[:,t,:,:] = lin_jac
-            ang_jac_seq[:,t,:,:] = ang_jac
+            # lin_jac_seq[:,t,:,:] = lin_jac
+            # ang_jac_seq[:,t,:,:] = ang_jac
             
             # get link poses:
             for ki,k in enumerate(self.link_names):
@@ -242,8 +242,8 @@ class URDFKinematicModelBaseline(DynamicsModelBase):
         state_dict = {'state_seq':state_seq.to(inp_device),
                       'ee_pos_seq': ee_pos_seq.to(inp_device),
                       'ee_rot_seq': ee_rot_seq.to(inp_device),
-                      'lin_jac_seq': lin_jac_seq.to(inp_device),
-                      'ang_jac_seq': ang_jac_seq.to(inp_device),
+                    #   'lin_jac_seq': lin_jac_seq.to(inp_device),
+                    #   'ang_jac_seq': ang_jac_seq.to(inp_device),
                       'link_pos_seq':link_pos_seq.to(inp_device),
                       'link_rot_seq':link_rot_seq.to(inp_device),
                       'prev_state_seq':self.prev_state_buffer.to(inp_device)}
@@ -315,7 +315,7 @@ class URDFKinematicModelBaseline(DynamicsModelBase):
         #print(start_state[:,self.n_dofs*2 : self.n_dofs*3])
 
         shape_tup = (curr_batch_size * num_traj_points, self.n_dofs)
-        ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(state_seq[:,:,:self.n_dofs].view(shape_tup),
+        ee_pos_seq, ee_rot_seq = self.robot_model.compute_fk(state_seq[:,:,:self.n_dofs].view(shape_tup),
                                                                                                     state_seq[:,:,self.n_dofs:2 * self.n_dofs].view(shape_tup),
                                                                                                     link_name=self.ee_link_name)
 
@@ -328,14 +328,14 @@ class URDFKinematicModelBaseline(DynamicsModelBase):
         
         ee_pos_seq = ee_pos_seq.view((curr_batch_size, num_traj_points, 3))
         ee_rot_seq = ee_rot_seq.view((curr_batch_size, num_traj_points, 3, 3))
-        lin_jac_seq = lin_jac_seq.view((curr_batch_size, num_traj_points, 3, self.n_dofs))
-        ang_jac_seq = ang_jac_seq.view((curr_batch_size, num_traj_points, 3, self.n_dofs))
+        # lin_jac_seq = lin_jac_seq.view((curr_batch_size, num_traj_points, 3, self.n_dofs))
+        # ang_jac_seq = ang_jac_seq.view((curr_batch_size, num_traj_points, 3, self.n_dofs))
         
         state_dict = {'state_seq':state_seq.to(inp_device),
                       'ee_pos_seq': ee_pos_seq.to(inp_device),
                       'ee_rot_seq': ee_rot_seq.to(inp_device),
-                      'lin_jac_seq': lin_jac_seq.to(inp_device),
-                      'ang_jac_seq': ang_jac_seq.to(inp_device),
+                    #   'lin_jac_seq': lin_jac_seq.to(inp_device),
+                    #   'ang_jac_seq': ang_jac_seq.to(inp_device),
                       'link_pos_seq':link_pos_seq.to(inp_device),
                       'link_rot_seq':link_rot_seq.to(inp_device),
                       'prev_state_seq':self.prev_state_buffer.to(inp_device)}

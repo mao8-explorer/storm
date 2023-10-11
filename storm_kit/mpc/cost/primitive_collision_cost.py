@@ -61,7 +61,7 @@ class PrimitiveCollisionCost(nn.Module):
 
 
 
-    def optimal_forward(self, link_pos_seq, link_rot_seq):
+    def optimal_forward(self, link_pos_seq, link_rot_seq): # 6.5ms
 
         
         inp_device = link_pos_seq.device

@@ -152,31 +152,32 @@ class ArmBase(RolloutBase):
         
         ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
         state_batch = state_dict['state_seq']
-        lin_jac_batch, ang_jac_batch = state_dict['lin_jac_seq'], state_dict['ang_jac_seq']
+        # lin_jac_batch, ang_jac_batch = state_dict['lin_jac_seq'], state_dict['ang_jac_seq']
         link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
         prev_state = state_dict['prev_state_seq']
         prev_state_tstep = state_dict['prev_state_seq'][:,-1]
         
         retract_state = self.retract_state
+        # if self.exp_params['cost']['state_bound']['weight'] > 0:
+            # compute collision cost:
+        cost = self.bound_cost.forward(state_batch[:,:,:self.n_dofs * 3])
         
-        
-        
-        J_full = torch.cat((lin_jac_batch, ang_jac_batch), dim=-2)
+        # J_full = torch.cat((lin_jac_batch, ang_jac_batch), dim=-2)
         
 
         #null-space cost
         #if self.exp_params['cost']['null_space']['weight'] > 0:
-        null_disp_cost = self.null_cost.forward(state_batch[:,:,0:self.n_dofs] -
-                                                retract_state[:,0:self.n_dofs],
-                                                J_full,
-                                                proj_type='identity',
-                                                dist_type='squared_l2')
-        cost = null_disp_cost
+        # null_disp_cost = self.null_cost.forward(state_batch[:,:,0:self.n_dofs] -
+        #                                         retract_state[:,0:self.n_dofs],
+        #                                         J_full,
+        #                                         proj_type='identity',
+        #                                         dist_type='squared_l2')
+        # cost = null_disp_cost
 
-        if(no_coll == True and horizon_cost == False):
-            return cost
-        if(self.exp_params['cost']['manipulability']['weight'] > 0.0):
-            cost += self.manipulability_cost.forward(J_full)
+        # if(no_coll == True and horizon_cost == False):
+        #     return cost
+        # if(self.exp_params['cost']['manipulability']['weight'] > 0.0):
+        #     cost += self.manipulability_cost.forward(J_full)
         
         
         if(horizon_cost):
@@ -198,13 +199,8 @@ class ArmBase(RolloutBase):
                 cost += self.smooth_cost.forward(state_buffer, traj_dt)
 
 
-        if self.exp_params['cost']['state_bound']['weight'] > 0:
-            # compute collision cost:
-            cost += self.bound_cost.forward(state_batch[:,:,:self.n_dofs * 3])
-
-        if self.exp_params['cost']['ee_vel']['weight'] > 0:
-            cost += self.ee_vel_cost.forward(state_batch, lin_jac_batch)
-
+        # if self.exp_params['cost']['ee_vel']['weight'] > 0:
+        #     cost += self.ee_vel_cost.forward(state_batch, lin_jac_batch)
 
 
         if(not no_coll):
@@ -283,12 +279,15 @@ class ArmBase(RolloutBase):
         current_state = current_state.to(**self.tensor_args)
          
         
-        ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model. \
-            compute_fk_and_jacobian(current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.exp_params['model']['ee_link_name'])
+        # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model. \
+        #     compute_fk_and_jacobian(current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.exp_params['model']['ee_link_name'])
+        ee_pos_batch, ee_rot_batch = self.dynamics_model.robot_model.compute_fk(current_state[:,:self.dynamics_model.n_dofs], 
+                                                                                             current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], 
+                                                                                             self.exp_params['model']['ee_link_name'])
 
         ee_quat = matrix_to_quaternion(ee_rot_batch)
         state = {'ee_pos_seq':ee_pos_batch, 'ee_rot_seq':ee_rot_batch,
-                 'lin_jac_seq': lin_jac_batch, 'ang_jac_seq': ang_jac_batch,
+                #  'lin_jac_seq': lin_jac_batch, 'ang_jac_seq': ang_jac_batch,
                  'ee_quat_seq':ee_quat}
         return state
     def current_cost(self, current_state, no_coll=True):
@@ -297,7 +296,10 @@ class ArmBase(RolloutBase):
         curr_batch_size = 1
         num_traj_points = 1 #self.dynamics_model.num_traj_points
         
-        ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model.compute_fk_and_jacobian(current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.exp_params['model']['ee_link_name'])
+        # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model.compute_fk_and_jacobian(current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.exp_params['model']['ee_link_name'])
+        ee_pos_batch, ee_rot_batch = self.dynamics_model.robot_model.compute_fk(current_state[:,:self.dynamics_model.n_dofs], 
+                                                                                             current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], 
+                                                                                             self.exp_params['model']['ee_link_name'])
 
 
         link_pos_seq = self.link_pos_seq
@@ -314,11 +316,11 @@ class ArmBase(RolloutBase):
             current_state = current_state.unsqueeze(0)
             ee_pos_batch = ee_pos_batch.unsqueeze(0)
             ee_rot_batch = ee_rot_batch.unsqueeze(0)
-            lin_jac_batch = lin_jac_batch.unsqueeze(0)
-            ang_jac_batch = ang_jac_batch.unsqueeze(0)
+            # lin_jac_batch = lin_jac_batch.unsqueeze(0)
+            # ang_jac_batch = ang_jac_batch.unsqueeze(0)
 
         state_dict = {'ee_pos_seq':ee_pos_batch, 'ee_rot_seq':ee_rot_batch,
-                      'lin_jac_seq': lin_jac_batch, 'ang_jac_seq': ang_jac_batch,
+                    #   'lin_jac_seq': lin_jac_batch, 'ang_jac_seq': ang_jac_batch,
                       'state_seq': current_state,'link_pos_seq':link_pos_seq,
                       'link_rot_seq':link_rot_seq,
                       'prev_state_seq':current_state}

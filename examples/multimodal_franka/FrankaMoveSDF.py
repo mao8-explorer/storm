@@ -78,11 +78,11 @@ class MPCRobotController(FrankaEnvBase):
                 opt_step_count += 1
                 self.gym_instance.step()
                 self.gym_instance.clear_lines()
-                # generate pointcloud
+                # generate pointcloud 6ms
                 self.robot_sim.updateCamImage()
                 obs.update(self.robot_sim.ImageToPointCloud()) #耗时大！
                 envpc_filter._update_state(obs) 
-                # compute pointcloud to sdf_map
+                # compute pointcloud to sdf_map 4.5ms
                 # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
                 # self.collision_grid = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
                 #                      _compute_dynamic_voxeltosdf(envpc_filter.cur_scene_pc, visual = True)
@@ -106,7 +106,7 @@ class MPCRobotController(FrankaEnvBase):
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
                 self.updateGymVisual_GymGoalUpdate()
-                self.updateRosMsg()
+                # self.updateRosMsg()
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 
