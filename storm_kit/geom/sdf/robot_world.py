@@ -88,6 +88,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
 
         super().__init__(robot_collision, world_collision)
         self.dist = None
+        self.sdf1_grad3_vel4 = None
 
     def build_batch_features(self, batch_size, clone_pose=True, clone_points=True):
         self.batch_size = batch_size
@@ -252,7 +253,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         if (self.robot_batch_size != batch_size):
             self.robot_batch_size = batch_size
             self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
-
+   
         self.robot_coll._vel_update_batch_robot_collision_objs(link_trans, link_rot)  # 根据关节位置 解算每个link对应的球体位置
 
         w_batch_link_spheres,w_batch_link_spheres_vel = self.robot_coll.get_batch_robot_link_spheres() 
@@ -260,13 +261,9 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
 
         n_links = len(w_batch_link_spheres) # 7 
 
-        if (self.dist is None or self.dist.shape[0] != n_links):
-            self.dist = torch.zeros((batch_size, n_links), **self.tensor_args)
-            self.vel = torch.zeros((batch_size, n_links,4), **self.tensor_args)
-            # dimensions_accumulated = torch.cumsum(torch.tensor([s.shape[1] for s in w_link_spheres]), dim=0)
-            # sphere_indiced = torch.cat([torch.tensor([0]), dimensions_accumulated])
-        dist = self.dist
-        vel = self.vel
+        if (self.sdf1_grad3_vel4 is None):
+            self.sdf1_grad3_vel4 = torch.zeros((batch_size, n_links,8), **self.tensor_args)
+            self.sphere_pos_links = torch.zeros((n_links,3), **self.tensor_args) # 7*3
 
         # # 将所有链接的球体合并为一个张量
         # all_spheres = torch.cat([s.view(-1, 4) for s in w_link_spheres])
@@ -278,17 +275,17 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         for i in range(n_links): # 按link分组查事先建立的SDF，找到最小值，作为当前link的min_distance 
             spheres = w_batch_link_spheres[i]  # spheres shape : 15000*8*3
             vel_spheres = w_batch_link_spheres_vel[i] # vel_spheres shape : 15000*8*4 15000个数据集，每个集合8个球，4表示是球的速度信息
-            b, n, _ = spheres.shape
-            spheres = spheres.view(b * n, 3)
+            b, n, _ = spheres.shape # b is batch_size * horizon ; n is number of spheres of link_i
             # compute distance between world objs and link spheres
-            sdf = self.world_coll.check_pts_sdf(spheres) # flatten 15000*8 to fast pts check
-            sdf = sdf.view(b, n) # sdf shape ： 15000 * 8
-            dist[:, i],index = torch.min(sdf, dim=-1)  # 从sdf每条数据集的8个球中，找到对应最小的min_distance，并返回该球索引
-            # /chatgpt : 现在需要根据从sdf查到的min索引，找到vel_spheres中相应的值 ，最后得到的结果shape应为: 15000 * 4，表示该球对应的4个速度信息
-            vel[:,i] = vel_spheres.gather(1, index.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 4)).squeeze(1)
+            sdf = self.world_coll.check_pts_sdf(spheres.view(b * n, 3)).view(b, n,-1) # flatten 15000*8 to fast pts check
+            # 首先，获取每个数据集合中最小的球的索引 假设你的sdf变量的形状为 10*8*4
+            min_indices = torch.argmin(sdf[:, :, 0], dim=1, keepdim=True).unsqueeze(-1).expand(-1, -1, 8) # 15000 * 1 * 4
+            self.sdf1_grad3_vel4[:,i,:] = (torch.cat((sdf,vel_spheres),dim=-1)).gather(dim=1, index = min_indices).squeeze(1)
+            # self.sdf_grad[:,i] = sdf.gather(dim=1, index=min_indices).squeeze(1) # 15000* 4
+            # self.vel[:,i] = vel_spheres.gather(dim=1, index=min_indices).squeeze(1)
+            self.sphere_pos_links[i,:] = spheres[-4*30,min_indices[-4*30,0,0],:] # 肯定不规范 30是horizon, -4是 best_traj的轨迹
 
 
-        return dist,vel
 
     def _check_robot_sdf_PPV(self, link_trans, link_rot):
         """

@@ -27,6 +27,38 @@ from ...geom.sdf.robot_world import RobotWorldCollisionPrimitive
 from .gaussian_projection import GaussianProjection
 
 
+@torch.jit.script
+def CostCompute(sdf_grad, vel, w1, w2,batch_size,horizon,n_links,vec_weight):
+    # type: (Tensor, Tensor, int, int, int, int ,int ,Tensor) -> Tensor
+
+    potential , grad = sdf_grad[:,:,0], sdf_grad[:,:,1:] # batch * n_links , batch * n_links * 3
+    vel_abs = vel[:,:,-1]
+    vel_orient = vel[:,:,:-1] # batch * n_links *3
+    # 计算SDF梯度向量的绝对值
+    grad_abs = torch.linalg.norm(grad, ord=2, dim=-1) # grad : batch * n_links * 3 -> batch * n_links
+    # 计算速度向量和SDF梯度向量的点积
+    dot_product = torch.sum(vel_orient * grad, dim=-1) #  batch * n_links * 3  - > batch * n_links
+    # 计算余弦值
+    cos_theta = dot_product / (vel_abs * grad_abs + 1e-6)
+    cos_theta[potential==1.0] = -1.0
+    cost_sdf = w1 * potential +\
+               w2 * potential * vel_abs * (1.0 +\
+                                                    1.0 * (torch.max(-cos_theta, torch.tensor(0.0))) +\
+                                                    0.5 * (torch.min(-cos_theta, torch.tensor(0.0)))
+                                                    )
+    # cost_sdf = w1 * potential + w2 * potential * vel_abs
+    # cost_sdf = w1 * potential
+    # cost_sdf = w2 * potential * vel_abs
+    cost_sdf = cost_sdf.view(batch_size, horizon, n_links) 
+    disp_vec = vec_weight * cost_sdf
+    cost = torch.sum(disp_vec, dim=-1) # 对每个link分配相同的权重 做sum
+    
+
+    return cost
+
+
+
+
 
 class PrimitiveCollisionCost(nn.Module):
     def __init__(self, weight=None, vec_weight = None, pv_weight =None, world_params=None, robot_params=None, gaussian_params={},
@@ -69,24 +101,42 @@ class PrimitiveCollisionCost(nn.Module):
         horizon = link_pos_seq.shape[1]
         n_links = link_pos_seq.shape[2]
 
-        # if(self.batch_size != batch_size):
-        #     self.batch_size = batch_size
-        #     self.robot_world_coll.build_batch_features(self.batch_size * horizon, clone_pose=True, clone_points=True)
-
         link_pos_batch = link_pos_seq.view(batch_size * horizon, n_links, 3)
         link_rot_batch = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
         # 基于点云数据的 voxel grid to SDF
-        dist, vel = self.robot_world_coll.optimal_check_robot_sphere_collisions_voxeltosdf(link_pos_batch, link_rot_batch)
-        self.current_state_collision = dist[-4*horizon,:] #best_traj index
+        self.robot_world_coll.optimal_check_robot_sphere_collisions_voxeltosdf(link_pos_batch, link_rot_batch)
+        potential, grad, vel_orient, vel_abs = self.robot_world_coll.sdf1_grad3_vel4[:,:,0] , self.robot_world_coll.sdf1_grad3_vel4[:,:,1:4], \
+                                      self.robot_world_coll.sdf1_grad3_vel4[:,:,4:-1] , self.robot_world_coll.sdf1_grad3_vel4[:,:,-1]
+        self.current_state_collision = potential[-4*horizon,:] #best_traj index shape is （7，）查询potential
+        self.current_grad = grad[-4*horizon,:,:] #best_traj index shape (7,3) # gradient 查询
+        self.current_vel_orient = vel_orient[-4*horizon,:] #best_traj index shape (7,3) # 速度查询
+        self.current_sphere_pos = self.robot_world_coll.sphere_pos_links
 
-        cost_sdf = self.w1 * dist + self.w2 * dist*vel[:,:,-1] #PPV
-        # cost_sdf = self.w1 * dist # P
-        # cost_sdf = self.w2 * dist*vel[:,:,-1] #PV
-
+        # cost = CostCompute(sdf_grad, vel, self.w1, self.w2,batch_size,horizon,n_links, self.vec_weight)
+        # type: (Tensor, Tensor, int, int, int, int ,int ,Tensor) -> Tensor
+        # potential , grad = sdf_grad[:,:,0], sdf_grad[:,:,1:] # batch * n_links , batch * n_links * 3
+        # vel_abs = vel[:,:,-1]
+        # vel_orient = vel[:,:,:-1] # batch * n_links *3
+        # 计算SDF梯度向量的绝对值
+        grad_abs = torch.linalg.norm(grad, ord=2, dim=-1) # grad : batch * n_links * 3 -> batch * n_links
+        # 计算速度向量和SDF梯度向量的点积
+        dot_product = torch.sum(vel_orient * grad, dim=-1) #  batch * n_links * 3  - > batch * n_links
+        # 计算余弦值
+        cos_theta = dot_product / (vel_abs * grad_abs + 1e-6)
+        cos_theta[potential==1.0] = -1.0
+        #  在权重上面多做文章 提升性能呀！！！
+        cost_sdf = self.w1 * potential +\
+                   self.w2 * potential * vel_abs * (1.0 +\
+                                                        2.0 * (torch.max(-cos_theta, torch.tensor(0.0).to(inp_device))) +\
+                                                        0.5 * (torch.min(-cos_theta, torch.tensor(0.0).to(inp_device)))
+                                                        )
+        # cost_sdf = self.w1 * potential + self.w2 * potential * vel_abs
+        # cost_sdf = w1 * potential
+        # cost_sdf = w2 * potential * vel_abs
         cost_sdf = cost_sdf.view(batch_size, horizon, n_links) 
-
         disp_vec = self.vec_weight * cost_sdf
         cost = torch.sum(disp_vec, dim=-1) # 对每个link分配相同的权重 做sum
+
         return cost.to(inp_device)
     
 

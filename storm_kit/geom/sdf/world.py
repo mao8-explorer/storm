@@ -224,7 +224,7 @@ class WorldGridCollision(WorldCollision):
         if visual: # visual pointcloud  in voxel grid
             return self.pt_matrix[unique_indices]
 
-    
+
     def _opt_compute_dynamic_voxeltosdf(self, pts,visual = False):
         """
         Update the scene_sdf based on the given points using rounding method.
@@ -244,12 +244,24 @@ class WorldGridCollision(WorldCollision):
         ind_pt = (pt[..., 0]) * (self.num_voxels[1] * self.num_voxels[2]) + pt[..., 1] * self.num_voxels[2] + pt[..., 2]
         unique_indices = torch.unique(ind_pt).to(dtype=torch.int64)
         self.scene_sdf[unique_indices] = torch.tensor(0, **self.tensor_args)
-        #   lean from   STOMP and RAMP:https://samsunglabs.github.io/RAMP-project-page/
         # step 5: flatten scene_sdf to 3d voxel grid
         self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
+        # self.scene_sdf_matrix[:,:,0:3] = torch.tensor(0, **self.tensor_args) # safe ground 3*0.05 = 0.15m | real meachine
         # step 6: 计算内部点到外部点的距离变换 EDT 2Hz
         distances_inside = distance_transform_edt((self.scene_sdf_matrix).cpu())
-        self.scene_voxels  = torch.tensor(distances_inside, **self.tensor_args).flatten() * self.grid_resolution
+        # version 1. direactly compute gradient
+        self.scene_voxels  = torch.tensor(distances_inside, **self.tensor_args) * self.grid_resolution
+        # try to contact to min compute cost
+        # grad_x, grad_y, grad_z = torch.gradient(self.scene_voxels) 
+        # grad_x_voxels = torch.flatten(grad_x).unsqueeze(-1)
+        # grad_y_voxels = torch.flatten(grad_y).unsqueeze(-1)
+        # grad_z_voxels = torch.flatten(grad_z).unsqueeze(-1)
+        # torch.cat((grad_x_voxels,grad_y_voxels,grad_z_voxels),dim=-1)
+        # simplify :
+        gradients = torch.gradient(self.scene_voxels)
+         # 32768 * 3
+
+        self.scene_voxels  = self.scene_voxels.flatten() 
         # 对dist大于0.05小于0.30的区域进行运算
         mask_mid = (self.scene_voxels > 0.07) & (self.scene_voxels < 0.20)
         self.scene_sdf[mask_mid] = torch.exp(-15 * (self.scene_voxels[mask_mid] - 0.07))
@@ -257,10 +269,11 @@ class WorldGridCollision(WorldCollision):
         self.scene_sdf[self.scene_voxels <= 0.07] = 1.0
         # 对dist大于0.30的区域直接设置为0
         self.scene_sdf[self.scene_voxels > 0.20] = 0.0 
+
+        self.sdf_potential_gradxyz = torch.cat([self.scene_sdf.unsqueeze(-1)]+[grad.view(-1, 1) for grad in gradients], dim=-1) # 32768*4
         if visual: # visual pointcloud  in voxel grid
             return self.pt_matrix[unique_indices]
         
-
     def get_scene_sdf_matrix(self):
         self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
 
@@ -274,10 +287,10 @@ class WorldGridCollision(WorldCollision):
         # Assuming you have already computed self.scene_sdf_matrix
 
         # Convert the scene_sdf_matrix to a NumPy array
-        scene_sdf_np = self.scene_sdf_matrix.cpu().numpy()
+        scene_sdf_np = self.scene_sdf_matrix.cpu().numpy() #scene_sdf_np[:,:,0] z=0平面
 
         # Get the indices of non-zero elements (corresponding to occupied voxels)
-        nonzero_indices = np.transpose(np.nonzero(scene_sdf_np))
+        nonzero_indices = np.transpose(np.nonzero(scene_sdf_np==0))
 
         # Create a figure
         fig = mlab.figure()
@@ -346,10 +359,12 @@ class WorldGridCollision(WorldCollision):
         # batch * n_links, n_pts
         # get sdf from scene voxels:
         # negative distance is outside mesh:
-        sdf = self.scene_sdf[pt_idx]
+        # sdf = self.scene_sdf[pt_idx] # 32768
+        sdf_gradxyz = self.sdf_potential_gradxyz[pt_idx,:] # 32768*4
         # sdf[~in_bounds] = -10.0
-        sdf[~in_bounds] = 0.0
-        return sdf
+        # sdf[~in_bounds] = 0.0
+        sdf_gradxyz[~in_bounds,:] = torch.tensor([[0.0, 0.0, 0.0, 1.0]], **self.tensor_args) # [0.0 0.0 0.0 1.0]
+        return sdf_gradxyz
 
     
     def voxel_inds(self, pt, scale=1):

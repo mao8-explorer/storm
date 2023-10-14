@@ -90,7 +90,6 @@ class ImagemoveCollisionCost(nn.Module):
         
         # 计算速度向量的绝对值
         vel_abs = torch.linalg.norm(vel_batch, ord=2, dim=1)
-
         # 计算SDF梯度向量的绝对值
         grad_abs = torch.linalg.norm(torch.stack([grad_x, grad_y], dim=1), ord=2, dim=1)
 

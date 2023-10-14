@@ -459,14 +459,22 @@ class RobotSphereCollision:
         transform_vel_jt
 
         '''
-        b, n, _ = links_pos.shape
+        b_h, n, _ = links_pos.shape
         horizon = self._fd_matrix_sphere.shape[0]
-        rollout_traj = b // horizon
-        for i in range(n):
-            self.w_batch_link_spheres[i] = transform_point(self._batch_link_spheres[i], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
-            # 15000*8*3 | 30 | 30*30   -> 15000 * 8 * 3 
-            self.w_batch_link_spheres_vel[i] = sphere_pos_sphere_vel(self.w_batch_link_spheres[i], self.traj_dt, self._fd_matrix_sphere)
+        b = b_h // horizon
 
+
+        for i in range(n):
+            
+            # self.w_batch_link_spheres[i] = transform_point(self._batch_link_spheres[i], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+           
+            # 15000*8*3 | 30 | 30*30   -> 15000 * 8 * 3 
+            # self.w_batch_link_spheres_vel[i] = sphere_pos_sphere_vel(self.w_batch_link_spheres[i], self.traj_dt, self._fd_matrix_sphere)
+            # 去脚本化方案
+            self.w_batch_link_spheres[i] = (self._batch_link_spheres[i] @ links_rot[:,i,:,:].transpose(-1,-2)) + links_pos[:,i,:].unsqueeze(-2)
+            state_vel_seq = (torch.matmul(self._fd_matrix_sphere, self.w_batch_link_spheres[i].view(b,horizon,-1)) / self.traj_dt.view(1, -1, 1)).view(b_h,-1,3)
+            final = torch.norm(state_vel_seq, dim=-1,keepdim=True) # 15000 * 8 * 3
+            self.w_batch_link_spheres_vel[i] = torch.cat((state_vel_seq,final),dim=-1) #15000 * 8 * 4
 
     def check_self_collisions_nn(self, q):
         """compute signed distance using NN, uses an instance of :class:`.nn_model.robot_self_collision.RobotSelfCollisionNet`

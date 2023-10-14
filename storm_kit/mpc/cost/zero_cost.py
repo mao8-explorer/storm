@@ -40,13 +40,11 @@ class ZeroCost(nn.Module):
         inp_device = vels.device
         vel_err = torch.abs(vels.to(self.device))
         goal_dist = goal_dist.to(self.device)
-        
 
-        # max velocity threshold:
-        vel_err[vel_err < self.max_vel] = 0.0
+        # # max velocity threshold:
+        # vel_err[vel_err < self.max_vel] = 0.0
 
-        if(self.hinge_val > 0.0):
-            vel_err = torch.where(goal_dist <= self.hinge_val, vel_err, 0.0 * vel_err / goal_dist) #soft hinge
+        vel_err = torch.where(goal_dist <= self.hinge_val, vel_err, 0.0 * vel_err / goal_dist) #soft hinge
 
         cost = self.weight * self.proj_gaussian((torch.sum(torch.square(vel_err), dim=-1)))
 

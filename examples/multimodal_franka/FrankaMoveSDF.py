@@ -50,8 +50,8 @@ class MPCRobotController(FrankaEnvBase):
         x,z,y = 0.46 , 0.50 , 0.45 # y,z 翻个个
 
         self.goal_list = [
-             [0.10,0.30,-0.65],
-             [0.10,0.30,0.65],]
+             [0.20,0.30,-0.65],
+             [0.20,0.30,0.65],]
         self.goal_state = self.goal_list[0]
         self.update_goal_state()
         self.update_collision_state([x,y,0.0])
@@ -71,6 +71,7 @@ class MPCRobotController(FrankaEnvBase):
         last = time.time()
         # 指标性元素
         opt_step_count = 0 
+        opt_time_sum = 0
         self.curr_collision = 0
         while not rospy.is_shutdown() and \
             self.goal_flagi / len(self.goal_list) != lap_count:
@@ -99,14 +100,16 @@ class MPCRobotController(FrankaEnvBase):
                 self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
                 # 逆解获取请求发布 input_queue
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
+                opt_time_last = time.time()
                 command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt, WAIT=True)
+                opt_time_sum += time.time() - opt_time_last
                 # get position command:
                 self.command = command
                 q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
                 self.updateGymVisual_GymGoalUpdate()
-                # self.updateRosMsg()
+                self.updateRosMsg(visual_gradient=False)
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 
@@ -134,7 +137,8 @@ class MPCRobotController(FrankaEnvBase):
             except KeyboardInterrupt:
                 print('Closing')
 
-        print("whole_time is ",time.time() - last, "opt_step_count :",opt_step_count ," collison_count: ",self.curr_collision)
+        print("whole_time: ",time.time() - last, "opt_step_count:",opt_step_count ," collison_count: ",self.curr_collision, \
+              " opt_time_sum: ",opt_time_sum, " oneloop: ",(time.time() - last)/opt_step_count*1000 , " oneOpt: ",opt_time_sum/opt_step_count*1000)
         # self.mpc_control.close()
         self.coll_robot_pub.unregister() 
         self.pub_env_pc.unregister()

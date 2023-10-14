@@ -25,7 +25,7 @@
 use_cuda: True
 cuda_device_num: 0
 
-control_dt: 0.05   # 0.02 0.05
+control_dt: 0.06   # 0.02 0.05
 run_open_loop: False
 control_space: 'acc'
 float_dtype: 'float32'
@@ -38,11 +38,11 @@ model:
   learnable_rigid_body_config:
     learnable_links: []
   name: "franka_panda"
-  max_acc: 0.40
-  dt: 0.05
+  max_acc: 0.50
+  dt: 0.06
   dt_traj_params:
-    base_dt: 0.05
-    base_ratio: 0.6
+    base_dt: 0.06
+    base_ratio: 0.5
     max_dt: 0.10
   #control_freq: 10
   #sim_freq: 100
@@ -76,13 +76,13 @@ model:
 cost:
   joint_l2:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
-    weight: 10.0
+    weight: 40.0
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
 
   Jnq_sparse_reward:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
-    weight: 10.0
-    sigma : 0.03
+    weight: 100.0
+    sigma : 0.05
 
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
@@ -98,28 +98,28 @@ cost:
     sigma : 0.046
 
   primitive_collision:
-    weight: 0.0
+    weight: 100.0
     vec_weight: [1.0, 1.0, 1.0, 5.0, 1.0, 1.0, 5.0] # panda_link: 2 3 4 5 6 7 panda_hand
-    pv_weight: [1.0, 5.0]
+    pv_weight: [1.0, 8.0]
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
     
   stop_cost:
-    weight: 500.0 #100.0
-    max_nlimit: 0.25 #0.2
+    weight: 300.0 #100.0
+    max_nlimit: 0.40 #0.2
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':1.0}
+
+  zero_vel:
+    weight: 100.0
+    hinge_val: 0.175 # 10/180*pi 
+    gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
+
 
   stop_cost_acc:
     weight: 0.0
     max_nlimit: 0.2 #0.2
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':1.0}
-
-
-  zero_vel:
-    weight: 0.0
-    hinge_val: 0.2 #0.2
-    gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
 
   zero_acc:
     weight: 0.0 #0.01
@@ -148,7 +148,7 @@ cost:
     thresh: 0.1
 
   terminal_pos:
-    weight: 500.0
+    weight: 0.0
     horizon : 15
 
   ee_vel:

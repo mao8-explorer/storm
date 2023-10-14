@@ -93,6 +93,9 @@ Todo:
 
             if self.exp_params['cost']['Jnq_sparse_reward']['weight'] > 0: #!
                 cost += self.jnq_sparse_reward.forward(disp_vec)
+
+            if self.exp_params['cost']['zero_vel']['weight'] > 0:
+                cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=disp_vec)
         
 
         # 500*30 500*1 500*30*1
@@ -110,9 +113,6 @@ Todo:
             
         if self.exp_params['cost']['zero_acc']['weight'] > 0:
             cost += self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist)
-
-        if self.exp_params['cost']['zero_vel']['weight'] > 0:
-            cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist)
 
 
         if self.exp_params['cost']['terminal_pos']['weight'] > 0:

@@ -13,6 +13,8 @@ from storm_kit.differentiable_robot_model.coordinate_transform import quaternion
 import rospy
 from std_msgs.msg import Float32
 from sensor_msgs.msg import PointCloud2
+from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import Point
 from sensor_msgs.msg import PointField
 import matplotlib.pyplot as plt
 np.set_printoptions(precision=2)
@@ -168,7 +170,114 @@ class FrankaEnvBase(object):
         self.coll_robot_pub = rospy.Publisher('robot_collision', Float32, queue_size=10)
         self.pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
         self.pub_robot_link_pc = rospy.Publisher('robot_link_pc', PointCloud2, queue_size=5)
+        self.marker_publisher = rospy.Publisher('arrow_markers', MarkerArray, queue_size=10)
+
+        # 初始化MarkerArray消息
+        self.arrow_markers = MarkerArray()
+        self.marker = Marker()
+        self.marker.header.frame_id = 'world'
+        self.marker.type = Marker.ARROW
+        self.marker.scale.x = 0.01
+        self.marker.scale.y = 0.03
+        self.marker.scale.z = 0.1
+        self.marker.color.a = 1.0
+        self.marker.pose.orientation.w = 1.0  # 固定方向为单位向量
+
+    def pub_pointcloud(self,pc,pub_handle):
+
+        self.msg.header.stamp = rospy.Time().now()
+        if len(pc.shape) == 3:
+            self.msg.height = pc.shape[1]
+            self.msg.width = pc.shape[0]
+        else:
+            self.msg.height = 1
+            self.msg.width = len(pc)
+
+        self.msg.row_step = self.msg.point_step * pc.shape[0]
+        self.msg.data = np.asarray(pc, np.float32).tobytes()
+
+        pub_handle.publish(self.msg)   
+
+    def pub_arrow(self,current_gradient,current_vel_orient,current_sphere_pos):
+        self.marker.header.stamp = rospy.Time().now()
+        self.arrow_markers.markers = []  # 清空之前的箭头
+        # 创建current_vel_orient的箭头，设置为红色
+        for i, gradient in enumerate(current_gradient*3.0):
+            marker = Marker()
+            marker.header = self.marker.header
+            marker.type = self.marker.type
+            marker.scale = self.marker.scale
+            marker.color = self.marker.color
+            marker.pose = self.marker.pose
+            marker.id = i
+            marker.action = Marker.ADD
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+            start_point = Point()
+            start_point.x = current_sphere_pos[i][0]
+            start_point.y = current_sphere_pos[i][1]
+            start_point.z = current_sphere_pos[i][2]
+            marker.points.append(start_point)
+            end_point = Point()
+            end_point.x = gradient[0]+current_sphere_pos[i][0]
+            end_point.y = gradient[1]+current_sphere_pos[i][1]
+            end_point.z = gradient[2]+current_sphere_pos[i][2]
+            marker.points.append(end_point)         
+
+            self.arrow_markers.markers.append(marker)
+        self.marker_publisher.publish(self.arrow_markers)
+        self.marker.header.stamp = rospy.Time().now()
+        self.arrow_markers.markers = []  # 清空之前的箭头
+        # 创建current_gradient的箭头，设置为绿色
+        for i, vel_orient in enumerate(current_vel_orient):
+            marker = Marker()
+            marker.header = self.marker.header
+            marker.type = self.marker.type
+            marker.scale = self.marker.scale
+            marker.color = self.marker.color
+            marker.pose = self.marker.pose
+            marker.id = i + len(current_vel_orient)
+            marker.action = Marker.ADD
+            marker.color.r = 0.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+            start_point = Point()
+            start_point.x = current_sphere_pos[i][0]
+            start_point.y = current_sphere_pos[i][1]
+            start_point.z = current_sphere_pos[i][2]
+            marker.points.append(start_point)
+            end_point = Point()
+            end_point.x = vel_orient[0]+current_sphere_pos[i][0]
+            end_point.y = vel_orient[1]+current_sphere_pos[i][1]
+            end_point.z = vel_orient[2]+current_sphere_pos[i][2]
+            marker.points.append(end_point)
+            self.arrow_markers.markers.append(marker)
         
+        self.marker_publisher.publish(self.arrow_markers)
+
+    def updateRosMsg(self,visual_gradient = False):
+        # ROS Publish
+        # robot_collision_cost = self.mpc_control.controller.rollout_fn \
+        #                             .robot_self_collision_cost(self.curr_state_tensor.unsqueeze(0)[:,:,:7]) \
+        #                             .squeeze().cpu().numpy()
+        # self.coll_msg.data = robot_collision_cost
+        # self.coll_robot_pub.publish(self.coll_msg)
+        # pub env_pointcloud and robot_link_spheres
+        w_batch_link_spheres = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
+        spheres = [s[-4*30][:, :3].cpu().numpy() for s in w_batch_link_spheres]
+        # 将所有球体位置信息合并为一个NumPy数组
+        robotsphere_positions = np.concatenate(spheres, axis=0)
+        self.pub_pointcloud(robotsphere_positions, self.pub_robot_link_pc)
+        collision_grid_pc = self.collision_grid.cpu().numpy() 
+        self.pub_pointcloud(collision_grid_pc, self.pub_env_pc)
+        if visual_gradient:
+            # 发布两种箭头数据（current_vel_orient ,current_gradient）（这是因为current_vel_orient,current_gradient都是向量，需要将指向可视化），在rviz中显示。
+            # 箭头的位置都由current_sphere_pos提供。应该如何做
+            current_gradient = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_grad.cpu().numpy() # torch数据，shape为 7 * 3
+            current_vel_orient = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_vel_orient.cpu().numpy() # torch数据，shape为 7 * 3
+            current_sphere_pos = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_sphere_pos.cpu().numpy() # torch数据，shape为 7 * 3
+            self.pub_arrow(current_gradient,current_vel_orient,current_sphere_pos)
 
     def _init_point_transform(self):
         w_T_robot = torch.eye(4)
@@ -244,39 +353,6 @@ class FrankaEnvBase(object):
             color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
             self.gym_instance.draw_lines(pts, color=color)
 
-       
-    def pub_pointcloud(self,pc,pub_handle):
-
-        self.msg.header.stamp = rospy.Time().now()
-        if len(pc.shape) == 3:
-            self.msg.height = pc.shape[1]
-            self.msg.width = pc.shape[0]
-        else:
-            self.msg.height = 1
-            self.msg.width = len(pc)
-
-        self.msg.row_step = self.msg.point_step * pc.shape[0]
-        self.msg.data = np.asarray(pc, np.float32).tobytes()
-
-        pub_handle.publish(self.msg)   
-
-
-    def updateRosMsg(self):
-        # ROS Publish
-        # robot_collision_cost = self.mpc_control.controller.rollout_fn \
-        #                             .robot_self_collision_cost(self.curr_state_tensor.unsqueeze(0)[:,:,:7]) \
-        #                             .squeeze().cpu().numpy()
-        # self.coll_msg.data = robot_collision_cost
-        # self.coll_robot_pub.publish(self.coll_msg)
-        # pub env_pointcloud and robot_link_spheres
-        w_batch_link_spheres = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
-        spheres = [s[0][:, :3].cpu().numpy() for s in w_batch_link_spheres]
-        # 将所有球体位置信息合并为一个NumPy数组
-        robotsphere_positions = np.concatenate(spheres, axis=0)
-        self.pub_pointcloud(robotsphere_positions, self.pub_robot_link_pc)
-        collision_grid_pc = self.collision_grid.cpu().numpy() 
-        self.pub_pointcloud(collision_grid_pc, self.pub_env_pc)
-
      
     def _dynamic_object_moveDesign(self):
         # Update velocity vector based on move bounds and current pose
@@ -309,7 +385,7 @@ class FrankaEnvBase(object):
         vel = np.matrix(self.traj_log['velocity'])
         acc = np.matrix(self.traj_log['acc'])
         des = np.matrix(self.traj_log['des'])
-        axs = [plt.subplot(2,1,i+1) for i in range(2)]
+        axs = [plt.subplot(3,1,i+1) for i in range(3)]
         if(len(axs) >= 2):
             axs[0].set_title('Position')
             axs[1].set_title('Velocity')
@@ -322,7 +398,7 @@ class FrankaEnvBase(object):
             axs[1].plot(vel[:,0], 'r',label='joint1')
             axs[1].plot(vel[:,2], 'g', label='joint3')
             axs[1].legend()
-            # axs[2].plot(acc[:,0], 'r',label='joint1')
-            # axs[2].plot(acc[:,2], 'g', label='joint3')
+            axs[2].plot(acc[:,0], 'r',label='joint1')
+            axs[2].plot(acc[:,2], 'g', label='joint3')
         plt.savefig('trajectory.png')
         plt.show()

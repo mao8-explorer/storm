@@ -40,12 +40,15 @@ class MPCRobotController(FrankaEnvBase):
         self._environment_init()
         self.thresh = 0.03 # goal next thresh in Cart
         x,z,y = 0.45 , 0.45 , 0.45
+        # self.goal_list = [
+        #      [x,y,-z],
+        #      [x,y,z],
+        #      [-x,y,z],
+        #     #  [-0.1,y,-0.5]
+        #      ]
         self.goal_list = [
-             [x,y,-z],
-             [x,y,z],
-             [-x,y,z],
-            #  [-0.1,y,-0.5]
-             ]
+             [0.20,0.30,-0.65],
+             [0.20,0.30,0.65],]
         self.goal_state = self.goal_list[0]
         self.update_goal_state()
         self.rollout_fn = self.mpc_control.controller.rollout_fn
@@ -62,6 +65,7 @@ class MPCRobotController(FrankaEnvBase):
         last = time.time()
         opt_step_count = 0 
         self.curr_collision = 0
+        opt_time_sum = 0
         while not rospy.is_shutdown() and \
                 self.goal_flagi / len(self.goal_list) != lap_count:
             try:
@@ -80,7 +84,9 @@ class MPCRobotController(FrankaEnvBase):
                 self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
                 # 逆解获取请求发布 input_queue
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
+                opt_time_last = time.time()
                 command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt, WAIT=True)
+                opt_time_sum += time.time() - opt_time_last
                 # get position command:
                 self.command = command
                 q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
@@ -106,7 +112,8 @@ class MPCRobotController(FrankaEnvBase):
                     continue
             except KeyboardInterrupt:
                 print('Closing')
-        print("whole_time is ",time.time() - last, "opt_step_count :",opt_step_count)
+        print("whole_time: ",time.time() - last, "opt_step_count:",opt_step_count ,\
+              " opt_time_sum: ",opt_time_sum, " oneloop: ",(time.time() - last)/opt_step_count*1000 , " oneOpt: ",opt_time_sum/opt_step_count*1000)
 
         # self.mpc_control.close()
         self.coll_robot_pub.unregister() 
