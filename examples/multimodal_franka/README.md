@@ -29,4 +29,6 @@ todo:
 * 优化collision_forward！12ms -> 9ms? 
 * 高速！ 充分挖掘PPV_Theta的益处，将在二维上体现的减少opt_step的性能通过实验表现出来
 
+一个设想，link能不能用两个球体表现collision呢？
+计算量？ 冗余？
    
