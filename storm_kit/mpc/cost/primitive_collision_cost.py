@@ -75,7 +75,7 @@ class PrimitiveCollisionCost(nn.Module):
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
 
         robot_collision_params = robot_params['robot_collision_params']
-        print(robot_collision_params)
+        # print(robot_collision_params)
         self.batch_size = -1
         # BUILD world and robot:
         self.robot_world_coll = RobotWorldCollisionPrimitive(robot_collision_params,

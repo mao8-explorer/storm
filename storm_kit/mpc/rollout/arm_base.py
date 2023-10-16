@@ -141,7 +141,7 @@ class ArmBase(RolloutBase):
         self.ee_vel_cost = EEVelCost(ndofs=self.n_dofs,device=device, float_dtype=float_dtype,**exp_params['cost']['ee_vel'])
 
         bounds = torch.cat([self.dynamics_model.state_lower_bounds[:self.n_dofs * 3].unsqueeze(0),self.dynamics_model.state_upper_bounds[:self.n_dofs * 3].unsqueeze(0)], dim=0).T
-        print(bounds)
+        # print(bounds)
         self.bound_cost = BoundCost(**exp_params['cost']['state_bound'],
                                     tensor_args=self.tensor_args,
                                     bounds=bounds)

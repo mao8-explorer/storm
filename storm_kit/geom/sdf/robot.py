@@ -375,7 +375,6 @@ class RobotSphereCollision:
             clone_pose (bool, optional): clones pose. Defaults to True.
             batch_size ([type], optional): batch_size to clone. Defaults to None.
         """        
-        print("调用了--batch_features")
         if(batch_size is not None):
             self.batch_size = batch_size
         if(clone_objs):

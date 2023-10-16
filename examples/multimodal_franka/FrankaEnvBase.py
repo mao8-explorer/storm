@@ -333,12 +333,12 @@ class FrankaEnvBase(object):
         self.gym.set_rigid_transform(self.env_ptr, self.ee_base_handle, ee_pose)
 
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
-        if (np.linalg.norm(np.array(self.g_pos -cur_e_pos)) < self.thresh):
+        if (np.linalg.norm(np.array(self.g_pos - cur_e_pos)) < self.thresh):
             self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
             self.update_goal_state()
             self.goal_flagi += 1
-            print("next goal",self.goal_flagi , " lap_count: ",self.goal_flagi / len(self.goal_list), " collison_count: ",self.curr_collision)
-            
+            log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
+            rospy.loginfo(log_message)
 
         # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
         top_trajs = self.mpc_control.top_trajs.cpu().float()  # .numpy()
@@ -354,14 +354,25 @@ class FrankaEnvBase(object):
             self.gym_instance.draw_lines(pts, color=color)
 
      
-    def _dynamic_object_moveDesign(self):
+    def _dynamic_object_moveDesign_updown(self):
         # Update velocity vector based on move bounds and current pose
         collision_T = copy.deepcopy(self.world_instance.get_pose(self.collision_body_handle))
-        if collision_T.p.y < self.coll_movebound[0] or \
-           collision_T.p.y > self.coll_movebound[1] :
+        if collision_T.p.y < self.coll_movebound_updown[0] or \
+           collision_T.p.y > self.coll_movebound_updown[1] :
             self.uporient *= -1
         # Move the object based on the velocity vector
         collision_T.p.y += self.uporient * self.coll_dt_scale
+        self.gym.set_rigid_transform(
+            self.env_ptr, self.collision_base_handle, collision_T)
+        
+    def _dynamic_object_moveDesign_leftright(self):
+        # Update velocity vector based on move bounds and current pose
+        collision_T = copy.deepcopy(self.world_instance.get_pose(self.collision_body_handle))
+        if collision_T.p.z < self.coll_movebound_leftright[0] or \
+           collision_T.p.z > self.coll_movebound_leftright[1] :
+            self.uporient *= -1
+        # Move the object based on the velocity vector
+        collision_T.p.z += self.uporient * self.coll_dt_scale
         self.gym.set_rigid_transform(
             self.env_ptr, self.collision_base_handle, collision_T)
 

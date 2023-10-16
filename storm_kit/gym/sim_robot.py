@@ -169,12 +169,12 @@ class RobotSim():
 
         robot_lower_limits = robot_dof_props['lower']
         robot_upper_limits = robot_dof_props['upper']
-        print(
-            "robot_joint_names_:",robot_joint_names,
-            "\nrobot_lower_limits_:",robot_lower_limits,
-            "\nrobot_upper_limits_:",robot_upper_limits,
-            "\ndof_:",self.dof
-            )
+        # print(
+        #     "robot_joint_names_:",robot_joint_names,
+        #     "\nrobot_lower_limits_:",robot_lower_limits,
+        #     "\nrobot_upper_limits_:",robot_upper_limits,
+        #     "\ndof_:",self.dof
+        #     ) # 好的 我知道了
         
         if(init_state is None):
             if(self.init_state is None):
