@@ -75,6 +75,7 @@ class ArmTask(BaseTask):
             mppi_params['init_mean'] = init_action
         mppi_params['rollout_fn'] = rollout_fn
         mppi_params['tensor_args'] = self.tensor_args
+        mppi_params['multimodal'] = exp_params['multimodal']
         controller = MPPI(**mppi_params)
         self.exp_params = exp_params
         return controller

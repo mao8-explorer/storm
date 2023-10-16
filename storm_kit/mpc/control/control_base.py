@@ -417,14 +417,13 @@ class Controller(ABC):
         with torch.cuda.amp.autocast(enabled=True):
             with torch.no_grad():
                 for _ in range(n_iters):
-                    
                     # 1. samle multiPolicy_actions and compute differPolicy cost
                     trajectories = self.generate_multimodal_rollouts(state)
 
                     self._multimodal_update_distribution(trajectories) 
 
-                    self.greedy_mean_traj, self.sensi_mean_traj, self.greedy_best_traj, self.sensi_best_traj,self.mean_traj = \
-                    self.get_multimodal_mean_trajectory(state)
+                    # self.greedy_mean_traj, self.sensi_mean_traj, self.greedy_best_traj, self.sensi_best_traj,self.mean_traj = \
+                    # self.get_multimodal_mean_trajectory(state)
 
                     info['rollout_time'] += trajectories['rollout_time']
                     if self.check_convergence():

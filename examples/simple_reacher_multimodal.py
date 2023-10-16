@@ -95,7 +95,7 @@ class holonomic_robot(Plotter_MultiModal):
             #  core_process
             self.controller.rollout_fn.image_move_collision_cost.world_coll.updateSDFPotientailGradient() #更新环境SDF
             last = time.time()
-            command, value_function = self.simple_task.get_multimodal_command(t_step, self.current_state, self.sim_dt, WAIT=True)
+            command, value_function = self.simple_task.get_multimodal_command(t_step, self.current_state, self.sim_dt)
             self.run_time += time.time() - last
             self.current_state = command # or command * scale
             self.value_function = value_function

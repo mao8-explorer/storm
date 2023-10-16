@@ -232,8 +232,7 @@ class SimpleReacher(object):
         state_batch = state_dict['state_seq']
         goal_state = self.goal_state.unsqueeze(0)
         
-        self.target_cost = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs], assign_weights = 1.0)
-    
+        self.target_cost = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs]) * (1.0 / self.exp_params['cost']['goal_state']['weight']) 
         self.coll_cost, self.judge_coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
 
         # 速度限制 禁止越界

@@ -25,7 +25,7 @@ import yaml
 import numpy as np
 
 from ...util_file import get_mpc_configs_path as mpc_configs_path
-from ...mpc.rollout.arm_reacher import ArmReacher
+from ...mpc.rollout import ArmReacher , ArmReacherMultiModal
 from ...mpc.control import MPPI
 from ...mpc.utils.state_filter import JointStateFilter
 from ...mpc.utils.mpc_process_wrapper import ControlProcess
@@ -45,6 +45,7 @@ class ReacherTask(ArmTask):
                          world_file=world_file, tensor_args=tensor_args)
 
     def get_rollout_fn(self, **kwargs):
-        rollout_fn = ArmReacher(**kwargs)
+        # rollout_fn = ArmReacher(**kwargs)
+        rollout_fn = ArmReacherMultiModal(**kwargs)
         return rollout_fn
 

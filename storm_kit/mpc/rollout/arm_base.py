@@ -34,7 +34,6 @@ from ...mpc.model.integration_utils import build_fd_matrix
 from ...mpc.rollout.rollout_base import RolloutBase
 from ..cost.robot_self_collision_cost import RobotSelfCollisionCost
 
-import time
 class ArmBase(RolloutBase):
     """
     This rollout function is for reaching a cartesian pose for a robot
@@ -106,13 +105,7 @@ class ArmBase(RolloutBase):
                                       traj_dt=self.traj_dt)
 
         self.retract_state = torch.tensor([self.exp_params['cost']['retract_state']], device=device, dtype=float_dtype)
-
-        # collision model:
-
-        # build robot collision model
-
         
-
         
         if self.exp_params['cost']['smooth']['weight'] > 0:
             self.smooth_cost = FiniteDifferenceCost(**self.exp_params['cost']['smooth'],
@@ -242,13 +235,9 @@ class ArmBase(RolloutBase):
         #print("computing rollout")
         #print(act_seq)
         #print('step...')
-        with profiler.record_function("robot_model"):
-            state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq)
-        
-        
-        #link_pos_seq, link_rot_seq = self.dynamics_model.get_link_poses()
-        with profiler.record_function("cost_fns"):
-            cost_seq = self.cost_fn(state_dict, act_seq)
+
+        state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq)
+        cost_seq = self.cost_fn(state_dict, act_seq)
 
         sim_trajs = dict(
             actions=act_seq,#.clone(),

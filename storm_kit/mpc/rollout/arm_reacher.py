@@ -40,6 +40,7 @@ Todo:
         super(ArmReacher, self).__init__(exp_params=exp_params,
                                          tensor_args=tensor_args,
                                          world_params=world_params)
+        
         self.goal_state = None
         self.goal_ee_pos = None
         self.goal_ee_rot = None
@@ -78,7 +79,7 @@ Todo:
         goal_state = self.goal_state
 
         # 为什么要存在 因为逆解不存在时，也就是全局规划无解时，可以使用该方式引导
-        goal_cost, rot_err_norm, goal_dist = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
+        goal_cost = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
                                                                 goal_ee_pos, goal_ee_rot)
         cost += goal_cost
 
@@ -97,19 +98,6 @@ Todo:
             if self.exp_params['cost']['zero_vel']['weight'] > 0:
                 cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=disp_vec)
         
-
-        # 500*30 500*1 500*30*1
-        # else: 
-
-    
-        # joint l2 cost
-        # if(self.exp_params['cost']['joint_l2']['weight'] > 0.0 and goal_state is not None):
-        #     disp_vec = state_batch[:,:,0:self.n_dofs] - goal_state[:,0:self.n_dofs]
-        #     cost += self.dist_cost.forward(disp_vec)
-
-        if(return_dist):
-            return cost, goal_cost, rot_err_norm, goal_dist
-
             
         if self.exp_params['cost']['zero_acc']['weight'] > 0:
             cost += self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist)

@@ -32,7 +32,7 @@ class FrankaEnvBase(object):
         self.viewer = gym_instance.viewer
         self.collision_grid = None
         self.curr_state_tensor = None
-        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[]}
+        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
 
     def _environment_init(self):
         self._initialize_robot_simulation() # robot_sim 
@@ -340,18 +340,18 @@ class FrankaEnvBase(object):
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
             rospy.loginfo(log_message)
 
-        # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
-        top_trajs = self.mpc_control.top_trajs.cpu().float()  # .numpy()
-        n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
-        w_pts = self.w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
+        # # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
+        # top_trajs = self.mpc_control.top_trajs.cpu().float()  # .numpy()
+        # n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
+        # w_pts = self.w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
 
-        top_trajs = w_pts.cpu().numpy()
-        color = np.array([0.0, 1.0, 0.0])
-        for k in range(top_trajs.shape[0]):
-            pts = top_trajs[k, :, :]
-            color[0] = float(k) / float(top_trajs.shape[0])
-            color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
-            self.gym_instance.draw_lines(pts, color=color)
+        # top_trajs = w_pts.cpu().numpy()
+        # color = np.array([0.0, 1.0, 0.0])
+        # for k in range(top_trajs.shape[0]):
+        #     pts = top_trajs[k, :, :]
+        #     color[0] = float(k) / float(top_trajs.shape[0])
+        #     color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
+        #     self.gym_instance.draw_lines(pts, color=color)
 
      
     def _dynamic_object_moveDesign_updown(self):
@@ -388,6 +388,7 @@ class FrankaEnvBase(object):
         self.traj_log['velocity'].append(self.command['velocity'])
         self.traj_log['acc'].append(self.command['acceleration'])
         self.traj_log['des'].append(self.jnq_des)
+        self.traj_log['weights'].append(self.mpc_control.controller.weights_divide.cpu().numpy())
 
 
     def plot_traj(self):
@@ -396,8 +397,9 @@ class FrankaEnvBase(object):
         vel = np.matrix(self.traj_log['velocity'])
         acc = np.matrix(self.traj_log['acc'])
         des = np.matrix(self.traj_log['des'])
+        weights = np.matrix(self.traj_log['weights'])
         axs = [plt.subplot(3,1,i+1) for i in range(3)]
-        if(len(axs) >= 2):
+        if(len(axs) >= 3):
             axs[0].set_title('Position')
             axs[1].set_title('Velocity')
             # axs[3].set_title('Trajectory Position')
@@ -412,4 +414,9 @@ class FrankaEnvBase(object):
             axs[2].plot(acc[:,0], 'r',label='joint1')
             axs[2].plot(acc[:,2], 'g', label='joint3')
         plt.savefig('trajectory.png')
+        plt.figure()
+        axs = plt.subplot(1,1,1)
+        axs.plot(weights[:,0], 'r', label='greedy')
+        axs.plot(weights[:,1], 'g', label='sensi')
+        axs.legend()      
         plt.show()

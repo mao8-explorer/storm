@@ -72,7 +72,6 @@ model:
     #bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
     grid_resolution: 0.05  # SDF use : EDT -> Potential
 
-
 cost:
   joint_l2:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
@@ -84,18 +83,6 @@ cost:
     weight: 100.0
     sigma : 0.05
 
-  goal_pose:
-    vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    # weight: [10.0, 30.0]
-    weight: [10.0, 10.0] # weight[0] = 0 : CartGoal constraint None rot | pos
-    position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
-    orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
-    hinge_val: -1
-    convergence_val: [0.0, 0.0] # orientation, position
-
-  Cart_sparse_reward:
-    weight: 100.0
-    sigma : 0.046
 
   primitive_collision:
     weight: 100.0
@@ -115,6 +102,18 @@ cost:
     hinge_val: 0.175 # 10/180*pi 
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
 
+  goal_pose:
+    vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    # weight: [10.0, 30.0]
+    weight: [10.0, 10.0] # weight[0] = 0 : CartGoal constraint None rot | pos
+    position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
+    orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
+    hinge_val: -1
+    convergence_val: [0.0, 0.0] # orientation, position
+
+  Cart_sparse_reward:
+    weight: 100.0
+    sigma : 0.046
 
   stop_cost_acc:
     weight: 0.0
@@ -177,9 +176,32 @@ cost:
     weight: 1000.0 
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     bound_thresh: 0.05
-  
+
   retract_state : [0.00, 0.0, 0.00, -1.5, 0.00, 2.0, 0.0]
   retract_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,0.0]
+
+
+multimodal_cost:
+  jnq_goal_cost:
+    greedy_weight: 50.0
+    sensi_weight: 5.0
+    judge_weight: 10.0
+
+  environment_collision: 
+    greedy_weight: 100.0
+    sensi_weight: 500.0
+    judge_weight: 100.0
+
+  jnq_goal_reward:
+    greedy_weight: 100.0
+    sensi_weight: 10
+    judge_weight: 40
+
+multimodal:
+  top_traj_select: 50
+  random_shoot_particles: {'sensi_random': 50, 'greedy_random': 50, 'sensi_mean': 80, 'greedy_mean': 80}
+
+
 
 mppi:
   horizon           : 30
@@ -190,7 +212,7 @@ mppi:
   step_size_cov     : 0.7
   beta              : 1.0  # 越小 探索性越弱 max entropy exp(-1/beta * x)
   alpha             : 1
-  num_particles     : 500 #10000
+  num_particles     : 580 #10000
   update_cov        : True
   cov_type          : 'diag_AxA' # 
   kappa             : 0.005
