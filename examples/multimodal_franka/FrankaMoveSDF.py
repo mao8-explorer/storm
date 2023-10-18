@@ -10,6 +10,7 @@ import torch
 import numpy as np
 from storm_kit.gym.core import Gym
 from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml
+from storm_kit.mpc.task.reacher_task import ReacherTask
 import rospy
 import queue
 import time
@@ -43,6 +44,8 @@ class IKSolve:
 class MPCRobotController(FrankaEnvBase):
     def __init__(self, gym_instance , ik_mSolve):
         super().__init__(gym_instance = gym_instance)
+        # Initialize the MPC control
+        self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args )
         self._environment_init()
         self.envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
         self.coll_dt_scale = 0.015 # left and right

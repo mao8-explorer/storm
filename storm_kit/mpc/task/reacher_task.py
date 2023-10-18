@@ -45,7 +45,7 @@ class ReacherTask(ArmTask):
                          world_file=world_file, tensor_args=tensor_args)
 
     def get_rollout_fn(self, **kwargs):
-        # rollout_fn = ArmReacher(**kwargs)
-        rollout_fn = ArmReacherMultiModal(**kwargs)
+        rollout_fn = ArmReacher(**kwargs)
+        # rollout_fn = ArmReacherMultiModal(**kwargs)
         return rollout_fn
 

@@ -10,6 +10,7 @@ import torch
 import numpy as np
 from storm_kit.gym.core import Gym
 from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml
+from storm_kit.mpc.task import ReacherTaskMultiModal
 import rospy
 import queue
 import time
@@ -43,6 +44,8 @@ class IKSolve:
 class MPCRobotController(FrankaEnvBase):
     def __init__(self, gym_instance , ik_mSolve):
         super().__init__(gym_instance = gym_instance)
+        self.mpc_config = 'franka_reacher_multimodal.yml'
+        self.mpc_control = ReacherTaskMultiModal( self.mpc_config, self.world_description, self.tensor_args )
         self._environment_init()
         self.envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
         self.coll_dt_scale = 0.015 # left and right
@@ -119,6 +122,8 @@ class MPCRobotController(FrankaEnvBase):
                 # self._dynamic_object_moveDesign_updown()
                 self._dynamic_object_moveDesign_leftright()
                 self.traj_append()
+                self.traj_append_multimodal()
+                
                 # 逆解获取查询 output_queue
                 try :
                     output = self.ik_mSolve.output_queue.get()
@@ -143,6 +148,7 @@ class MPCRobotController(FrankaEnvBase):
         self.coll_robot_pub.unregister() 
         self.pub_env_pc.unregister()
         self.pub_robot_link_pc.unregister()
+        self.plot_traj_multimodal()
         self.plot_traj()
         rospy.logwarn("mpc_close...")
         

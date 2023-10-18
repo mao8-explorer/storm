@@ -70,8 +70,8 @@ class PrimitiveCollisionCost(nn.Module):
         self.weight = torch.as_tensor(weight,**self.tensor_args)
         self.vec_weight = torch.as_tensor(vec_weight, **self.tensor_args)
         self.pv_weight = torch.as_tensor(pv_weight, **self.tensor_args)
-        self.w1 = self.pv_weight[0] * self.weight
-        self.w2 = self.pv_weight[1] * self.weight
+        self.w1 = self.pv_weight[0]
+        self.w2 = self.pv_weight[1]
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
 
         robot_collision_params = robot_params['robot_collision_params']
@@ -107,9 +107,9 @@ class PrimitiveCollisionCost(nn.Module):
         self.robot_world_coll.optimal_check_robot_sphere_collisions_voxeltosdf(link_pos_batch, link_rot_batch)
         potential, grad, vel_orient, vel_abs = self.robot_world_coll.sdf1_grad3_vel4[:,:,0] , self.robot_world_coll.sdf1_grad3_vel4[:,:,1:4], \
                                       self.robot_world_coll.sdf1_grad3_vel4[:,:,4:-1] , self.robot_world_coll.sdf1_grad3_vel4[:,:,-1]
-        self.current_state_collision = potential[-4*horizon,:] #best_traj index shape is （7，）查询potential
-        self.current_grad = grad[-4*horizon,:,:] #best_traj index shape (7,3) # gradient 查询
-        self.current_vel_orient = vel_orient[-4*horizon,:] #best_traj index shape (7,3) # 速度查询
+        self.current_state_collision = potential[-1*horizon,:] #best_traj index shape is （7，）查询potential
+        self.current_grad = grad[-1*horizon,:,:] #best_traj index shape (7,3) # gradient 查询
+        self.current_vel_orient = vel_orient[-1*horizon,:] #best_traj index shape (7,3) # 速度查询
         self.current_sphere_pos = self.robot_world_coll.sphere_pos_links
 
         # cost = CostCompute(sdf_grad, vel, self.w1, self.w2,batch_size,horizon,n_links, self.vec_weight)
@@ -130,15 +130,19 @@ class PrimitiveCollisionCost(nn.Module):
                                                         2.0 * (torch.max(-cos_theta, torch.tensor(0.0).to(inp_device))) +\
                                                         0.5 * (torch.min(-cos_theta, torch.tensor(0.0).to(inp_device)))
                                                         )
-        # cost_sdf = self.w1 * potential + self.w2 * potential * vel_abs
+        judge_cost_sdf = self.w1 * potential + self.w2 * potential * vel_abs
         # cost_sdf = w1 * potential
         # cost_sdf = w2 * potential * vel_abs
         cost_sdf = cost_sdf.view(batch_size, horizon, n_links) 
-        disp_vec = self.vec_weight * cost_sdf
+        disp_vec = self.weight * self.vec_weight * cost_sdf 
         cost = torch.sum(disp_vec, dim=-1) # 对每个link分配相同的权重 做sum
 
-        return cost.to(inp_device)
-    
+        judge_cost_sdf = judge_cost_sdf.view(batch_size, horizon, n_links) 
+        judge_disp_vec = self.weight * self.vec_weight * judge_cost_sdf
+        judge_cost = torch.sum(judge_disp_vec, dim=-1) # 对每个link分配相同的权重 做sum
+
+
+        return cost.to(inp_device) , judge_cost.to(inp_device)    
 
     def voxel_forward(self, link_pos_seq, link_rot_seq):
 
@@ -209,7 +213,7 @@ class PrimitiveCollisionCost(nn.Module):
 
         cost_sdf = cost_sdf.view(batch_size, horizon, n_links) 
         
-        self.current_state_collision = cost_sdf[-4,0,:] #best_traj index
+        self.current_state_collision = cost_sdf[-1,0,:] #mean_traj index
         cost = torch.sum(cost_sdf, dim=-1) # 对每个link分配相同的权重 做sum
         cost = self.weight * cost
 

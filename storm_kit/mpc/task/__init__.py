@@ -22,5 +22,6 @@
 # DEALINGS IN THE SOFTWARE.#
 from .task_base import BaseTask
 from .reacher_task import ReacherTask
+from .reacher_task_multimodal import ReacherTaskMultiModal
 
-#__all__=['BaseTask', 'ReacherTask']
+#__all__=['BaseTask', 'ReacherTask' , 'ReacherTaskMultiModal']

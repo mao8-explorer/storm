@@ -184,7 +184,7 @@ cost:
 multimodal_cost:
   jnq_goal_cost:
     greedy_weight: 40.0
-    sensi_weight: 5.0
+    sensi_weight: 10.0
     judge_weight: 10.0
 
   environment_collision: 
@@ -199,7 +199,7 @@ multimodal_cost:
 
 multimodal:
   top_traj_select: 30
-  random_shoot_particles: {'sensi_random': 50, 'greedy_random': 50, 'sensi_mean': 80, 'greedy_mean': 80}
+  random_shoot_particles: {'sensi_random': 30, 'greedy_random': 30, 'sensi_mean': 50, 'greedy_mean': 50}
 
 
 

@@ -50,9 +50,9 @@ class PoseCostQuaternion(nn.Module):
         self.rot_weight = self.vec_weight[0:3]
         self.pos_weight = self.vec_weight[3:6]
 
-        self.px = torch.tensor([1.0,0.0,0.0], **self.tensor_args).T
-        self.py = torch.tensor([0.0,1.0,0.0], **self.tensor_args).T
-        self.pz = torch.tensor([0.0,0.0,1.0], **self.tensor_args).T
+        self.px = torch.tensor([1.0,0.0,0.0], **self.tensor_args)
+        self.py = torch.tensor([0.0,1.0,0.0], **self.tensor_args)
+        self.pz = torch.tensor([0.0,0.0,1.0], **self.tensor_args)
         
         self.I = torch.eye(3,3,**self.tensor_args)
         self.Z = torch.zeros(1, **self.tensor_args)

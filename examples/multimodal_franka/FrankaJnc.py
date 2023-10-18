@@ -11,6 +11,7 @@ import torch
 import numpy as np
 from storm_kit.gym.core import Gym
 from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml
+from storm_kit.mpc.task.reacher_task import ReacherTask
 import rospy
 import queue
 import time
@@ -37,18 +38,20 @@ class IKSolve:
 class MPCRobotController(FrankaEnvBase):
     def __init__(self, gym_instance , ik_mSolve):
         super().__init__(gym_instance = gym_instance)
+        self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args )
         self._environment_init()
         self.thresh = 0.03 # goal next thresh in Cart
         x,z,y = 0.45 , 0.45 , 0.45
-        # self.goal_list = [
-        #      [x,y,-z],
-        #      [x,y,z],
-        #      [-x,y,z],
-        #     #  [-0.1,y,-0.5]
-        #      ]
         self.goal_list = [
-             [0.20,0.30,-0.65],
-             [0.20,0.30,0.65],]
+             [x,y,-z],
+             [x,y,z],
+             [-x,y,z],
+            #  [-x,y,-z]
+            #  [-0.1,y,-0.5]
+             ]
+        # self.goal_list = [
+        #      [0.20,0.30,-0.65],
+        #      [0.20,0.30,0.65],]
         self.goal_state = self.goal_list[0]
         self.update_goal_state()
         self.rollout_fn = self.mpc_control.controller.rollout_fn
@@ -85,7 +88,7 @@ class MPCRobotController(FrankaEnvBase):
                 # 逆解获取请求发布 input_queue
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
                 opt_time_last = time.time()
-                command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt, WAIT=True)
+                command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt)
                 opt_time_sum += time.time() - opt_time_last
                 # get position command:
                 self.command = command

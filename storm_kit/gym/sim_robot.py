@@ -27,6 +27,7 @@
 import copy
 
 import numpy as np
+import time
 from . import helpers 
 from quaternion import from_rotation_matrix, as_float_array, as_rotation_matrix, as_quat_array
 
@@ -255,7 +256,6 @@ class RobotSim():
             robot_dof_states = copy.deepcopy(self.gym.get_actor_dof_states(env_handle, robot_handle,
                                                                         gymapi.STATE_ALL))
             self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(robot_dof_states['pos']))
-
         return True
 
     def update_collision_model(self, link_poses, env_ptr, robot_handle):

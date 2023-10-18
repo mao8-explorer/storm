@@ -206,16 +206,19 @@ class MPPI(OLGaussianMPC):
         greedy_costs = trajectories["greedy_costs"].to(**self.tensor_args)
         sensi_costs = trajectories["sensi_costs"].to(**self.tensor_args)
         judge_costs = trajectories["judge_costs"].to(**self.tensor_args)
-        state_seq = trajectories["state_seq"].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
+        vis_seq = trajectories['state_seq'].to(**self.tensor_args)
 
         greedy_total_costs = cost_to_go(greedy_costs, self.gamma_seq)[:,0]
         sensi_total_costs = cost_to_go(sensi_costs, self.gamma_seq)[:,0]
         judge_total_costs = cost_to_go(judge_costs, self.gamma_seq)[:,0]
 
-        self.greedy_mean , self.greedy_Value_w , self.greedy_best_action , greedy_cov_update= self.softMax_cost(greedy_total_costs, judge_total_costs, actions)
-        self.sensi_mean , self.sensi_Value_w , self.sensi_best_action , sensi_cov_update = self.softMax_cost(sensi_total_costs, judge_total_costs, actions)
+        self.greedy_mean , self.greedy_Value_w , self.greedy_best_action , greedy_cov_update , greedy_good_idx= self.softMax_cost(greedy_total_costs, judge_total_costs, actions)
+        self.sensi_mean , self.sensi_Value_w , self.sensi_best_action , sensi_cov_update , sensi_good_idx = self.softMax_cost(sensi_total_costs, judge_total_costs, actions)
 
+
+        self.greedy_top_trajs = torch.index_select(vis_seq, 0, greedy_good_idx[:3]).squeeze(0)
+        self.sensi_top_trajs = torch.index_select(vis_seq, 0, sensi_good_idx[:3]).squeeze(0)
         # 这里有很多错误 大量的改动需要 
         # w = torch.softmax((-1.0/self.beta) * torch.tensor((self.greedy_Value_w,self.sensi_Value_w)), dim=0).to(**self.tensor_args)
         # torch.exp(-1*(w_cat-w_cat.min())) / torch.sum(torch.exp(-1*(w_cat-w_cat.min())))
@@ -362,7 +365,7 @@ class MPPI(OLGaussianMPC):
         # get best trajecory
         randomShoot_best_action = torch.index_select(actions, 0, good_idx[0]).squeeze(0)
         
-        return new_mean , value_w , randomShoot_best_action, cov_update
+        return new_mean , value_w , randomShoot_best_action, cov_update , good_idx
 
     def logsumexp(self,costs):
 

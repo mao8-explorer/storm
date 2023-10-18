@@ -24,6 +24,7 @@ import numpy as np
 try:
     from  isaacgym import gymapi
     from isaacgym import gymutil
+    from isaacgym.gymutil import WireframeSphereGeometry
 except Exception:
     print("ERROR: gym not loaded, this is okay when generating docs")
 
@@ -120,10 +121,29 @@ class Gym(object):
                 verts[i][1] = w_T_l * verts[i][1]
             colors[i] = (color[0], color[1], color[2])
 
-        
-
         self.gym.add_lines(self.viewer,self.env_list[env_idx],pts.shape[0] - 1,verts, colors)
         #self.gym.add_lines(self.viewer,self.env_list[env_idx],pts.shape[0] - 1,verts, colors)
+
+    def build_sphere_geom(self):
+        self.sphere_geom_mean = WireframeSphereGeometry(radius=0.01, color=(0, 0, 1), num_lats=3, num_lons=3) 
+        self.sphere_geom_sensi = WireframeSphereGeometry(radius=0.005, color=(0, 1, 0), num_lats=2, num_lons=2) 
+        self.sphere_geom_greedy = WireframeSphereGeometry(radius=0.005, color=(0, 0, 1), num_lats=2, num_lons=2) 
+    def draw_spheres(self, pts,env_idx=0):
+        for pt in pts[0,:15]:
+            position = gymapi.Vec3(pt[0],pt[1],pt[2])
+            verts = self.sphere_geom_mean.instance_verts(gymapi.Transform(p=position))
+            self.gym.add_lines(self.viewer, self.env_list[env_idx], self.sphere_geom_mean.num_lines(), verts, self.sphere_geom_mean.colors())
+        # for pt in pts[-2]:
+        #     position = gymapi.Vec3(pt[0],pt[1],pt[2])
+        #     verts = self.sphere_geom_sensi.instance_verts(gymapi.Transform(p=position))
+        #     self.gym.add_lines(self.viewer, self.env_list[env_idx], self.sphere_geom_sensi.num_lines(), verts, self.sphere_geom_sensi.colors())
+        # for pt in pts[-1]:
+        #     position = gymapi.Vec3(pt[0],pt[1],pt[2])
+        #     verts = self.sphere_geom_greedy.instance_verts(gymapi.Transform(p=position))
+        #     self.gym.add_lines(self.viewer, self.env_list[env_idx], self.sphere_geom_greedy.num_lines(), verts, self.sphere_geom_greedy.colors())
+
+
+
 
 class World(object):
     def __init__(self, gym_instance, sim_instance, env_ptr, world_params=None, w_T_r=None):

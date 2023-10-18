@@ -126,7 +126,7 @@ class OLGaussianMPC(Controller):
         elif sample_params['type'] == 'multiple':
             self.sample_lib = MultipleSampleLib(self.horizon, self.d_action, tensor_args=self.tensor_args, **self.sample_params)
             self.sample_shape = torch.Size([self.num_nonzero_particles - 2], device=self.tensor_args['device'])
-            self.multimodal_sample_shape = torch.Size([self.num_nonzero_particles - 3], device=self.tensor_args['device'])
+            self.multimodal_sample_shape = torch.Size([self.num_nonzero_particles - 5], device=self.tensor_args['device'])
         self.stomp_matrix = None #self.sample_lib.stomp_cov_matrix
         # initialize covariance types:
         if self.cov_type == 'full_HAxHA':
@@ -225,11 +225,15 @@ class OLGaussianMPC(Controller):
 
         # mean action index_+1 : 296 = sample_shape + 1 = 295 + 1
         # best_traj_index_+1 : 297 = sample_shape + 2 = 295 + 2
-        act_seq = torch.cat((act_seq, append_acts), dim=0)
+        # act_seq = torch.cat((act_seq, append_acts), dim=0)
+        act_seq = torch.cat((append_acts, act_seq), dim=0) 
+        # -1 mean_action_index
+        # 0 best_traj_index_
         return act_seq
 
 
     def sample_multimodal_actions(self):
+
 
         delta = self.sample_lib.get_samples(sample_shape=self.multimodal_sample_shape, base_seed=self.seed_val + self.num_steps)
         #add zero-noise seq so mean is always a part of samples
@@ -272,11 +276,18 @@ class OLGaussianMPC(Controller):
             neg_act_seqs = neg_action.expand(self.num_neg_particles,-1,-1)
             append_acts = torch.cat((self.sensi_best_action.unsqueeze(0) , \
                                      self.greedy_best_action.unsqueeze(0) ,\
+                                     self.sensi_mean.unsqueeze(0) , \
+                                     self.greedy_mean.unsqueeze(0) , \
                                      self.null_act_seqs, neg_act_seqs),dim=0)
 
         # mean action index_+1 : 296 = sample_shape + 1 = 295 + 1
         # best_traj_index_+1 : 297 = sample_shape + 2 = 295 + 2
-        act_seq = torch.cat((act_seq, append_acts), dim=0)
+        act_seq = torch.cat((append_acts, act_seq), dim=0)
+        # -1 mean_action
+        # 0 sensi_best_action
+        # 1 greedy_best_action
+        # 2 sensi_mean
+        # 3 greedy_mean
         return act_seq
        
  
@@ -341,9 +352,8 @@ class OLGaussianMPC(Controller):
 
         # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
         single_trajectory = self._rollout_fn.single_state_forward(state, mppi_act_seq).squeeze(0)
-        # trajectories['actions'][-5,] == act_seq[295,]
-        # mean_trajectories = trajectories['state_seq'][-5,]
-        # best_trajectories = trajectories['state_seq'][-4,]
+        # mean_trajectories = trajectories['state_seq'][-1,]
+        # best_trajectories = trajectories['state_seq'][0,]
 
         return single_trajectory
 
@@ -374,8 +384,8 @@ class OLGaussianMPC(Controller):
         # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
         trajectories = self._rollout_fn(state, act_seq)
         # trajectories['actions'][-5,] == act_seq[295,]
-        # mean_trajectories = trajectories['state_seq'][-5,]
-        # best_trajectories = trajectories['state_seq'][-4,]
+        # mean_trajectories = trajectories['state_seq'][-1,]
+        # best_trajectories = trajectories['state_seq'][0,]
 
         return trajectories
 
@@ -387,8 +397,8 @@ class OLGaussianMPC(Controller):
         # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
         trajectories = self._rollout_fn.short_sighted_rollout_fn(state, act_seq)
         # trajectories['actions'][-5,] == act_seq[295,]
-        # mean_trajectories = trajectories['state_seq'][-5,]
-        # best_trajectories = trajectories['state_seq'][-4,]
+        # mean_trajectories = trajectories['state_seq'][-1,]
+        # best_trajectories = trajectories['state_seq'][0,]
 
         return trajectories
     

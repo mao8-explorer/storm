@@ -71,7 +71,7 @@ class BaseTask():
         return cmd_des, info
 
 
-    def get_command(self, t_step, curr_state, control_dt, WAIT=False):
+    def get_command(self, t_step, curr_state, control_dt):
 
         # predict forward from previous action and previous state:
         #self.state_filter.predict_internal_state(self.prev_qdd_des)
@@ -80,13 +80,7 @@ class BaseTask():
             curr_state['velocity'] *= 0.0
         filt_state = self.state_filter.filter_joint_state(curr_state)
         state_tensor = self._state_to_tensor(filt_state)
-
-        if(WAIT):
-            next_command, val, info, best_action = self.control_process.get_command_debug(t_step, state_tensor.numpy(), control_dt=control_dt)
-            # next_command, val, info, best_action = self.control_process.get_multimodal_command_debug(t_step, state_tensor.numpy(), control_dt=control_dt)
-        else:
-            next_command, val, info, best_action = self.control_process.get_command(t_step, state_tensor.numpy(), control_dt=control_dt)
-
+        next_command, val, info, best_action = self.control_process.get_command_debug(t_step, state_tensor.numpy(), control_dt=control_dt)
         qdd_des = next_command
         self.prev_qdd_des = qdd_des
         cmd_des = self.state_filter.integrate_acc(qdd_des)

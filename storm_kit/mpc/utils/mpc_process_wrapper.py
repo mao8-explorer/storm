@@ -115,8 +115,8 @@ class ControlProcess(object):
         self.prev_mpc_tstep = copy.deepcopy(t_step)
 
         # get mean_trajectory and best_trajectory
-        # mean_trajectories = self.controller.trajectories['state_seq'][-5,]
-        # best_trajectories = self.controller.trajectories['state_seq'][-4,]
+        # mean_trajectories = self.controller.trajectories['state_seq'][-1,]
+        # best_trajectories = self.controller.trajectories['state_seq'][0,]
         
         # get command data:
         self.top_idx = self.controller.top_idx
@@ -159,8 +159,8 @@ class ControlProcess(object):
         self.prev_mpc_tstep = copy.deepcopy(t_step)
 
         # get mean_trajectory and best_trajectory
-        # mean_trajectories = self.controller.trajectories['state_seq'][-5,]
-        # best_trajectories = self.controller.trajectories['state_seq'][-4,]
+        # mean_trajectories = self.controller.trajectories['state_seq'][-1,]
+        # best_trajectories = self.controller.trajectories['state_seq'][-0,]
         
         # get command data:
         self.command = command
