@@ -433,7 +433,7 @@ class Controller(ABC):
         # curr_action = self._get_next_action(state, mode=self.sample_mode)
         curr_action_seq = self._get_action_seq(mode=self.sample_mode)
         #calculate optimal value estimate if required
-        value = torch.tensor((self.greedy_Value_w,self.sensi_Value_w))
+        value = self.value_min
         # if calc_val:
         #     trajectories = self.generate_rollouts(state)
         #     value = self._calc_val(trajectories)

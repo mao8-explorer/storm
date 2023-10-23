@@ -103,22 +103,29 @@ class ArmReacherMultiModal(RolloutBase):
         multimodal_mppi_costs = exp_params['multimodal_cost']
         self.multiTargetCost = multimodal_mppi_costs['jnq_goal_cost']
         self.multiCollisionCost = multimodal_mppi_costs['environment_collision']
-        self.multiTerminalCost = multimodal_mppi_costs['jnq_goal_reward']
+        self.multiTerminalCost = multimodal_mppi_costs['Cart_jnq_goal_reward']
+        self.multiTargetCost_Cart = multimodal_mppi_costs['Cart_goal_cost']
+        # 权重归1 重新分配
         self.jnq_dist_cost.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
         self.primitive_collision_cost.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
         self.jnq_sparse_reward.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
+        self.cart_sparse_reward.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
+        self.goal_cost.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
 
         self.targetcost_greedy_w = self.multiTargetCost['greedy_weight']
         self.collision_greedy_w  = self.multiCollisionCost['greedy_weight']
         self.terminalsparse_greedy_w = self.multiTerminalCost['greedy_weight']
+        self.cart_targetcost_greedy_w = self.multiTargetCost_Cart['greedy_weight']
 
         self.targetcost_sensi_w = self.multiTargetCost['sensi_weight']
         self.collision_sensi_w  = self.multiCollisionCost['sensi_weight']
         self.terminalsparse_sensi_w = self.multiTerminalCost['sensi_weight']
+        self.cart_targetcost_sensi_w = self.multiTargetCost_Cart['sensi_weight']
 
         self.targetcost_judge_w = self.multiTargetCost['judge_weight']
         self.collision_judge_w  = self.multiCollisionCost['judge_weight']
         self.terminalsparse_judge_w = self.multiTerminalCost['judge_weight']
+        self.cart_targetcost_judge_w = self.multiTargetCost_Cart['judge_weight']
 
 
 
@@ -145,13 +152,18 @@ class ArmReacherMultiModal(RolloutBase):
             self.jnq_goal_reward = self.jnq_sparse_reward.forward(disp_vec)
             self.zero_vel_bound = self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=disp_vec)
 
+
+        # get some special indexes to visualization
         # -1 mean_action
         # 0 sensi_best_action
         # 1 greedy_best_action
         # 2 sensi_mean
         # 3 greedy_mean
-
         self.visual_trajectory = torch.cat([ee_pos_batch[-1].unsqueeze(0),ee_pos_batch[0:4]])
+        self.mean_joint_visual_trajectory = state_batch[-1, :, :self.n_dofs]
+        self.sensi_joint_visual_trajectory = state_batch[2, :, :self.n_dofs]
+        self.greedy_joint_visual_trajectory = state_batch[3, :, :self.n_dofs]
+
     
 
      
@@ -169,29 +181,36 @@ class ArmReacherMultiModal(RolloutBase):
         if self.goal_jnq is not None:
             greedy_cost_seq = self.jnq_goal_cost * self.targetcost_greedy_w +\
                             self.environment_collision * self.collision_greedy_w +\
-                            self.jnq_goal_reward * self.terminalsparse_greedy_w+\
-                            normal_cost + self.cart_goal_cost + self.cart_goal_reward + self.zero_vel_bound 
+                            (self.cart_goal_reward + self.jnq_goal_reward) * self.terminalsparse_greedy_w+\
+                            self.cart_goal_cost * self.cart_targetcost_greedy_w +\
+                            normal_cost   + self.zero_vel_bound 
             
             sensi_cost_seq =  self.jnq_goal_cost * self.targetcost_sensi_w +\
+                            (self.cart_goal_reward + self.jnq_goal_reward) * self.terminalsparse_sensi_w+\
                             self.environment_collision * self.collision_sensi_w  +\
                             normal_cost
             
             judge_cost_seq = self.jnq_goal_cost * self.targetcost_judge_w+\
+                             self.cart_goal_cost * self.cart_targetcost_judge_w +\
                             self.judge_environment_collision * self.collision_judge_w  +\
-                            self.jnq_goal_reward * self.terminalsparse_judge_w +\
-                            self.cart_goal_reward
+                            (self.cart_goal_reward + self.jnq_goal_reward) * self.terminalsparse_judge_w 
+            
         else:
             greedy_cost_seq = \
                             self.environment_collision * self.collision_greedy_w +\
-                            normal_cost + self.cart_goal_cost + self.cart_goal_reward
+                            self.cart_goal_cost * self.cart_targetcost_greedy_w +\
+                            self.cart_goal_reward * self.terminalsparse_greedy_w +\
+                            normal_cost 
             
             sensi_cost_seq = \
+                            self.cart_goal_cost * self.cart_targetcost_sensi_w  +\
                             self.environment_collision * self.collision_sensi_w  +\
-                            normal_cost + self.cart_goal_cost
+                            normal_cost 
             
             judge_cost_seq = \
                             self.judge_environment_collision * self.collision_judge_w  +\
-                            self.cart_goal_cost + self.cart_goal_reward * 0.5        
+                            self.cart_goal_cost * self.cart_targetcost_judge_w +\
+                            self.cart_goal_reward * self.terminalsparse_judge_w  
             
         sim_trajs = dict(
             actions=act_seq,#.clone(),

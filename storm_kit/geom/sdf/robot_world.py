@@ -84,6 +84,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         world_collision = WorldPrimitiveCollision(world_collision_params, tensor_args=tensor_args,
                                                   batch_size=world_batch_size, bounds=bounds,
                                                   grid_resolution=grid_resolution)
+        self.horizon = robot_collision_params['horizon']
         self.robot_batch_size = robot_batch_size
 
         super().__init__(robot_collision, world_collision)
@@ -283,7 +284,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
             self.sdf1_grad3_vel4[:,i,:] = (torch.cat((sdf,vel_spheres),dim=-1)).gather(dim=1, index = min_indices).squeeze(1)
             # self.sdf_grad[:,i] = sdf.gather(dim=1, index=min_indices).squeeze(1) # 15000* 4
             # self.vel[:,i] = vel_spheres.gather(dim=1, index=min_indices).squeeze(1)
-            self.sphere_pos_links[i,:] = spheres[-1*30,min_indices[-1*30,0,0],:] # 肯定不规范 30是horizon, -1是 mean_traj的轨迹
+            self.sphere_pos_links[i,:] = spheres[-1*self.horizon,min_indices[-1*self.horizon,0,0],:] # 肯定不规范 30是horizon, -1是 mean_traj的轨迹
 
 
 

@@ -129,7 +129,7 @@ class Gym(object):
         self.sphere_geom_sensi = WireframeSphereGeometry(radius=0.005, color=(0, 1, 0), num_lats=2, num_lons=2) 
         self.sphere_geom_greedy = WireframeSphereGeometry(radius=0.005, color=(0, 0, 1), num_lats=2, num_lons=2) 
     def draw_spheres(self, pts,env_idx=0):
-        for pt in pts[0,:15]:
+        for pt in pts[0,:20]:
             position = gymapi.Vec3(pt[0],pt[1],pt[2])
             verts = self.sphere_geom_mean.instance_verts(gymapi.Transform(p=position))
             self.gym.add_lines(self.viewer, self.env_list[env_idx], self.sphere_geom_mean.num_lines(), verts, self.sphere_geom_mean.colors())

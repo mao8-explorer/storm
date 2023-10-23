@@ -31,4 +31,28 @@ todo:
 
 一个设想，link能不能用两个球体表现collision呢？
 计算量？ 冗余？
-   
+
+解决方法： 换实验，左右移动障碍物，说明PPV-Theta的有效性。
+* TODO :
+  * 可视化轨迹
+  * 数据验证 P | PV | PPV | PPV_Theta
+
+## 轨迹跟踪实验
+[Safe and Fast Tracking on a Robot Manipulator:Robust MPC and Neural Network Control](https://www.researchgate.net/publication/339423718_Safe_and_Fast_Tracking_on_a_Robot_Manipulator_Robust_MPC_and_Neural_Network_Control?enrichId=rgreq-5f6ee3eb2ec6481265c0d0610e927202-XXX&enrichSource=Y292ZXJQYWdlOzMzOTQyMzcxODtBUzoxMTQzMTI4MTA4NDI5Mjg3N0AxNjYzMTA4NjMyNDY3&el=1_x_3&_esc=publicationCoverPdf)\
+[youtube video](https://www.youtube.com/watch?v=c5EekdSl9To)\
+we leverage recent results in MPC research
+to propose a new robust setpoint tracking MPC algorithm, which
+achieves reliable and safe tracking of a dynamic setpoint while
+guaranteeing stability and constraint satisfaction.
+
+
+<p align="center">
+  <img width="500" src="./../../zlog/franka实验/track_benchmark.png">
+</p>
+
+* 实验要求： 目标点时变 （做半圆跳变）； 障碍物在不同的高度左右移动
+  * 阶段实验1 ： 动力学模型轨迹跟踪（半圆画弧）高速下应没问题
+  * 阶段实验2 ： 障碍物同高度下左右移动应没问题
+  * 阶段实验3 ： 障碍物不同高度下左右移动，机械臂画弧
+
+调大 半径 受不了了

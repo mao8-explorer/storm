@@ -10,17 +10,15 @@ from storm_kit.gym.core import  World
 from storm_kit.gym.sim_robot import RobotSim
 from storm_kit.util_file import get_gym_configs_path, join_path, get_assets_path
 from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
-import rospy
-from std_msgs.msg import Float32
-from sensor_msgs.msg import PointCloud2
-from visualization_msgs.msg import Marker, MarkerArray
-from geometry_msgs.msg import Point
-from sensor_msgs.msg import PointField
 import matplotlib.pyplot as plt
+import rospy
+from ros_visual import RosVisualBase
+
 np.set_printoptions(precision=2)
 
-class FrankaEnvBase(object):
+class FrankaEnvBase(RosVisualBase):
     def __init__(self, gym_instance):
+        super().__init__()
         self.mpc_config = 'franka_reacher.yml'
         self.world_description = 'collision_primitives_3d.yml'
         self.gym_instance = gym_instance
@@ -39,7 +37,6 @@ class FrankaEnvBase(object):
         self._initialize_world_and_camera() # world_instance
         self._initialize_mpc_control() # mpc_control 
         self._initialize_env_objects() # 设置 gym 可操作物 handle
-        self._initialize_rospy()
         self._init_point_transform() # use for trans trajs_pos in robotCoordinate to world coordinate
     
     def _initialize_robot_simulation(self):
@@ -94,8 +91,7 @@ class FrankaEnvBase(object):
             self.gym_instance.sim,
             self.gym_instance.env_list[0],
             world_params,
-            w_T_r=self.w_T_r 
-        )
+            w_T_r=self.w_T_r)
 
         self.gym_instance.build_sphere_geom()
 
@@ -152,130 +148,6 @@ class FrankaEnvBase(object):
         self.gym.set_rigid_transform(self.env_ptr, self.collision_base_handle, object_pose)
 
 
-    def _initialize_rospy(self):
-        #  all ros_related
-        self.msg = PointCloud2()
-        self.msg.header.frame_id = "world"
-        self.msg.fields = [
-            PointField('x', 0, PointField.FLOAT32, 1),
-            PointField('y', 4, PointField.FLOAT32, 1),
-            PointField('z', 8, PointField.FLOAT32, 1)]
-        self.msg.is_bigendian = False
-        self.msg.point_step = 12
-        self.msg.is_dense = False
-        self.coll_msg = Float32()
-        self.coll_robot_pub = rospy.Publisher('robot_collision', Float32, queue_size=10)
-        self.pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
-        self.pub_robot_link_pc = rospy.Publisher('robot_link_pc', PointCloud2, queue_size=5)
-        self.marker_publisher = rospy.Publisher('arrow_markers', MarkerArray, queue_size=10)
-
-        # 初始化MarkerArray消息
-        self.arrow_markers = MarkerArray()
-        self.marker = Marker()
-        self.marker.header.frame_id = 'world'
-        self.marker.type = Marker.ARROW
-        self.marker.scale.x = 0.01
-        self.marker.scale.y = 0.03
-        self.marker.scale.z = 0.1
-        self.marker.color.a = 1.0
-        self.marker.pose.orientation.w = 1.0  # 固定方向为单位向量
-
-    def pub_pointcloud(self,pc,pub_handle):
-
-        self.msg.header.stamp = rospy.Time().now()
-        if len(pc.shape) == 3:
-            self.msg.height = pc.shape[1]
-            self.msg.width = pc.shape[0]
-        else:
-            self.msg.height = 1
-            self.msg.width = len(pc)
-
-        self.msg.row_step = self.msg.point_step * pc.shape[0]
-        self.msg.data = np.asarray(pc, np.float32).tobytes()
-
-        pub_handle.publish(self.msg)   
-
-    def pub_arrow(self,current_gradient,current_vel_orient,current_sphere_pos):
-        self.marker.header.stamp = rospy.Time().now()
-        self.arrow_markers.markers = []  # 清空之前的箭头
-        # 创建current_vel_orient的箭头，设置为红色
-        for i, gradient in enumerate(current_gradient*3.0):
-            marker = Marker()
-            marker.header = self.marker.header
-            marker.type = self.marker.type
-            marker.scale = self.marker.scale
-            marker.color = self.marker.color
-            marker.pose = self.marker.pose
-            marker.id = i
-            marker.action = Marker.ADD
-            marker.color.r = 1.0
-            marker.color.g = 0.0
-            marker.color.b = 0.0
-            start_point = Point()
-            start_point.x = current_sphere_pos[i][0]
-            start_point.y = current_sphere_pos[i][1]
-            start_point.z = current_sphere_pos[i][2]
-            marker.points.append(start_point)
-            end_point = Point()
-            end_point.x = gradient[0]+current_sphere_pos[i][0]
-            end_point.y = gradient[1]+current_sphere_pos[i][1]
-            end_point.z = gradient[2]+current_sphere_pos[i][2]
-            marker.points.append(end_point)         
-
-            self.arrow_markers.markers.append(marker)
-        self.marker_publisher.publish(self.arrow_markers)
-        self.marker.header.stamp = rospy.Time().now()
-        self.arrow_markers.markers = []  # 清空之前的箭头
-        # 创建current_gradient的箭头，设置为绿色
-        for i, vel_orient in enumerate(current_vel_orient):
-            marker = Marker()
-            marker.header = self.marker.header
-            marker.type = self.marker.type
-            marker.scale = self.marker.scale
-            marker.color = self.marker.color
-            marker.pose = self.marker.pose
-            marker.id = i + len(current_vel_orient)
-            marker.action = Marker.ADD
-            marker.color.r = 0.0
-            marker.color.g = 1.0
-            marker.color.b = 0.0
-            start_point = Point()
-            start_point.x = current_sphere_pos[i][0]
-            start_point.y = current_sphere_pos[i][1]
-            start_point.z = current_sphere_pos[i][2]
-            marker.points.append(start_point)
-            end_point = Point()
-            end_point.x = vel_orient[0]+current_sphere_pos[i][0]
-            end_point.y = vel_orient[1]+current_sphere_pos[i][1]
-            end_point.z = vel_orient[2]+current_sphere_pos[i][2]
-            marker.points.append(end_point)
-            self.arrow_markers.markers.append(marker)
-        
-        self.marker_publisher.publish(self.arrow_markers)
-
-    def updateRosMsg(self,visual_gradient = False):
-        # ROS Publish
-        # robot_collision_cost = self.mpc_control.controller.rollout_fn \
-        #                             .robot_self_collision_cost(self.curr_state_tensor.unsqueeze(0)[:,:,:7]) \
-        #                             .squeeze().cpu().numpy()
-        # self.coll_msg.data = robot_collision_cost
-        # self.coll_robot_pub.publish(self.coll_msg)
-        # pub env_pointcloud and robot_link_spheres
-        w_batch_link_spheres = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
-        spheres = [s[-1*30][:, :3].cpu().numpy() for s in w_batch_link_spheres]
-        # 将所有球体位置信息合并为一个NumPy数组
-        robotsphere_positions = np.concatenate(spheres, axis=0)
-        self.pub_pointcloud(robotsphere_positions, self.pub_robot_link_pc)
-        collision_grid_pc = self.collision_grid.cpu().numpy() 
-        self.pub_pointcloud(collision_grid_pc, self.pub_env_pc)
-        if visual_gradient:
-            # 发布两种箭头数据（current_vel_orient ,current_gradient）（这是因为current_vel_orient,current_gradient都是向量，需要将指向可视化），在rviz中显示。
-            # 箭头的位置都由current_sphere_pos提供。应该如何做
-            current_gradient = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_grad.cpu().numpy() # torch数据，shape为 7 * 3
-            current_vel_orient = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_vel_orient.cpu().numpy() # torch数据，shape为 7 * 3
-            current_sphere_pos = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_sphere_pos.cpu().numpy() # torch数据，shape为 7 * 3
-            self.pub_arrow(current_gradient,current_vel_orient,current_sphere_pos)
-
     def _init_point_transform(self):
         w_T_robot = torch.eye(4)
         quat = torch.tensor([self.w_T_r.r.w, self.w_T_r.r.x, self.w_T_r.r.y, self.w_T_r.r.z]).unsqueeze(0)
@@ -318,7 +190,7 @@ class FrankaEnvBase(object):
         set_world_T_base = world_T_body_des * body_T_world * world_T_base
         self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, set_world_T_base)
 
-    def updateGymVisual_GymGoalUpdate(self):
+    def updateGymVisual_GymGoalUpdate(self , end_trajvisual = False):
                
         # trans ee_pose in robot_coordinate to world coordinate
         ee_pose = gymapi.Transform()
@@ -332,15 +204,34 @@ class FrankaEnvBase(object):
 
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
         if (np.linalg.norm(np.array(self.g_pos - cur_e_pos)) < self.thresh):
+            self.goal_flagi += 1
             self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
             self.update_goal_state()
-            self.goal_flagi += 1
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
+            if self.goal_flagi / len(self.goal_list) == 6 : 
+                self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
             rospy.loginfo(log_message)
         
-        # self.visual_top_trajs_ingym()
-
+        if end_trajvisual :
+            self.visual_top_trajs_ingym_multimodal()
+            # self.visual_top_trajs_ingym()
+    
     def visual_top_trajs_ingym(self):
+
+        top_trajs = self.mpc_control.top_trajs  # .numpy()
+        n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
+        w_pts = self.w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
+
+        top_trajs = w_pts.cpu().numpy()
+        color = np.array([0.0, 1.0, 0.0])
+        for k in range(top_trajs.shape[0]):
+            pts = top_trajs[k, :, :]
+            color[0] = float(k) / float(top_trajs.shape[0])
+            color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
+            self.gym_instance.draw_lines(pts, color=color)
+
+
+    def visual_top_trajs_ingym_multimodal(self):
         # gym_instance.clear_lines() 放在while初始，在订阅点云前清屏
         # 0 -1 mean_action 
         # 1  0 sensi_best_action
@@ -359,12 +250,28 @@ class FrankaEnvBase(object):
         w_pts = self.w_robot_coord.transform_point(visual_trajectory.view(n_p * n_t, 3)).view(n_p, n_t, 3)       
         top_trajs = w_pts.cpu().numpy()
         self.gym_instance.draw_spheres(top_trajs)
+
+        """
+        暂停设计: 启动pause查看静止的轨迹分布
+        gym可视化内容 : 
+            红色的greedy策略规划的末端轨迹
+            绿色的sensi 策略规划的末端轨迹
+            使用定制的蓝球 可视化 mean策略规划的末端轨迹
+        rviz可视化内容 :
+            整个robot在不同侧策略下的joint_trajectory
+        """
         while not self.robot_sim.playing:
             for evt in self.gym.query_viewer_action_events(self.viewer):
                 if evt.action == "PAUSE" and evt.value > 0:
                     self.robot_sim.playing = not self.robot_sim.playing
-            time.sleep(0.05)
+            time.sleep(0.05) #
             self.gym_instance.step()
+            # publish trajectory?
+            mean_joint_visual_trajectory = self.mpc_control.controller.rollout_fn.mean_joint_visual_trajectory.cpu().numpy() # 30 * 7
+            sensi_joint_visual_trajectory = self.mpc_control.controller.rollout_fn.sensi_joint_visual_trajectory.cpu().numpy() 
+            greedy_joint_visual_trajectory = self.mpc_control.controller.rollout_fn.greedy_joint_visual_trajectory.cpu().numpy() 
+            self.pub_multi_joint_trajectory(mean_joint_visual_trajectory , sensi_joint_visual_trajectory, greedy_joint_visual_trajectory)
+
 
     def draw_lines(self,top_trajs,color=None):
         top_trajs = top_trajs.cpu().numpy()
@@ -374,6 +281,15 @@ class FrankaEnvBase(object):
             # color[0] = float(k) / float(top_trajs.shape[0])
             # color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
             self.gym_instance.draw_lines(pts, color=color)
+
+    """
+    下面三个是 三个独立的测试动态特征的实验 
+    _dynamic_object_moveDesign_updown : 障碍物上下移动
+    _dynamic_object_moveDesign_leftright : 障碍物左右移动
+
+    _dynamic_goal_track : 目标点做半圆周运动 测试跟踪性能
+    _dynamic_goal_track + _dynamic_object_moveDesign_leftright_track : 目标点半圆周运动 , 障碍物左右移动 , 测试轨迹跟踪过程中的动态避障能力
+    """
      
     def _dynamic_object_moveDesign_updown(self):
         # Update velocity vector based on move bounds and current pose
@@ -387,6 +303,38 @@ class FrankaEnvBase(object):
             self.env_ptr, self.collision_base_handle, collision_T)
         
     def _dynamic_object_moveDesign_leftright(self):
+        # Update velocity vector based on move bounds and current pose
+        collision_T = copy.deepcopy(self.world_instance.get_pose(self.collision_body_handle))
+        if collision_T.p.z < self.coll_movebound_leftright[0] or \
+           collision_T.p.z > self.coll_movebound_leftright[1] :
+            self.uporient *= -1
+        # Move the object based on the velocity vector
+        collision_T.p.z += self.uporient * self.coll_dt_scale
+        self.gym.set_rigid_transform(
+            self.env_ptr, self.collision_base_handle, collision_T)
+
+    def _dynamic_goal_track(self, t_step):
+        """
+        轨迹跟踪任务 定制化的函数
+        功能 : 目标点做半圆周运动
+        """
+        # trans ee_pose in robot_coordinate to world coordinate
+        ee_pose = gymapi.Transform()
+        pose_state = self.mpc_control.controller.rollout_fn.get_ee_pose(self.curr_state_tensor)
+        cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
+        cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
+        ee_pose.p = gymapi.Vec3(cur_e_pos[0], cur_e_pos[1], cur_e_pos[2])
+        ee_pose.r = gymapi.Quat(cur_e_quat[1], cur_e_quat[2], cur_e_quat[3], cur_e_quat[0])
+        ee_pose = self.w_T_r * ee_pose
+        self.gym.set_rigid_transform(self.env_ptr, self.ee_base_handle, ee_pose)
+        t_step = t_step * self.trac_target_velscale
+        z = self.z_radius * np.cos(t_step)
+        y = self.y_radius * np.abs(np.sin(t_step)) + self.base_height_y
+        self.goal_state =  [self.x,y,z]
+        self.update_goal_state()
+        # self.visual_top_trajs_ingym()
+        
+    def _dynamic_object_moveDesign_leftright_track(self):
         # Update velocity vector based on move bounds and current pose
         collision_T = copy.deepcopy(self.world_instance.get_pose(self.collision_body_handle))
         if collision_T.p.z < self.coll_movebound_leftright[0] or \

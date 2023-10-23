@@ -217,13 +217,14 @@ class MPPI(OLGaussianMPC):
         self.sensi_mean , self.sensi_Value_w , self.sensi_best_action , sensi_cov_update , sensi_good_idx = self.softMax_cost(sensi_total_costs, judge_total_costs, actions)
 
 
-        self.greedy_top_trajs = torch.index_select(vis_seq, 0, greedy_good_idx[:3]).squeeze(0)
-        self.sensi_top_trajs = torch.index_select(vis_seq, 0, sensi_good_idx[:3]).squeeze(0)
+        self.greedy_top_trajs = torch.index_select(vis_seq, 0, greedy_good_idx[:5]).squeeze(0)
+        self.sensi_top_trajs = torch.index_select(vis_seq, 0, sensi_good_idx[:5]).squeeze(0)
         # 这里有很多错误 大量的改动需要 
         # w = torch.softmax((-1.0/self.beta) * torch.tensor((self.greedy_Value_w,self.sensi_Value_w)), dim=0).to(**self.tensor_args)
         # torch.exp(-1*(w_cat-w_cat.min())) / torch.sum(torch.exp(-1*(w_cat-w_cat.min())))
         w_cat = torch.tensor((self.greedy_Value_w,self.sensi_Value_w)).to(**self.tensor_args)
-        wi = torch.exp(-1.0/self.beta*(w_cat-w_cat.min())) 
+        self.value_min = w_cat - w_cat.min()
+        wi = torch.exp(-1.0/self.beta*(self.value_min)) 
         w = wi / torch.sum(wi)
         self.weights_divide = w
         weighted_seq = (w.T * torch.cat((self.greedy_mean.unsqueeze(0), self.sensi_mean.unsqueeze(0))).T)
@@ -357,7 +358,7 @@ class MPPI(OLGaussianMPC):
         weighted_seq = w * actions.T
         sum_seq = torch.sum(weighted_seq.T, dim=0)
         new_mean = sum_seq
-
+ 
         # get new covariance 
         delta = actions - new_mean.unsqueeze(0)  
         weighted_delta = w * (delta ** 2).T

@@ -262,13 +262,13 @@ class WorldGridCollision(WorldCollision):
          # 32768 * 3
 
         self.scene_voxels  = self.scene_voxels.flatten() 
-        # 对dist大于0.05小于0.30的区域进行运算
-        mask_mid = (self.scene_voxels > 0.07) & (self.scene_voxels < 0.20)
-        self.scene_sdf[mask_mid] = torch.exp(-15 * (self.scene_voxels[mask_mid] - 0.07))
+        # 对dist大于0.05小于0.30的区域进行运算 0.07 0.20 -> 0.10 0.30 
+        mask_mid = (self.scene_voxels > 0.10) & (self.scene_voxels < 0.30)
+        self.scene_sdf[mask_mid] = torch.exp(-15 * (self.scene_voxels[mask_mid] - 0.10))
         # 对dist小于等于0.05的区域直接设置为1
-        self.scene_sdf[self.scene_voxels <= 0.07] = 1.0
+        self.scene_sdf[self.scene_voxels <= 0.10] = 1.0
         # 对dist大于0.30的区域直接设置为0
-        self.scene_sdf[self.scene_voxels > 0.20] = 0.0 
+        self.scene_sdf[self.scene_voxels > 0.30] = 0.0 
 
         self.sdf_potential_gradxyz = torch.cat([self.scene_sdf.unsqueeze(-1)]+[grad.view(-1, 1) for grad in gradients], dim=-1) # 32768*4
         if visual: # visual pointcloud  in voxel grid

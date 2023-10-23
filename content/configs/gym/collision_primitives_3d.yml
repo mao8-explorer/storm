@@ -24,16 +24,17 @@ world_model:
   coll_objs:
     sphere:
       sphere1:
-        radius: 0.1 #5 # meters
+        radius: 0.08 #5 # meters
         position: [-0.4, 0.4, 0.1]
+        # position: [0.2, -0.65, 0.98]
     cube:
-      # cube1:
-      #   dims: [0.3, 0.1, 0.4] # x, y, z
-      #   pose: [0.4, 0.2, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+      cube1:
+        dims: [0.1, 0.5, 1.2] # x, y, z
+        pose: [-0.25, -0.65, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
 
-      # cube2:
-      #   dims: [0.3, 0.1, 0.5] # x, y, z
-      #   pose: [0.4, -0.3, 0.2, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
+      cube2:
+        dims: [0.3, 0.3, 0.05] # x, y, z
+        pose: [0.2, -0.68, 0.98, 0, 0, 0, 1.0] # x, y, z, qx, qy, qz, qw
         
       cube3:
         dims: [2.0, 2.0, 0.2] # x, y, z

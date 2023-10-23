@@ -63,7 +63,6 @@ model:
     collision_spheres: '../robot/franka_represent.yml'
     self_collision_weights: 'robot_self/franka_real_robot_self_sdf.pt'
     dof: 7
-    horizon: 30
 
   world_collision_params:
     model_path: '/home/zm/MotionPolicyNetworks/SceneCollisionNet/weights/scene_coll_nn'
@@ -76,7 +75,7 @@ model:
 cost:
   joint_l2:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
-    weight: 10.0
+    weight: 40.0
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
 
   Jnq_sparse_reward:
@@ -86,7 +85,7 @@ cost:
 
 
   primitive_collision:
-    weight: 300.0
+    weight: 0.0
     vec_weight: [1.0, 1.0, 1.0, 5.0, 1.0, 1.0, 5.0] # panda_link: 2 3 4 5 6 7 panda_hand
     pv_weight: [1.0, 8.0]
     distance_threshold: 0.05
@@ -94,20 +93,19 @@ cost:
 
     
   stop_cost:
-    weight: 300.0 #100.0
+    weight: 0 #300.0 #100.0
     max_nlimit: 0.40 #0.2
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':1.0}
 
   zero_vel:
-    weight: 100.0
+    weight: 0.0 # 100
     hinge_val: 0.175 # 10/180*pi 
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
 
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     # weight: [10.0, 30.0]
-    weight: 30 # weight[0] = 0 : CartGoal constraint None rot | pos
-    rotposweight: [1.0, 1.0]
+    weight: [10.0, 10.0] # weight[0] = 0 : CartGoal constraint None rot | pos
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     hinge_val: -1
@@ -197,7 +195,7 @@ multimodal_cost:
   jnq_goal_reward:
     greedy_weight: 100.0
     sensi_weight: 10
-    judge_weight: 40
+    judge_weight: 10
 
 multimodal:
   top_traj_select: 30

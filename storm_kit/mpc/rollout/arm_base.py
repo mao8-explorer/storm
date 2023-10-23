@@ -205,7 +205,7 @@ class ArmBase(RolloutBase):
                 # loop_last_time = time.time_ns()
 
                 # coll_cost = self.primitive_collision_cost.forward(link_pos_batch, link_rot_batch)
-                coll_cost = self.primitive_collision_cost.optimal_forward(link_pos_batch, link_rot_batch)
+                coll_cost , _ = self.primitive_collision_cost.optimal_forward(link_pos_batch, link_rot_batch)
                 cost += coll_cost
                 
                 # loop_time = (time.time_ns() - loop_last_time)/1e+6

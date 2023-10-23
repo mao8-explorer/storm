@@ -49,7 +49,7 @@ class MPCRobotController(FrankaEnvBase):
         self._environment_init()
         self.envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
         self.coll_dt_scale = 0.015 # left and right
-        self.coll_movebound_leftright = [-0.30,0.30] # 左右实验的位置边界
+        self.coll_movebound_leftright = [-0.40,0.01] # 左右实验的位置边界
         # self.coll_dt_scale = 0.01 # up and down
         # self.coll_movebound_updown = [0.48,0.85] # 上下实验的位置边界
         self.uporient = -1.0
@@ -59,14 +59,14 @@ class MPCRobotController(FrankaEnvBase):
              [0.20,0.30,0.65]]
         self.goal_state = self.goal_list[0]
         self.update_goal_state()
-        self.update_collision_state([0.46 ,0.50,0.0])
+        self.update_collision_state([0.45,0.50,0.0])
         self.rollout_fn = self.mpc_control.controller.rollout_fn
         self.goal_ee_transform = np.eye(4)
         # 暂行多进程方案是通过传参的方式 引导ik_proc句柄 保证ik_proc在主进程启动 避免无法共享内存的问题
         self.ik_mSolve = ik_mSolve
 
     def run(self):
-        self.goal_flagi = 0 # 调控目标点
+        self.goal_flagi = -1 # 调控目标点
         sim_dt = self.mpc_control.exp_params['control_dt']
         t_step = gym_instance.get_sim_time()
         obs = {}
@@ -101,14 +101,14 @@ class MPCRobotController(FrankaEnvBase):
                 self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
                 opt_time_last = time.time()
-                command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt, WAIT=True)
+                command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt)
                 opt_time_sum += time.time() - opt_time_last
                 # get position command:
                 self.command = command
                 q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
-                self.updateGymVisual_GymGoalUpdate()
+                self.updateGymVisual_GymGoalUpdate(end_trajvisual = True)
                 self.updateRosMsg(visual_gradient=False)
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)

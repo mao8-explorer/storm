@@ -39,13 +39,14 @@ class PoseCostQuaternion(nn.Module):
 
     
     """
-    def __init__(self, weight, vec_weight=[], position_gaussian_params={}, orientation_gaussian_params={}, tensor_args={'device':"cpu", 'dtype':torch.float32}, hinge_val=100.0,
+    def __init__(self, weight, rotposweight=[],vec_weight=[], position_gaussian_params={}, orientation_gaussian_params={}, tensor_args={'device':"cpu", 'dtype':torch.float32}, hinge_val=100.0,
                  convergence_val=[0.0,0.0]):
 
         super(PoseCostQuaternion, self).__init__()
         self.tensor_args = tensor_args
         self.I = torch.eye(3,3, **tensor_args)
         self.weight = weight
+        self.rotposweight = rotposweight
         self.vec_weight = torch.as_tensor(vec_weight, **tensor_args)
         self.rot_weight = self.vec_weight[0:3]
         self.pos_weight = self.vec_weight[3:6]
@@ -139,7 +140,7 @@ class PoseCostQuaternion(nn.Module):
         # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         # cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(position_err)
         
-        cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(position_err)
+        cost = (self.weight*self.rotposweight[0]) * self.orientation_gaussian(rot_err) + (self.weight*self.rotposweight[1]) * self.position_gaussian(position_err)
         # dimension should be bacth * traj_length
         return cost.to(inp_device)
 
