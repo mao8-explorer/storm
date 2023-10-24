@@ -295,7 +295,12 @@ todo:
 * 3 . 并行验证 基于SDF_Potential （hard work）
 * 4 . 基于梯度的SDF代价函数设计 （hard work）
   
-
+<p align="center">
+  <img width="1500" src="zlog/franka实验/组合轨迹.png">
+</p>
+<p align="center">
+  <img width="1500" src="zlog/franka实验/轨迹并行franka.png">
+</p>
 
 
 ## Updates
