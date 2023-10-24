@@ -54,8 +54,6 @@ class RosVisualBase(object):
         self.display_sensi_trajectory_pub = rospy.Publisher('/move_group/display_sensi_planned_path', DisplayTrajectory, queue_size=10)
 
 
-
-
         # 初始化MarkerArray消息
         self.arrow_markers = MarkerArray()
         self.marker = Marker()
@@ -171,8 +169,7 @@ class RosVisualBase(object):
 
         self.mpc_command.header.stamp = rospy.Time.now()
         self.mpc_command.position = self.command['position']
-        # self.mpc_command.velocity = self.command['velocity']
-        # self.mpc_command.effort =   self.command['acceleration']
+        self.mpc_command.velocity = self.command['velocity']
         self.command_pub.publish(self.mpc_command)
 
     def pub_joint_trajectory(self,trajectory , pub_handle):

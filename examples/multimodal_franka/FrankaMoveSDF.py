@@ -109,7 +109,6 @@ class MPCRobotController(FrankaEnvBase):
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
                 self.updateGymVisual_GymGoalUpdate(end_trajvisual = True)
-                self.updateRosMsg(visual_gradient=False)
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 

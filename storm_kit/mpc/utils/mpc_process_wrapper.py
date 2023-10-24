@@ -64,13 +64,13 @@ class ControlProcess(object):
         self.control_space = control_space
         
         #
-        # self.result_queue = Queue(maxsize=1)
-        # self.opt_queue = Queue(maxsize=1)
+        self.result_queue = Queue(maxsize=1)
+        self.opt_queue = Queue(maxsize=1)
 
         
-        # self.opt_process = Process(target=optimize_process, args=('control_instance.p', self.opt_queue,self.result_queue))
-        # self.opt_process.daemon = True
-        # self.opt_process.start()
+        self.opt_process = Process(target=optimize_process, args=('control_instance.p', self.opt_queue,self.result_queue))
+        self.opt_process.daemon = True
+        self.opt_process.start()
         self.controller = controller
         self.control_dt = control_dt
         self.prev_mpc_tstep = 0.0
