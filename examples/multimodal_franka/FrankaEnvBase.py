@@ -208,9 +208,11 @@ class FrankaEnvBase(RosVisualBase):
             self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
             self.update_goal_state()
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
-            if self.goal_flagi / len(self.goal_list) == 6 : 
-                self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
             rospy.loginfo(log_message)
+            if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
+                self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
+                print("置零")
+
         
         if end_trajvisual :
             self.visual_top_trajs_ingym_multimodal()
