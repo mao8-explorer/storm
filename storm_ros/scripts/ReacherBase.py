@@ -12,11 +12,13 @@ from sensor_msgs.msg import PointField
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
 from storm_ros.utils.tf_translation import get_world_T_cam
+import matplotlib.pyplot as plt
+np.set_printoptions(precision=2)
 
 
 class ReacherEnvBase():
     def __init__(self):
-        self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
+        # self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
         self.pkg_path = "/home/zm/MotionPolicyNetworks/storm_ws/storm/storm_ros"
         self.storm_path = os.path.dirname(self.pkg_path)
         rospy.loginfo(self.storm_path)
@@ -30,14 +32,20 @@ class ReacherEnvBase():
         self.joint_names = rospy.get_param('~robot_joint_names', ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'])
         self.device = torch.device('cuda', 0)
         self.tensor_args = {'device': self.device, 'dtype': torch.float32}
+        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[] , 'robot_position': [], 'robot_velocity': []}
 
         #buffers for different messages
         self.buffer_differMsg_init()
 
-        self.ee_goal_pos = None
-        self.ee_goal_quat = None
+        self.ee_goal_pos = np.array([0.0,0.40, 0.60],)
+        self.ee_goal_quat = np.array([0.0,-0.7071068, -0.7071068, 0])
         self.point_array =None
+        self.curr_collision = 0
+        #  Flag Declaration
+        self.State_Sub_On = False
+        self.Goal_Sub_On = False
 
+    def ros_handle_init(self):
         #ROS Initialization
         self.command_pub = rospy.Publisher(self.joint_command_topic, JointState, queue_size=1, tcp_nodelay=True, latch=False)
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
@@ -48,11 +56,14 @@ class ReacherEnvBase():
         self.pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
         self.pub_robot_link_pc = rospy.Publisher('robot_link_pc', PointCloud2, queue_size=5)
 
-        #  Flag Declaration
-        self.State_Sub_On = False
-        self.Goal_Sub_On = False
-
-
+        while not self.State_Sub_On:
+            rospy.logwarn('[MPCPoseReacher]: Waiting for robot state.')
+            rospy.sleep(0.5)
+        if self.Interactive_Marker_Control:
+            while not self.Goal_Sub_On:
+                rospy.logwarn('[MPCPoseReacher]: Waiting for ee goal.')
+                rospy.sleep(0.5)
+    
     def buffer_differMsg_init(self):
         # 末端轨迹msg
         self.marker_EE_trajs = Marker()
@@ -72,6 +83,8 @@ class ReacherEnvBase():
         # joint_command_msg
         self.mpc_command = JointState()
         self.mpc_command.name = self.joint_names
+        self.mpc_command.position = np.zeros(7)
+        self.mpc_command.velocity = np.zeros(7)
         self.mpc_command.effort = np.zeros(7)
 
         # joint_state_msg
@@ -102,16 +115,22 @@ class ReacherEnvBase():
 
     def ee_goal_callback(self, ee_goal_msg):
         self.Goal_Sub_On = True
-        self.New_EE_Goal = True
-        self.ee_goal_pos = np.array([
+        ee_goal_pos = np.array([
             ee_goal_msg.pose.position.x,
             ee_goal_msg.pose.position.y,
             ee_goal_msg.pose.position.z])
-        self.ee_goal_quat = np.array([
+        ee_goal_quat = np.array([
             ee_goal_msg.pose.orientation.w,
             ee_goal_msg.pose.orientation.x,
             ee_goal_msg.pose.orientation.y,
             ee_goal_msg.pose.orientation.z])
+        #check if goal was updated
+        if  (np.linalg.norm(self.ee_goal_pos - ee_goal_pos) > 0.0001) or (
+             np.linalg.norm(self.ee_goal_quat - ee_goal_quat) > 0.0):
+            self.ee_goal_pos = ee_goal_pos
+            self.ee_goal_quat = ee_goal_quat
+            self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
+                                     goal_ee_quat = self.ee_goal_quat)  
 
     def env_pc_callback(self, env_pc_msg):
         point_generator = pc2.read_points(env_pc_msg)
@@ -132,6 +151,25 @@ class ReacherEnvBase():
 
         pub_handle.publish(self.pc_msg)   
     
+    def GoalUpdate(self):
+        pose_state = self.rollout_fn.get_ee_pose(self.curr_state_tensor)
+        cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
+        cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
+
+        # if current_ee_pose in goal_pose thresh ,update to next goal_pose
+        if (np.linalg.norm(np.array(self.ee_goal_pos - cur_e_pos)) < self.thresh):
+            self.goal_flagi += 1
+            self.ee_goal_pos = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
+            self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
+                                     goal_ee_quat = self.ee_goal_quat)  
+
+            log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
+            rospy.loginfo(log_message)
+            # if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
+            #     self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
+            #     print("置零")
+
+
     def visual_top_trajs(self):
 
         # 可视化末端规划轨迹 MPPI.py --> top_trajs
@@ -148,7 +186,82 @@ class ReacherEnvBase():
         # 发布marker消息
         self.marker_pub.publish(self.marker_EE_trajs)
 
-    
+
+    def traj_append(self):
+        self.traj_log['position'].append(self.command['position'])
+        self.traj_log['velocity'].append(self.command['velocity'])
+        self.traj_log['acc'].append(self.command['acceleration'])
+        self.traj_log['des'].append(self.jnq_des)
+
+        # visual robot_state | command_state relationship
+        self.traj_log['robot_position'].append(self.robot_state['position'])
+        self.traj_log['robot_velocity'].append(self.robot_state['velocity'])
+ 
+    def traj_append_multimodal(self):
+        self.traj_log['weights'].append(self.policy.controller.weights_divide.cpu().numpy())
+
+
+    def plot_traj_multimodal(self):
+        weights = np.matrix(self.traj_log['weights'])
+        plt.figure()
+        axs = [plt.subplot(2,1,i+1) for i in range(2)]
+        axs[0].set_title('weight assignment')
+        axs[0].plot(weights[:,0], 'r', label='greedy')
+        axs[0].legend() 
+        axs[1].plot(weights[:,1], 'g', label='sensi')
+        axs[1].legend() 
+        plt.savefig('weight_assignment.png')
+
+    def plot_traj(self):
+        plt.figure()
+        position = np.matrix(self.traj_log['position'])
+        vel = np.matrix(self.traj_log['velocity'])
+        acc = np.matrix(self.traj_log['acc'])
+        des = np.matrix(self.traj_log['des'])
+        axs = [plt.subplot(3,1,i+1) for i in range(3)]
+        if(len(axs) >= 3):
+            axs[0].set_title('Position')
+            axs[1].set_title('Velocity')
+            axs[2].set_title('Acceleration')
+            axs[0].plot(position[:,0], 'r', label='joint1')
+            axs[0].plot(position[:,2], 'g',label='joint3')
+            axs[0].plot(des[:,0], 'r-.', label='joint1_des')
+            axs[0].plot(des[:,2],'g-.', label='joint3_des')
+            axs[0].legend()
+            axs[1].plot(vel[:,0], 'r',label='joint1')
+            axs[1].plot(vel[:,2], 'g', label='joint3')
+            axs[1].legend()
+            axs[2].plot(acc[:,0], 'r',label='joint1')
+            axs[2].plot(acc[:,2], 'g', label='joint3')
+            axs[2].legend()
+        plt.savefig('trajectory.png')
+
+        # try to compare "command" with "robotstate"
+        robot_position = np.matrix(self.traj_log['robot_position'])
+        robot_vel = np.matrix(self.traj_log['robot_velocity'])
+        plt.figure()
+        axs = [plt.subplot(4,1,i+1) for i in range(4)]
+        if(len(axs) >= 3):
+            axs[0].set_title('Position_Command_RobotState')
+            axs[2].set_title('Velocity_Command_RoborState')
+            axs[0].plot(position[:,0], 'r', label='joint1_commandpos')
+            axs[0].plot(robot_position[:,0], 'g',label='joint1_robotpos')
+            axs[0].legend()
+            axs[1].plot(position[:,2], 'r', label='joint3_commandpos')
+            axs[1].plot(robot_position[:,2], 'g',label='joint3_robotpos')
+            axs[1].legend()
+            axs[2].plot(vel[:,0], 'r', label='joint1__commandvel')
+            axs[2].plot(robot_vel[:,0], 'g',label='joint1__robotvel')
+            axs[2].legend()
+            axs[3].plot(vel[:,2], 'r', label='joint3_commandvel')
+            axs[3].plot(robot_vel[:,2], 'g',label='joint3_robotvel')
+            axs[3].legend()
+        plt.savefig('command_robotstate.png')
+
+        plt.show()
+
+
+
     def close(self):
         self.command_pub.unregister()
         self.state_sub.unregister()

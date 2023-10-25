@@ -63,14 +63,12 @@ class ControlProcess(object):
         self.top_idx = None
         self.control_space = control_space
         
-        #
-        self.result_queue = Queue(maxsize=1)
-        self.opt_queue = Queue(maxsize=1)
-
-        
-        self.opt_process = Process(target=optimize_process, args=('control_instance.p', self.opt_queue,self.result_queue))
-        self.opt_process.daemon = True
-        self.opt_process.start()
+        # TODO:  多进程设计 需要研究
+        # self.result_queue = Queue(maxsize=1)
+        # self.opt_queue = Queue(maxsize=1)        
+        # self.opt_process = Process(target=optimize_process, args=('control_instance.p', self.opt_queue,self.result_queue))
+        # self.opt_process.daemon = True
+        # self.opt_process.start()
         self.controller = controller
         self.control_dt = control_dt
         self.prev_mpc_tstep = 0.0

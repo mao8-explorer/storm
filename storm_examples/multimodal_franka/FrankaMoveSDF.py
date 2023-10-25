@@ -141,6 +141,8 @@ class MPCRobotController(FrankaEnvBase):
                       "oneLoop: {}, oneOpt: {}".format(time.time() - last, opt_step_count, self.curr_collision, 
                                                       (time.time() - last) / opt_step_count * 1000, 
                                                        opt_time_sum / opt_step_count * 1000))
+        
+        
         # self.mpc_control.close()
         self.coll_robot_pub.unregister() 
         self.pub_env_pc.unregister()

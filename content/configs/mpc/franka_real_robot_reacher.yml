@@ -29,7 +29,9 @@ control_dt: 0.07
 run_open_loop: False
 control_space: 'acc'
 float_dtype: 'float32'
-state_filter_coeff: {'position':0.1, 'velocity':0.0, 'acceleration':0.0}
+state_filter_coeff: {'position':0.4, 'velocity':0.0, 'acceleration':0.0}
+# path follow : 0.0 is open_Control, and increase weight tend to close_Control_mode, see joint_trajectory of "command" and "robot_state" to tune param
+# also high weight 能够减速抑制超调 ，但 过分的闭环控制对mpc_policy的轨迹规划似乎并不友好
 cmd_filter_coeff: {'position':1.0, 'velocity':1.0, 'acceleration':0.0}
 
 model:
@@ -46,7 +48,7 @@ model:
     max_dt: 0.10
   #control_freq: 10
   #sim_freq: 100
-  ee_link_name: "panda_hand"
+  ee_link_name: "ee_link"
   init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.]
   link_names: ['panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_link7','panda_hand']
   #link_names: ['panda_link6']

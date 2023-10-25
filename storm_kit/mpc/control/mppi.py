@@ -129,10 +129,11 @@ class MPPI(OLGaussianMPC):
         
         # 5条好的轨迹  10条最差轨迹 ； 5条好的轨迹基本扭结在一起 10条差轨迹扩散较为明显
         top_values, good_idx = torch.topk(self.total_costs, k=5, largest=False)
-        top_values, bad_idx = torch.topk(self.total_costs, k=10) # Returns the k largest elements of the given input tensor along a given dimension. 
+        # top_values, bad_idx = torch.topk(self.total_costs, k=10) # Returns the k largest elements of the given input tensor along a given dimension. 
         #print(ee_pos_seq.shape, top_idx)
         self.top_values = top_values
-        self.top_idx = torch.cat((good_idx, bad_idx), dim=0)
+        # self.top_idx = torch.cat((good_idx, bad_idx), dim=0)
+        self.top_idx = good_idx
         self.top_trajs = torch.index_select(vis_seq, 0, self.top_idx).squeeze(0)
         #print(self.top_traj.shape)
         #print(self.best_traj.shape, best_idx, w.shape)

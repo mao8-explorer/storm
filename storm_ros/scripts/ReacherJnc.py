@@ -1,16 +1,23 @@
+""" Example spawning a robot on real-machine
+只关心 运动规划问题 mpc with TrackIK_Guild
+无碰撞
+无SDF参与
+无MultiModal
+"""
+
 from ReacherBase import ReacherEnvBase
 import torch
 import numpy as np
 import rospy
 from storm_kit.mpc.task.reacher_task import ReacherTask
-from examples.multimodal_franka.utils import LimitedQueue , IKProc
+from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import queue
 
 
 class IKSolve:
     def __init__(self):
         self.num_proc = 1
-        self.maxsize = 5
+        self.maxsize = 1
         self.output_queue = LimitedQueue(self.maxsize)
         self.ik_procs = []
         for _ in range(self.num_proc):
@@ -28,76 +35,90 @@ class MPCReacherNode(ReacherEnvBase):
         super().__init__()
         #STORM Initialization
         self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
+        # 滑块控制实验
+        self.Interactive_Marker_Control = False
+        # goal list control
+        self.goal_list = np.array([
+             [0.45, -0.45, 0.45],
+             [0.45,  0.45, 0.45]])
+        
+        self.ee_goal_pos = self.goal_list[0]
+        self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
+                                  goal_ee_quat = self.ee_goal_quat)  
+
+        self.ros_handle_init()
+        self.thresh = 0.01 # goal next thresh in Cart
         self.ik_mSolve = ik_mSolve
         self.goal_ee_transform = np.eye(4)
         self.rollout_fn = self.policy.controller.rollout_fn
-        
+
     def control_loop(self):
-        self._initialize_rospy()
         rospy.loginfo('[MPCPoseReacher]: Controller running')
         start_t = rospy.get_time()
-
-        while not rospy.is_shutdown():
+        lap_count = 5 # 跑5轮次
+        self.jnq_des = np.zeros(7)
+        opt_step_count = 0 
+        opt_time_sum = 0 
+        self.goal_flagi = -1 # 调控目标点
+        while not rospy.is_shutdown() and \
+                self.goal_flagi / len(self.goal_list) != lap_count:
             try:
-                #only do something if state and goal have been received
-                if self.State_Sub_On and self.Goal_Sub_On:
-                    #check if goal was updated
-                    if self.New_EE_Goal:
-                        self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-                                                goal_ee_quat = self.ee_goal_quat)
-                        self.New_EE_Goal = False
+                opt_step_count += 1
+                # TODO: scene_grid update at here ... 
+                # 1. transform pointcloud to world frame 
+                # 2. compute sdf from pointcloud 
+                tstep = rospy.get_time() - start_t
+                # TODO: can it get from topic? call robotmodel to get ee_pos may costly
+                # 逆解获取请求发布 input_queue
+                qinit = self.robot_state['position']
+                self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()
+                self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
+                self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = tstep)
+                #get mpc command
+                # TODO: tstep 与 control_dt的关系是什么？ 没有穿透
+                opt_time_last = rospy.get_time()
+                command = self.policy.get_command(
+                    tstep, self.robot_state, control_dt=self.control_dt)
+                opt_time_sum += rospy.get_time() - opt_time_last
+                self.command = command
+                q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
+                self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
+                self.GoalUpdate()
+                #publish mpc command
+                self.mpc_command.header.stamp = rospy.Time.now()
+                self.mpc_command.position = q_des
+                self.mpc_command.velocity = qd_des
+                self.command_pub.publish(self.mpc_command)
 
-                    # TODO: scene_grid update at here ... 
-                    # 1. transform pointcloud to world frame 
-                    # 2. compute sdf from pointcloud 
-                    tstep = rospy.get_time() - start_t
-
-                    # 逆解获取请求发布 input_queue
-                    qinit = self.robot_state['position']
-                    self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()
-                    self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
-                    self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = tstep)
-                    #get mpc command
-                    # TODO: tstep 与 control_dt的关系是什么？ 没有穿透
-                    command = self.policy.get_command(
-                        tstep, self.robot_state, control_dt=self.control_dt)
-                    #publish mpc command
-                    self.mpc_command.header.stamp = rospy.Time.now()
-                    self.mpc_command.position = command['position']
-                    self.mpc_command.velocity = command['velocity']
-                    self.command_pub.publish(self.mpc_command)
-
-                    self.visual_top_trajs()
-                    # 逆解获取查询 output_queue
-                    try :
-                        output = self.ik_mSolve.output_queue.get()
-                        if output[1] is not None: # 无解
-                            self.rollout_fn.goal_jnq = torch.as_tensor(output[1], **self.tensor_args).unsqueeze(0) # 1 x n_dof
-                            self.jnq_des = output[1]
-                        else : 
-                            self.rollout_fn.goal_jnq = None
-                            self.jnq_des = np.zeros(7)
-                            print("warning: no iksolve")
-                    except queue.Empty:
-                        "针对 output_queue队列为空的问题 会出现queue.Empty的情况发生"
-                        continue
-
-                else:
-                    if not self.State_Sub_On:
-                        rospy.logwarn('[MPCPoseReacher]: Waiting for robot state.')
-                        rospy.sleep(0.5)
-                        continue
-                    if not self.Goal_Sub_On:
-                        rospy.logwarn('[MPCPoseReacher]: Waiting for ee goal.')
-                        rospy.sleep(0.5)
+                self.visual_top_trajs()
+                self.traj_append()
+                # 逆解获取查询 output_queue
+                try :
+                    output = self.ik_mSolve.output_queue.get()
+                    if output[1] is not None: # 无解
+                        self.rollout_fn.goal_jnq = torch.as_tensor(output[1], **self.tensor_args).unsqueeze(0) # 1 x n_dof
+                        self.jnq_des = output[1]
+                    else : 
+                        self.rollout_fn.goal_jnq = None
+                        self.jnq_des = np.zeros(7)
+                        rospy.logwarn("warning: no iksolve")
+                except queue.Empty:
+                    "针对 output_queue队列为空的问题 会出现queue.Empty的情况发生"
+                    continue
 
             except KeyboardInterrupt:
                 rospy.logerr("Error --- *~* ---")  
+                break
 
+        rospy.loginfo("whole_time: {}, opt_step_count: {}, collison_count: {}, "
+                      "oneLoop: {}, oneOpt: {}".format(tstep, opt_step_count, self.curr_collision, 
+                                                       tstep / opt_step_count * 1000, 
+                                                       opt_time_sum / opt_step_count * 1000))        
+        
         self.close()
+        self.plot_traj()
         rospy.loginfo("Closing ---all ---")
     
-
 
 
 if __name__ == "__main__":

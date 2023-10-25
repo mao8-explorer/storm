@@ -9,7 +9,6 @@ from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import JointState
 from interactive_markers.interactive_marker_server import *
 from visualization_msgs.msg import *
-import rospkg
 
 from storm_kit.differentiable_robot_model import DifferentiableRobotModel
 from storm_kit.differentiable_robot_model.coordinate_transform import matrix_to_quaternion
@@ -17,8 +16,6 @@ from storm_kit.differentiable_robot_model.coordinate_transform import matrix_to_
 
 class InteractiveMarkerGoalPub():
     def __init__(self):
-        rospack = rospkg.RosPack()
-        # self.pkg_path = rospack.get_path('storm_ros')
         self.pkg_path = "/home/zm/MotionPolicyNetworks/storm_ws/storm/storm_ros"
         self.storm_path = os.path.dirname(self.pkg_path)
 
@@ -30,7 +27,6 @@ class InteractiveMarkerGoalPub():
         self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'))
         self.ee_frame = rospy.get_param('~ee_frame', 'panda_hand')
         
-
         #ROS Initialization
         self.ee_goal = PoseStamped()
         self.gripper_state = JointState()
@@ -45,17 +41,13 @@ class InteractiveMarkerGoalPub():
                             tensor_args=self.tensor_args)
             
         #Buffers
-
         self.rate = rospy.Rate(self.goal_pub_freq)
         self.state_received = False
         while not self.state_received:
-            pass
+            self.rate.sleep()
         #we set self.ee_goal to the initial robot pose
         self.update_ee_goal_to_current()
-
         self.setup_interactive_marker_server()
-
-
 
 
     def setup_interactive_marker_server(self):
@@ -185,7 +177,6 @@ class InteractiveMarkerGoalPub():
         self.robot_state.header = msg.header
         self.robot_state.position = msg.position[2:]#[2:]
         self.robot_state.velocity = msg.velocity[2:]#[2:]
-        # self.robot_state.effort = msg.effort[0:7]#[2:]
 
 
     def update_ee_goal_to_current(self):
@@ -195,8 +186,6 @@ class InteractiveMarkerGoalPub():
         # qd_gripper = torch.as_tensor(self.gripper_state.velocity, **self.tensor_args).unsqueeze(0)
         # q = torch.cat((q_robot, q_gripper), dim=-1)
         # qd = torch.cat((qd_robot, qd_gripper), dim=-1)
-
-
         curr_ee_pos, curr_ee_rot = self.robot_model.compute_forward_kinematics(
             q_robot, qd_robot, link_name=self.ee_frame)
         curr_ee_quat = matrix_to_quaternion(curr_ee_rot)
