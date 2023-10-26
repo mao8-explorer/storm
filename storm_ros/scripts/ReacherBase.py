@@ -28,7 +28,8 @@ class ReacherEnvBase():
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
         self.env_pc_topic = rospy.get_param('~env_pc_topic', '/points2_filter')
-        self.control_dt = rospy.get_param('~control_dt', 0.05)
+        self.goal_command_fromMPC_topic = rospy.get_param("~goal_state", "goal_state")
+        self.control_dt = rospy.get_param('~control_dt', 0.07)
         self.joint_names = rospy.get_param('~robot_joint_names', ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'])
         self.device = torch.device('cuda', 0)
         self.tensor_args = {'device': self.device, 'dtype': torch.float32}
@@ -36,14 +37,14 @@ class ReacherEnvBase():
 
         #buffers for different messages
         self.buffer_differMsg_init()
-
-        self.ee_goal_pos = np.array([0.0,0.40, 0.60],)
-        self.ee_goal_quat = np.array([0.0,-0.7071068, -0.7071068, 0])
+        self.last_ee_goal_pos = np.zeros(3)
+        self.last_ee_goal_quat = np.zeros(4)
         self.point_array =None
         self.curr_collision = 0
         #  Flag Declaration
         self.State_Sub_On = False
         self.Goal_Sub_On = False
+
 
     def ros_handle_init(self):
         #ROS Initialization
@@ -55,15 +56,26 @@ class ReacherEnvBase():
         self.coll_robot_pub = rospy.Publisher('robot_collision', Float32, queue_size=10)
         self.pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
         self.pub_robot_link_pc = rospy.Publisher('robot_link_pc', PointCloud2, queue_size=5)
+        self.goal_command_fromMPC_pub = rospy.Publisher(self.goal_command_fromMPC_topic , PoseStamped, queue_size=1, tcp_nodelay=True, latch=False)
 
         while not self.State_Sub_On:
             rospy.logwarn('[MPCPoseReacher]: Waiting for robot state.')
             rospy.sleep(0.5)
-        if self.Interactive_Marker_Control:
-            while not self.Goal_Sub_On:
-                rospy.logwarn('[MPCPoseReacher]: Waiting for ee goal.')
-                rospy.sleep(0.5)
+
+        while not self.Goal_Sub_On:
+            rospy.logwarn('[MPCPoseReacher]: Waiting for ee goal.')
+            rospy.sleep(0.5)
     
+
+        self.goal_command_fromMPC = PoseStamped()
+        self.goal_command_fromMPC.header.stamp = rospy.Time.now()
+        self.goal_command_fromMPC.pose.position.x = self.ee_goal_pos[0]
+        self.goal_command_fromMPC.pose.position.y = self.ee_goal_pos[1]
+        self.goal_command_fromMPC.pose.position.z = self.ee_goal_pos[2]
+        self.goal_command_fromMPC_pub.publish(self.goal_command_fromMPC)
+
+
+
     def buffer_differMsg_init(self):
         # 末端轨迹msg
         self.marker_EE_trajs = Marker()
@@ -125,13 +137,14 @@ class ReacherEnvBase():
             ee_goal_msg.pose.orientation.y,
             ee_goal_msg.pose.orientation.z])
         #check if goal was updated
-        if  (np.linalg.norm(self.ee_goal_pos - ee_goal_pos) > 0.0001) or (
-             np.linalg.norm(self.ee_goal_quat - ee_goal_quat) > 0.0):
-            self.ee_goal_pos = ee_goal_pos
-            self.ee_goal_quat = ee_goal_quat
-            self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-                                     goal_ee_quat = self.ee_goal_quat)  
-
+        # TODO: costly ! need "if" here
+        if  (np.linalg.norm(self.last_ee_goal_pos - ee_goal_pos) > 0.0) or (
+             np.linalg.norm(self.last_ee_goal_quat - ee_goal_quat) > 0.0):
+            self.last_ee_goal_pos = ee_goal_pos
+            self.last_ee_goal_quat = ee_goal_quat
+            self.policy.update_params(goal_ee_pos = ee_goal_pos,
+                                    goal_ee_quat = ee_goal_quat)  
+        
     def env_pc_callback(self, env_pc_msg):
         point_generator = pc2.read_points(env_pc_msg)
         self.point_array = np.array(list(point_generator))
@@ -154,14 +167,17 @@ class ReacherEnvBase():
     def GoalUpdate(self):
         pose_state = self.rollout_fn.get_ee_pose(self.curr_state_tensor)
         cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
-        cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
-
+        # cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
         if (np.linalg.norm(np.array(self.ee_goal_pos - cur_e_pos)) < self.thresh):
             self.goal_flagi += 1
             self.ee_goal_pos = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
-            self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-                                     goal_ee_quat = self.ee_goal_quat)  
+
+            self.goal_command_fromMPC.header.stamp = rospy.Time.now()
+            self.goal_command_fromMPC.pose.position.x = self.ee_goal_pos[0]
+            self.goal_command_fromMPC.pose.position.y = self.ee_goal_pos[1]
+            self.goal_command_fromMPC.pose.position.z = self.ee_goal_pos[2]        
+            self.goal_command_fromMPC_pub.publish(self.goal_command_fromMPC)
 
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
             rospy.loginfo(log_message)

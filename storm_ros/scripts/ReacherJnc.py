@@ -35,19 +35,21 @@ class MPCReacherNode(ReacherEnvBase):
         super().__init__()
         #STORM Initialization
         self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
-        # 滑块控制实验
-        self.Interactive_Marker_Control = False
         # goal list control
-        self.goal_list = np.array([
-             [0.45, -0.45, 0.45],
-             [0.45,  0.45, 0.45]])
-        
+        # self.goal_list = np.array([
+        #      [0.45, -0.45, 0.45],
+        #      [0.45,  0.45, 0.45],
+        #      ])
+        x,y,z = 0.45 , 0.45 , 0.45
+        self.goal_list = [
+             [x,y,z],
+             [x,-y,z]]
         self.ee_goal_pos = self.goal_list[0]
-        self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-                                  goal_ee_quat = self.ee_goal_quat)  
+        # self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
+        #                           goal_ee_quat = self.ee_goal_quat)  
 
         self.ros_handle_init()
-        self.thresh = 0.01 # goal next thresh in Cart
+        self.thresh = 0.03 # goal next thresh in Cart
         self.ik_mSolve = ik_mSolve
         self.goal_ee_transform = np.eye(4)
         self.rollout_fn = self.policy.controller.rollout_fn
