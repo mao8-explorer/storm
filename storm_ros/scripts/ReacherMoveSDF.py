@@ -6,10 +6,12 @@
 """
 
 from ReacherBase import ReacherEnvBase
+
 import torch
 import numpy as np
 import rospy
 from storm_kit.mpc.task.reacher_task import ReacherTask
+from storm_ros.utils.tf_translation import get_world_T_cam
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import queue
 
@@ -40,7 +42,7 @@ class MPCReacherNode(ReacherEnvBase):
         #      [0.45, -0.45, 0.45],
         #      [0.45,  0.45, 0.45],
         #      ])
-        x,y,z = 0.45 , 0.45 , 0.45
+        x,y,z = 0.30 , 0.55 , 0.30
         self.goal_list = [
              [x,y,z],
              [x,-y,z]]
@@ -53,11 +55,12 @@ class MPCReacherNode(ReacherEnvBase):
         self.ik_mSolve = ik_mSolve
         self.goal_ee_transform = np.eye(4)
         self.rollout_fn = self.policy.controller.rollout_fn
+        self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
 
     def control_loop(self):
         rospy.loginfo('[MPCPoseReacher]: Controller running')
         start_t = rospy.get_time()
-        lap_count = 5 # 跑5轮次
+        lap_count = 8 # 跑5轮次
         self.jnq_des = np.zeros(7)
         opt_step_count = 0 
         opt_time_sum = 0 
@@ -69,8 +72,18 @@ class MPCReacherNode(ReacherEnvBase):
                 # TODO: scene_grid update at here ... 
                 # 1. transform pointcloud to world frame 
                 # 2. compute sdf from pointcloud 
-                tstep = rospy.get_time() - start_t
-                # TODO: can it get from topic? call robotmodel to get ee_pos may costly
+                # 更新scene_grid 
+                        # Assuming self.point_array is your original point cloud data
+                # It should have shape (N, 3) where N is the number of points
+                # Each row is a point (x, y, z)
+                point_array = np.hstack((self.point_array, np.ones((self.point_array.shape[0], 1))))  # Adding homogenous coordinate
+                transformed_points = np.dot(point_array, self.world_T_cam.T)  # Transform all points at once
+                self.point_array = transformed_points[:, :3]  # Removing the homogenous coordinate
+                # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
+                self.collision_grid = self.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
+                                     _opt_compute_dynamic_voxeltosdf(self.point_array,visual = True)
+                
+                tstep = rospy.get_time() - start_t 
                 # 逆解获取请求发布 input_queue
                 qinit = self.robot_state['position']
                 self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()
@@ -92,8 +105,12 @@ class MPCReacherNode(ReacherEnvBase):
                 self.mpc_command.velocity = qd_des
                 self.command_pub.publish(self.mpc_command)
 
-                # self.visual_top_trajs()
+                self.visual_top_trajs()
                 self.traj_append()
+
+                collision_grid_pc = self.collision_grid.cpu().numpy() 
+                self.pub_pointcloud(collision_grid_pc, self.pub_env_pc)
+
                 # 逆解获取查询 output_queue
                 try :
                     output = self.ik_mSolve.output_queue.get()

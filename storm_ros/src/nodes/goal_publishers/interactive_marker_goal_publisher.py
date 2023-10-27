@@ -63,7 +63,7 @@ class InteractiveMarkerGoalPub():
         self.int_marker.header.frame_id = self.fixed_frame #"panda_link0"
         self.int_marker.name = "goal_marker"
         self.int_marker.description = "End-effector Goal"
-        self.int_marker.scale = 0.2
+        self.int_marker.scale = 0.08
         # self.int_marker.pose.position = self.curr_goal_ros.pose.position
         self.int_marker.pose = self.ee_goal.pose
 
@@ -71,9 +71,9 @@ class InteractiveMarkerGoalPub():
         # create a grey box marker
         self.box_marker = Marker()
         self.box_marker.type = Marker.CUBE
-        self.box_marker.scale.x = 0.1
-        self.box_marker.scale.y = 0.1
-        self.box_marker.scale.z = 0.1
+        self.box_marker.scale.x = 0.05
+        self.box_marker.scale.y = 0.05
+        self.box_marker.scale.z = 0.05
         self.box_marker.color.r = 0.0
         self.box_marker.color.g = 0.5
         self.box_marker.color.b = 0.5

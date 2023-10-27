@@ -11,14 +11,12 @@ import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointField
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
-from storm_ros.utils.tf_translation import get_world_T_cam
 import matplotlib.pyplot as plt
 np.set_printoptions(precision=2)
 
 
 class ReacherEnvBase():
     def __init__(self):
-        # self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
         self.pkg_path = "/home/zm/MotionPolicyNetworks/storm_ws/storm/storm_ros"
         self.storm_path = os.path.dirname(self.pkg_path)
         rospy.loginfo(self.storm_path)
@@ -137,7 +135,6 @@ class ReacherEnvBase():
             ee_goal_msg.pose.orientation.y,
             ee_goal_msg.pose.orientation.z])
         #check if goal was updated
-        # TODO: costly ! need "if" here
         if  (np.linalg.norm(self.last_ee_goal_pos - ee_goal_pos) > 0.0) or (
              np.linalg.norm(self.last_ee_goal_quat - ee_goal_quat) > 0.0):
             self.last_ee_goal_pos = ee_goal_pos
@@ -165,6 +162,8 @@ class ReacherEnvBase():
         pub_handle.publish(self.pc_msg)   
     
     def GoalUpdate(self):
+        
+        # TODO: can it get from topic? call robotmodel to get ee_pos may costly
         pose_state = self.rollout_fn.get_ee_pose(self.curr_state_tensor)
         cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
         # cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
@@ -194,7 +193,8 @@ class ReacherEnvBase():
         points = [Point(x=top_trajs[i][j][0], 
                         y=top_trajs[i][j][1], 
                         z=top_trajs[i][j][2]) 
-                for i in range(top_trajs.shape[0]) for j in range(top_trajs.shape[1])]
+                for i in range(1) for j in range(top_trajs.shape[1])]
+                # for i in range(top_trajs.shape[0]) for j in range(top_trajs.shape[1])]
             # 将点列表添加到marker消息中
         self.marker_EE_trajs.points = points
             # 更新header中的时间戳和ID
