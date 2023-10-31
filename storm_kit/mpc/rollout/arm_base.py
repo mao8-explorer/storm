@@ -20,10 +20,12 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
+from turtle import forward
+import time
 import torch
 import torch.autograd.profiler as profiler
 
-from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost,PoseCostQuaternion
+from ..cost import DistCost, PoseCost, ProjectedDistCost, JacobianCost, ZeroCost, EEVelCost, StopCost, FiniteDifferenceCost,PoseCostQuaternion, PoseCost_Reward
 from ..cost.bound_cost import BoundCost
 from ..cost.manipulability_cost import ManipulabilityCost
 from ..cost import CollisionCost, VoxelCollisionCost, PrimitiveCollisionCost
@@ -33,6 +35,7 @@ from ...differentiable_robot_model.coordinate_transform import matrix_to_quatern
 from ...mpc.model.integration_utils import build_fd_matrix
 from ...mpc.rollout.rollout_base import RolloutBase
 from ..cost.robot_self_collision_cost import RobotSelfCollisionCost
+
 
 class ArmBase(RolloutBase):
     """
@@ -141,6 +144,11 @@ class ArmBase(RolloutBase):
 
         self.link_pos_seq = torch.zeros((1, 1, len(self.dynamics_model.link_names), 3), **self.tensor_args)
         self.link_rot_seq = torch.zeros((1, 1, len(self.dynamics_model.link_names), 3, 3), **self.tensor_args)
+
+
+        self.fk_time_sum  = 0
+        self.cost_time_sum = 0
+
     def cost_fn(self, state_dict, action_batch, no_coll=False, horizon_cost=True):
         
         ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
@@ -235,9 +243,13 @@ class ArmBase(RolloutBase):
         #print("computing rollout")
         #print(act_seq)
         #print('step...')
-
+        # fk_time = time.time()
         state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq)
+        # self.fk_time_sum += time.time() - fk_time
+
+        # cost_time = time.time()
         cost_seq = self.cost_fn(state_dict, act_seq)
+        # self.cost_time_sum += time.time() - cost_time
 
         sim_trajs = dict(
             actions=act_seq,#.clone(),

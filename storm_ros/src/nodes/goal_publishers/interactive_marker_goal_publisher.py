@@ -22,7 +22,7 @@ class InteractiveMarkerGoalPub():
 
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
-        self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 10)
+        self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 5)
         self.fixed_frame = rospy.get_param('~fixed_frame', 'panda_link0')
         self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'))
         self.ee_frame = rospy.get_param('~ee_frame', 'ee_link')

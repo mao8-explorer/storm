@@ -45,6 +45,7 @@ Todo:
         self.goal_ee_pos = None
         self.goal_ee_rot = None
         self.goal_jnq = None
+        self.curr_ee_pos = None
 
         device = self.tensor_args['device']
         float_dtype = self.tensor_args['dtype']
@@ -64,23 +65,22 @@ Todo:
         self.cart_sparse_reward = CartSparseReward(**exp_params['cost']['Cart_sparse_reward'], # 目标限制
                                   tensor_args=self.tensor_args)
         
-        self.terminal_cost = terminalCost(**exp_params['cost']['terminal_pos'],
-                                  tensor_args=self.tensor_args)
+        # self.terminal_cost = terminalCost(**exp_params['cost']['terminal_pos'],
+        #                           tensor_args=self.tensor_args)
         
     def cost_fn(self, state_dict, action_batch, no_coll=False, horizon_cost=True, return_dist=False):
 
         cost = super(ArmReacher, self).cost_fn(state_dict, action_batch, no_coll, horizon_cost)
         ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
+        self.curr_ee_pos = ee_pos_batch[-1,0,:]
         
         state_batch = state_dict['state_seq']
         goal_ee_pos = self.goal_ee_pos
         goal_ee_rot = self.goal_ee_rot
-        retract_state = self.retract_state
-        goal_state = self.goal_state
 
         # 为什么要存在 因为逆解不存在时，也就是全局规划无解时，可以使用该方式引导
         goal_cost = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                                                goal_ee_pos, goal_ee_rot)
+                                            goal_ee_pos, goal_ee_rot)
         cost += goal_cost
 
         #  pose sparse_reward design 加快末端位置收敛 
@@ -97,14 +97,6 @@ Todo:
 
             if self.exp_params['cost']['zero_vel']['weight'] > 0:
                 cost += self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=disp_vec)
-        
-            
-        if self.exp_params['cost']['zero_acc']['weight'] > 0:
-            cost += self.zero_acc_cost.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs*3], goal_dist=goal_dist)
-
-
-        if self.exp_params['cost']['terminal_pos']['weight'] > 0:
-            cost[:,self.exp_params['cost']['terminal_pos']['horizon']] += self.terminal_cost.forward(ee_pos_batch, goal_ee_pos)
           
         return cost
 

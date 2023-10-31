@@ -73,23 +73,31 @@ class RobotWorldCollisionCapsule(RobotWorldCollision):
 
 
 class RobotWorldCollisionPrimitive(RobotWorldCollision):
-    def __init__(self, robot_collision_params, world_collision_params, robot_batch_size=1,
+    def __init__(self, robot_collision_params, world_collision_params,
                  world_batch_size=1, tensor_args={'device': "cpu", 'dtype': torch.float32},
                  bounds=None, grid_resolution=None, 
                  traj_dt=None,_fd_matrix_sphere=None):
 
-        robot_collision = RobotSphereCollision(robot_collision_params, robot_batch_size, tensor_args,
+        self.horizon = robot_collision_params['horizon']
+        self.n_links = robot_collision_params['num_link_objs']
+        self.num_particles = robot_collision_params['num_particles']
+        self.robot_batch_size = self.num_particles * self.horizon #  rollout_num * horizon
+        
+        robot_collision = RobotSphereCollision(robot_collision_params, self.robot_batch_size, tensor_args,
                                                traj_dt=traj_dt,_fd_matrix_sphere=_fd_matrix_sphere)
 
         world_collision = WorldPrimitiveCollision(world_collision_params, tensor_args=tensor_args,
                                                   batch_size=world_batch_size, bounds=bounds,
                                                   grid_resolution=grid_resolution)
-        self.horizon = robot_collision_params['horizon']
-        self.robot_batch_size = robot_batch_size
+
 
         super().__init__(robot_collision, world_collision)
         self.dist = None
-        self.sdf1_grad3_vel4 = None
+
+
+        self.robot_coll._env_build_batch_features(clone_objs=True)
+        self.sdf1_grad3_vel4 = torch.zeros((self.robot_batch_size, self.n_links,8), **self.tensor_args)
+        self.sphere_pos_links = torch.zeros((self.n_links,3), **self.tensor_args) # 7*3
 
     def build_batch_features(self, batch_size, clone_pose=True, clone_points=True):
         self.batch_size = batch_size
@@ -249,23 +257,8 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         2. directly check_pts_sdf 
 
         """
-        batch_size = link_trans.shape[0]
-        # update link pose:
-        if (self.robot_batch_size != batch_size):
-            self.robot_batch_size = batch_size
-            self.build_batch_features(self.robot_batch_size, clone_pose=True, clone_points=True)
-   
         self.robot_coll._vel_update_batch_robot_collision_objs(link_trans, link_rot)  # 根据关节位置 解算每个link对应的球体位置
-
-        w_batch_link_spheres,w_batch_link_spheres_vel = self.robot_coll.get_batch_robot_link_spheres() 
-
-
-        n_links = len(w_batch_link_spheres) # 7 
-
-        if (self.sdf1_grad3_vel4 is None):
-            self.sdf1_grad3_vel4 = torch.zeros((batch_size, n_links,8), **self.tensor_args)
-            self.sphere_pos_links = torch.zeros((n_links,3), **self.tensor_args) # 7*3
-
+        # w_batch_link_spheres,w_batch_link_spheres_vel = self.robot_coll.get_batch_robot_link_spheres() 
         # # 将所有链接的球体合并为一个张量
         # all_spheres = torch.cat([s.view(-1, 4) for s in w_link_spheres])
         # # 计算所有链接的球体与世界对象之间的SDF
@@ -273,9 +266,9 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
         # for i in range(n_links):
         #     sdf_clip = sdf[batch_size*sphere_indiced[i]:batch_size*sphere_indiced[i+1]].view(batch_size, -1)
         #     dist[:, i] = torch.min(sdf_clip, dim=-1)[0]
-        for i in range(n_links): # 按link分组查事先建立的SDF，找到最小值，作为当前link的min_distance 
-            spheres = w_batch_link_spheres[i]  # spheres shape : 15000*8*3
-            vel_spheres = w_batch_link_spheres_vel[i] # vel_spheres shape : 15000*8*4 15000个数据集，每个集合8个球，4表示是球的速度信息
+        for i in range(self.n_links): # 按link分组查事先建立的SDF，找到最小值，作为当前link的min_distance 
+            spheres =     self.robot_coll.w_batch_link_spheres[i]  # spheres shape : 15000*8*3
+            vel_spheres = self.robot_coll.w_batch_link_spheres_vel[i] # vel_spheres shape : 15000*8*4 15000个数据集，每个集合8个球，4表示是球的速度信息
             b, n, _ = spheres.shape # b is batch_size * horizon ; n is number of spheres of link_i
             # compute distance between world objs and link spheres
             sdf = self.world_coll.check_pts_sdf(spheres.view(b * n, 3)).view(b, n,-1) # flatten 15000*8 to fast pts check

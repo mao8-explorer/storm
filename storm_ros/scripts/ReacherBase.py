@@ -21,7 +21,7 @@ class ReacherEnvBase():
         self.storm_path = os.path.dirname(self.pkg_path)
         rospy.loginfo(self.storm_path)
         self.world_description = os.path.join(self.storm_path, rospy.get_param('~world_description', 'content/configs/gym/collision_primitives_3d.yml'))
-        self.mpc_config = os.path.join(self.storm_path, rospy.get_param('~mpc_config', 'content/configs/mpc/franka_real_robot_reacher.yml'))
+        self.mpc_config = os.path.join(self.storm_path, rospy.get_param('~mpc_config', 'content/configs/mpc/franka_real_robot_reacher_simplify.yml'))
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.joint_command_topic = rospy.get_param('~joint_command_topic', 'franka_motion_control/joint_command')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
@@ -141,7 +141,8 @@ class ReacherEnvBase():
             self.last_ee_goal_quat = ee_goal_quat
             self.policy.update_params(goal_ee_pos = ee_goal_pos,
                                     goal_ee_quat = ee_goal_quat)  
-        
+            self.rollout_fn.goal_jnq = None
+            
     def env_pc_callback(self, env_pc_msg):
         point_generator = pc2.read_points(env_pc_msg)
         self.point_array = np.array(list(point_generator))
@@ -164,13 +165,15 @@ class ReacherEnvBase():
     def GoalUpdate(self):
         
         # TODO: can it get from topic? call robotmodel to get ee_pos may costly
-        pose_state = self.rollout_fn.get_ee_pose(self.curr_state_tensor)
-        cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
+        # pose_state = self.rollout_fn.get_ee_pose(self.curr_state_tensor)
+        # cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
+        cur_e_pos = self.rollout_fn.curr_ee_pos.cpu().numpy()
         # cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
         if (np.linalg.norm(np.array(self.ee_goal_pos - cur_e_pos)) < self.thresh):
             self.goal_flagi += 1
             self.ee_goal_pos = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
+            self.rollout_fn.goal_jnq = None
 
             self.goal_command_fromMPC.header.stamp = rospy.Time.now()
             self.goal_command_fromMPC.pose.position.x = self.ee_goal_pos[0]

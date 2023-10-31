@@ -24,7 +24,7 @@
 MPC with open-loop Gaussian policies
 """
 import copy
-
+import time
 import numpy as np
 import torch
 from torch.distributions.multivariate_normal import MultivariateNormal

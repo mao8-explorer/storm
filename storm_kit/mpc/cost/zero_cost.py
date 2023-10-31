@@ -36,6 +36,8 @@ class ZeroCost(nn.Module):
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
         self.hinge_val = hinge_val
         self.max_vel = max_vel
+
+        self.zero = torch.tensor(0.0,device=self.device, dtype=self.float_dtype)
     def forward(self, vels, goal_dist):
         inp_device = vels.device
         vel_err = torch.abs(vels.to(self.device))
@@ -44,8 +46,8 @@ class ZeroCost(nn.Module):
         # # max velocity threshold:
         # vel_err[vel_err < self.max_vel] = 0.0
 
-        vel_err = torch.where(goal_dist <= self.hinge_val, vel_err, 0.0 * vel_err / goal_dist) #soft hinge
-
+        # vel_err = torch.where(goal_dist <= self.hinge_val, vel_err, 0.0 * vel_err / goal_dist) #soft hinge
+        vel_err = torch.where(goal_dist <= self.hinge_val, vel_err,self.zero)
         cost = self.weight * self.proj_gaussian((torch.sum(torch.square(vel_err), dim=-1)))
 
         

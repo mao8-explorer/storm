@@ -48,7 +48,7 @@ class IKProc(mp.Process):
             "content/assets/urdf/franka_description/franka_panda_no_gripper.urdf",
             "panda_link0",
             "ee_link",
-            timeout=0.1,
+            timeout=0.05,
             solve_type= self.solve_types[1],
         )
 

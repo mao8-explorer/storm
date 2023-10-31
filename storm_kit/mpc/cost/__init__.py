@@ -28,6 +28,7 @@ from .finite_difference_cost import FiniteDifferenceCost
 from .jacobian_cost import JacobianCost
 from .pose_cost import PoseCost
 from .pose_cost_quaternion import PoseCostQuaternion
+from .poscost_reward import PoseCost_Reward
 from .terminal_cost_pose import terminalCost
 from .stop_cost import StopCost
 from .projected_dist_cost import ProjectedDistCost
@@ -40,8 +41,9 @@ from .collision_cost import CollisionCost
 from .primitive_collision_cost import PrimitiveCollisionCost
 from .voxel_collision_cost import VoxelCollisionCost
 from .robot_self_collision_cost import RobotSelfCollisionCost
+from .SelfCollision_Stop_Bound_cost import RobotSelfCollision_StopBound_Cost
 
 
 __all__ = ['DistCost', 'FiniteDifferenceCost', 'JacobianCost', 'PoseCost', 'ProjectedDistCost','PoseCostQuaternion' \
            'ZeroCost', 'get_inv_null_cost','get_transpose_null_cost', 'terminalCost','SparseReward','JnqSparseReward','CartSparseReward'\
-           'BoundCost', 'PrimitiveCollisionCost', 'RobotSelfCollisionCost']
+           'BoundCost', 'PrimitiveCollisionCost', 'RobotSelfCollisionCost', 'PoseCost_Reward' , 'RobotSelfCollision_StopBound_Cost']

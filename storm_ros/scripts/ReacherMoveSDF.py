@@ -10,7 +10,7 @@ from ReacherBase import ReacherEnvBase
 import torch
 import numpy as np
 import rospy
-from storm_kit.mpc.task.reacher_task import ReacherTask
+from storm_kit.mpc.task import ReacherTask, ReacherTaskThread
 from storm_ros.utils.tf_translation import get_world_T_cam
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import queue
@@ -36,7 +36,8 @@ class MPCReacherNode(ReacherEnvBase):
     def __init__(self, ik_mSolve):
         super().__init__()
         #STORM Initialization
-        self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
+        # self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
+        self.policy = ReacherTaskThread(self.mpc_config, self.world_description, self.tensor_args)
         # goal list control
         # self.goal_list = np.array([
         #      [0.45, -0.45, 0.45],
@@ -50,20 +51,23 @@ class MPCReacherNode(ReacherEnvBase):
         # self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
         #                           goal_ee_quat = self.ee_goal_quat)  
 
-        self.ros_handle_init()
         self.thresh = 0.03 # goal next thresh in Cart
         self.ik_mSolve = ik_mSolve
         self.goal_ee_transform = np.eye(4)
         self.rollout_fn = self.policy.controller.rollout_fn
         self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
+        self.ros_handle_init()
 
     def control_loop(self):
         rospy.loginfo('[MPCPoseReacher]: Controller running')
         start_t = rospy.get_time()
-        lap_count = 8 # 跑5轮次
+        lap_count = 5 # 跑5轮次
         self.jnq_des = np.zeros(7)
         opt_step_count = 0 
         opt_time_sum = 0 
+        pointcloud_SDF_time_sum = 0
+        GoalUpdate_last_sum = 0
+        VisualUpdate_last_sum = 0
         self.goal_flagi = -1 # 调控目标点
         while not rospy.is_shutdown() and \
                 self.goal_flagi / len(self.goal_list) != lap_count:
@@ -76,13 +80,17 @@ class MPCReacherNode(ReacherEnvBase):
                         # Assuming self.point_array is your original point cloud data
                 # It should have shape (N, 3) where N is the number of points
                 # Each row is a point (x, y, z)
+                #TODO :  pointcloudSDF_TIME_COST : 3.8244729934141732
+                pointcloud_SDF_time_last = rospy.get_time()
                 point_array = np.hstack((self.point_array, np.ones((self.point_array.shape[0], 1))))  # Adding homogenous coordinate
                 transformed_points = np.dot(point_array, self.world_T_cam.T)  # Transform all points at once
                 self.point_array = transformed_points[:, :3]  # Removing the homogenous coordinate
                 # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
+                # pointcloud_SDF_time_last = rospy.get_time()
                 self.collision_grid = self.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
                                      _opt_compute_dynamic_voxeltosdf(self.point_array,visual = True)
-                
+                pointcloud_SDF_time_sum += rospy.get_time() - pointcloud_SDF_time_last
+
                 tstep = rospy.get_time() - start_t 
                 # 逆解获取请求发布 input_queue
                 qinit = self.robot_state['position']
@@ -98,6 +106,8 @@ class MPCReacherNode(ReacherEnvBase):
                 self.command = command
                 q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
+
+                #  TODO: costly : goalupdate_or_not is cost ! need change! GoalUpdate_last_sum : 3.297654991475945 
                 self.GoalUpdate()
                 #publish mpc command
                 self.mpc_command.header.stamp = rospy.Time.now()
@@ -107,7 +117,6 @@ class MPCReacherNode(ReacherEnvBase):
 
                 self.visual_top_trajs()
                 self.traj_append()
-
                 collision_grid_pc = self.collision_grid.cpu().numpy() 
                 self.pub_pointcloud(collision_grid_pc, self.pub_env_pc)
 
@@ -130,10 +139,17 @@ class MPCReacherNode(ReacherEnvBase):
                 rospy.logerr("Error --- *~* ---")  
                 break
 
+
         rospy.loginfo("whole_time: {}, opt_step_count: {}, collison_count: {}, "
-                      "oneLoop: {}, oneOpt: {}".format(tstep, opt_step_count, self.curr_collision, 
+                      "oneLoop: {}, oneOpt: {}, pointcloudSDF: {}, "
+                      "generate_rollouts_time_sum: {}, FK_time_sum: {}, cost_time_sum: {} ,mpc_time_sum: {}".format(tstep, opt_step_count, self.curr_collision, 
                                                        tstep / opt_step_count * 1000, 
-                                                       opt_time_sum / opt_step_count * 1000))        
+                                                       opt_time_sum / opt_step_count * 1000,
+                                                       pointcloud_SDF_time_sum / opt_step_count * 1000,
+                                                       self.policy.controller.generate_rollouts_time_sum / opt_step_count *1000,
+                                                       self.rollout_fn.fk_time_sum / opt_step_count * 1000,
+                                                       self.rollout_fn.cost_time_sum / opt_step_count * 1000,
+                                                       self.policy.control_process.mpc_time_sum / opt_step_count * 1000))   
         
         self.close()
         self.plot_traj()

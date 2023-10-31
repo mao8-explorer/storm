@@ -26,3 +26,4 @@ This folder contains rollout functions for common robot tasks. Each rollout func
 from .arm_base import ArmBase
 from .arm_reacher import ArmReacher
 from .arm_reacher_multimodal import ArmReacherMultiModal
+from .arm_reacher_thread import ArmReacherThread

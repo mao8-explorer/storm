@@ -23,5 +23,6 @@
 from .task_base import BaseTask
 from .reacher_task import ReacherTask
 from .reacher_task_multimodal import ReacherTaskMultiModal
+from .reacher_task_thread import ReacherTaskThread
 
 #__all__=['BaseTask', 'ReacherTask' , 'ReacherTaskMultiModal']

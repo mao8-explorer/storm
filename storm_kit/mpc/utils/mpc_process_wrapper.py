@@ -72,6 +72,10 @@ class ControlProcess(object):
         self.controller = controller
         self.control_dt = control_dt
         self.prev_mpc_tstep = 0.0
+
+        self.mpc_time_sum = 0
+        self.end_time = 0
+
     def predict_next_state(self, t_step, curr_state):
         # predict next state
         # given current t_step, integrate to t_step+mpc_dt
@@ -100,28 +104,22 @@ class ControlProcess(object):
         shift_steps = find_first_idx(self.command_tstep, t_step + self.mpc_dt)
         
         state_tensor = torch.as_tensor(current_state,**self.controller.tensor_args).unsqueeze(0)
-
-
-        mpc_time = time.time()
+        start_time = time.time()
         command = list(self.controller.optimize(state_tensor, shift_steps=shift_steps))
-        mpc_time = time.time() - mpc_time
         command[0] = command[0].cpu().numpy()
+        self.end_time += time.time() - start_time
         self.command_tstep = self.traj_tstep + t_step
-        
-        self.opt_dt = mpc_time
         self.mpc_dt = t_step - self.prev_mpc_tstep
         self.prev_mpc_tstep = copy.deepcopy(t_step)
-
         # get mean_trajectory and best_trajectory
         # mean_trajectories = self.controller.trajectories['state_seq'][-1,]
         # best_trajectories = self.controller.trajectories['state_seq'][0,]
-        
         # get command data:
         self.top_idx = self.controller.top_idx
         self.top_values = self.controller.top_values
         self.top_trajs = self.controller.top_trajs
         self.command = command
-
+       
         command_buffer, command_tstep_buffer = self.truncate_command(self.command[0], t_step, self.command_tstep)
         
         act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[0], self.control_dt)

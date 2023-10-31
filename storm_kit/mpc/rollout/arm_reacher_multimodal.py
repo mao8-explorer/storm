@@ -21,7 +21,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.#
 import torch
-from ..cost import DistCost, ZeroCost, StopCost, PoseCostQuaternion, JnqSparseReward,CartSparseReward,BoundCost, PrimitiveCollisionCost,RobotSelfCollisionCost
+from ..cost import DistCost, ZeroCost, StopCost, PoseCostQuaternion, PoseCost_Reward, JnqSparseReward,CartSparseReward,BoundCost, PrimitiveCollisionCost,RobotSelfCollisionCost
 from ..model import URDFKinematicModel
 from ...util_file import join_path, get_assets_path
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix

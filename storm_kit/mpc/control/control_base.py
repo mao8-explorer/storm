@@ -27,6 +27,7 @@ import copy
 import numpy as np
 import torch
 import torch.autograd.profiler as profiler
+import time
 
 
 class Controller(ABC):
@@ -99,7 +100,8 @@ class Controller(ABC):
         self.hotstart = hotstart
         self.seed_val = seed
         self.trajectories = None
-        
+
+
     @abstractmethod
     def _get_action_seq(self, mode='mean'):
         """
@@ -238,7 +240,7 @@ class Controller(ABC):
         else:
             self.reset_distribution()
             
-
+        # with profiler.profile(with_stack=True, profile_memory=True) as prof:
         with torch.cuda.amp.autocast(enabled=True):
             with torch.no_grad():
                 for _ in range(n_iters):
@@ -246,10 +248,13 @@ class Controller(ABC):
                     # update_distribution to get mean_t1 (greedy path)
 
                     # generate random simulated trajectories
+                    # with profiler.record_function("generate_rollouts"):
                     trajectory = self.generate_rollouts(state)
+                    
                     # update distribution parameters
-                    # with profiler.record_function("mppi_update"):
+                    # with profiler.record_function("_update_distribution"):
                     self._update_distribution(trajectory) 
+                    
                     # self.mean_traj_greedy = self.get_mean_trajectory(state)
                     # self.mean_traj_sensi =  self.mean_traj_greedy
                     """
@@ -270,6 +275,8 @@ class Controller(ABC):
                     # check if converged
                     if self.check_convergence():
                         break
+        # print(prof.key_averages().table(sort_by='self_cpu_time_total'))
+
         self.trajectories = trajectory
         #calculate best action
         # curr_action = self._get_next_action(state, mode=self.sample_mode)

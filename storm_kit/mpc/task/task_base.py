@@ -23,7 +23,7 @@
 
 import torch
 import numpy as np
-
+import time
 from ...mpc.utils.state_filter import JointStateFilter
 from ...mpc.utils.mpc_process_wrapper import ControlProcess
 
@@ -31,6 +31,7 @@ class BaseTask():
     def __init__(self, tensor_args={'device':"cpu", 'dtype':torch.float32}):
         self.tensor_args = tensor_args
         self.prev_qdd_des = None
+        self.get_command_debug_sum = 0
     def init_aux(self):
         self.state_filter = JointStateFilter(filter_coeff=self.exp_params['state_filter_coeff'], dt=self.exp_params['control_dt'])
         
