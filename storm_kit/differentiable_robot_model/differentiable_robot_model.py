@@ -554,9 +554,11 @@ class DifferentiableRobotModel(torch.nn.Module):
 
         # print("8", time.time()-st)
         # st = time.time()
-        with profiler.record_function("robot_model/fk"):
-            ee_pos, ee_rot = self.compute_forward_kinematics(q, qd, link_name)
-        return ee_pos.to(inp_device), ee_rot.to(inp_device)
+        # with profiler.record_function("robot_model/fk"):
+        # ee_pos, ee_rot = self.compute_forward_kinematics(q, qd, link_name)
+        ee_pos, _= self.compute_forward_kinematics(q, qd, link_name)
+        # return ee_pos.to(inp_device), ee_rot.to(inp_device)
+        return ee_pos.to(inp_device)
     
     def compute_fk_and_jacobian(
                 self, q: torch.Tensor, qd:torch.Tensor, link_name: str

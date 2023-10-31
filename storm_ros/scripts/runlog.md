@@ -44,3 +44,8 @@ whole_time: 29.108530521392822, opt_step_count: 1208, collison_count: 0, oneLoop
 whole_time: 28.93730616569519, opt_step_count: 1200, collison_count: 0, oneLoop: 24.11442180474599, oneOpt: 23.497082193692528
 23.023876150449116
 
+whole_time: 29.04112148284912, opt_step_count: 1214, collison_count: 0, oneLoop: 23.921846361490218, oneOpt: 23.300247294506093
+22.85092057663291
+
+最终的优化结果 ReacherJnc
+whole_time: 29.463523864746094, opt_step_count: 1224, collison_count: 0, oneLoop: 24.071506425446152, oneOpt: 23.67206044446409

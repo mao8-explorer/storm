@@ -35,19 +35,11 @@ class MPCReacherNode(ReacherEnvBase):
         #STORM Initialization
         # self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
         self.policy = ReacherTaskThread(self.mpc_config, self.world_description, self.tensor_args)
-        # goal list control
-        # self.goal_list = np.array([
-        #      [0.45, -0.45, 0.45],
-        #      [0.45,  0.45, 0.45],
-        #      ])
         x,y,z = 0.30 , 0.55 , 0.45
         self.goal_list = [
              [x,y,z],
              [x,-y,z]]
         self.ee_goal_pos = self.goal_list[0]
-        # self.policy.update_params(goal_ee_pos = self.ee_goal_pos,
-        #                           goal_ee_quat = self.ee_goal_quat)  
-
         self.thresh = 0.02 # goal next thresh in Cart
         self.ik_mSolve = ik_mSolve
         self.goal_ee_transform = np.eye(4)
@@ -56,12 +48,10 @@ class MPCReacherNode(ReacherEnvBase):
 
     def control_loop(self):
         rospy.loginfo('[MPCPoseReacher]: Controller running')
-        # start_t = rospy.get_time()
         lap_count = 5 # 跑5轮次
         self.jnq_des = np.zeros(7)
         opt_step_count = 0 
         opt_time_sum = 0 
-        tstep = 0
         self.goal_flagi = -1 # 调控目标点
         start_time = time.time()
         while not rospy.is_shutdown() and \
@@ -71,22 +61,17 @@ class MPCReacherNode(ReacherEnvBase):
                 # TODO: scene_grid update at here ... 
                 # 1. transform pointcloud to world frame 
                 # 2. compute sdf from pointcloud 
-                tstep += self.control_dt
                 # TODO: can it get from topic? call robotmodel to get ee_pos may costly
                 # 逆解获取请求发布 input_queue
                 qinit = self.robot_state['position']
-                self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()
-                self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
-                self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = tstep)
-                #get mpc command
-                # TODO: tstep 与 control_dt的关系是什么？ 没有穿透
+                self.goal_ee_transform[:3,3] =  self.rollout_fn.goal_ee_pos.cpu().detach().numpy()
+                self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().detach().numpy()
+                self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = opt_step_count)
                 opt_time_last = time.time()
-                command = self.policy.get_command(
-                    tstep, self.robot_state, control_dt=self.control_dt)
+                command = self.policy.get_command(self.robot_state)
                 opt_time_sum += time.time() - opt_time_last
                 self.command = command
-                q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
-                self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
+                q_des ,qd_des = command['position'] ,command['velocity']
                 self.GoalUpdate()
                 #publish mpc command
                 self.mpc_command.header.stamp = rospy.Time.now()
@@ -120,12 +105,7 @@ class MPCReacherNode(ReacherEnvBase):
                       "oneLoop: {}, oneOpt: {}".format(end_time, opt_step_count, self.curr_collision, 
                                                        end_time / opt_step_count * 1000, 
                                                        opt_time_sum / opt_step_count * 1000))
-                                                    #    self.rollout_fn.fk_time_sum / opt_step_count * 1000,
-                                                    #    self.rollout_fn.cost_time_sum / opt_step_count * 1000,
-                                                    #    self.policy.control_process.mpc_time_sum / opt_step_count * 1000))    
-        print(self.policy.control_process.end_time / opt_step_count * 1000)
-        rospy.loginfo("FK time: {},Cost time: {}".format(self.rollout_fn.fk_time_sum / opt_step_count * 1000, self.rollout_fn.cost_time_sum / opt_step_count))
-        # "generate_rollouts_time_sum: {}, FK_time_sum: {}, cost_time_sum: {}, mpc_time_sum: {}
+
         
         self.close()
         self.plot_traj()

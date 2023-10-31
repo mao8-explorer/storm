@@ -233,7 +233,6 @@ class Controller(ABC):
         inp_dtype = state.dtype
         state.to(**self.tensor_args)
 
-        info = dict(rollout_time=0.0, entropy=[])
         # shift distribution to hotstart from previous timestep
         if self.hotstart:
             self._shift(shift_steps)
@@ -270,33 +269,17 @@ class Controller(ABC):
 
                     # self._update_distribution(sensitive_trajectory) 
                     # self.mean_traj_sensi = self.get_mean_trajectory(state)
-
-                    info['rollout_time'] += trajectory['rollout_time']
                     # check if converged
                     if self.check_convergence():
                         break
         # print(prof.key_averages().table(sort_by='self_cpu_time_total'))
 
         self.trajectories = trajectory
-        #calculate best action
-        # curr_action = self._get_next_action(state, mode=self.sample_mode)
         curr_action_seq = self._get_action_seq(mode=self.sample_mode)
-        #calculate optimal value estimate if required
-        # if calc_val:
-        #     trajectories = self.generate_rollouts(state)
-        #     value = self._calc_val(trajectories)
-
-        # # shift distribution to hotstart next timestep
-        # if self.hotstart:
-        #     self._shift()
-        # else:
-        #     self.reset_distribution()
-
-        info['entropy'].append(self.entropy)
 
         self.num_steps += 1
 
-        return curr_action_seq.to(inp_device, dtype=inp_dtype), info
+        return curr_action_seq.to(inp_device, dtype=inp_dtype)
 
 
 

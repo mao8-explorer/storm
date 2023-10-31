@@ -175,7 +175,7 @@ class OLGaussianMPC(Controller):
         delta = self.sample_lib.get_samples(sample_shape=shape, seed=base_seed)
         return delta
         
-    def sample_enhance_actions(self, state=None):
+    def sample_enhance_actions(self):
 
         # chatgpt,下面更改代码，通过 不同采样均值（random_shooting的best_action 与 MPPI的mean_action）的方式增加MPPI的探索能力
         # 前面根据MPPI算法的mean_action随机采样出来一系列轨迹：act_seq = self.mean_action.unsqueeze(0) + scaled_delta
@@ -380,7 +380,7 @@ class OLGaussianMPC(Controller):
          """
         # 200 * 20 *2 
         # act_seq = self.sample_actions(state=state) # sample noise from covariance of current control distribution
-        act_seq = self.sample_enhance_actions(state=state)
+        act_seq = self.sample_enhance_actions()
         # act_seq -> trajectory: actions 200*20*2 | states 200*20*7 | costs 200*20
         trajectories = self._rollout_fn(state, act_seq)
         # trajectories['actions'][-5,] == act_seq[295,]

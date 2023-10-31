@@ -3,6 +3,7 @@ import os
 import numpy as np
 import torch
 import rospy
+import copy
 from geometry_msgs.msg import PoseStamped 
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float32
@@ -167,7 +168,7 @@ class ReacherEnvBase():
         # TODO: can it get from topic? call robotmodel to get ee_pos may costly
         # pose_state = self.rollout_fn.get_ee_pose(self.curr_state_tensor)
         # cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
-        cur_e_pos = self.rollout_fn.curr_ee_pos.cpu().numpy()
+        cur_e_pos = self.rollout_fn.curr_ee_pos.cpu().detach().numpy()
         # cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
         if (np.linalg.norm(np.array(self.ee_goal_pos - cur_e_pos)) < self.thresh):

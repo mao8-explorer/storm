@@ -89,42 +89,20 @@ class ControlProcess(object):
     
         return curr_state
     
-    def get_command_debug(self, t_step, curr_state, debug=False, control_dt=0.01):
-        """ This function runs the controller in the same process and waits for optimization to  complete before return of a new command
-        Args:
-        t_step: current timestep
-        curr_state: current state to give to mpc
-        debug: flag to enable debug commands [not implemented]
-        control_dt: dt to integrate command to acceleration space from a higher order space(jerk, snap). 
-        """
-        if(self.command is not None):
-            curr_state = self.predict_next_state(t_step, curr_state)
+    def simple_predict_next_state(self, curr_state):
 
-        current_state = np.append(curr_state, t_step + self.mpc_dt)
-        shift_steps = find_first_idx(self.command_tstep, t_step + self.mpc_dt)
-        
-        state_tensor = torch.as_tensor(current_state,**self.controller.tensor_args).unsqueeze(0)
-        start_time = time.time()
-        command = list(self.controller.optimize(state_tensor, shift_steps=shift_steps))
-        command[0] = command[0].cpu().numpy()
-        self.end_time += time.time() - start_time
-        self.command_tstep = self.traj_tstep + t_step
-        self.mpc_dt = t_step - self.prev_mpc_tstep
-        self.prev_mpc_tstep = copy.deepcopy(t_step)
-        # get mean_trajectory and best_trajectory
-        # mean_trajectories = self.controller.trajectories['state_seq'][-1,]
-        # best_trajectories = self.controller.trajectories['state_seq'][0,]
-        # get command data:
-        self.top_idx = self.controller.top_idx
-        self.top_values = self.controller.top_values
-        self.top_trajs = self.controller.top_trajs
-        self.command = command
-       
-        command_buffer, command_tstep_buffer = self.truncate_command(self.command[0], t_step, self.command_tstep)
-        
-        act = self.controller.rollout_fn.dynamics_model.integrate_action_step(command_buffer[0], self.control_dt)
-        # next_command, val, info, best_action
-        return act, command_tstep_buffer, self.command[1], command_buffer
+        curr_state = self.controller.rollout_fn.dynamics_model.get_next_state(curr_state, self.command[0], self.mpc_dt)
+    
+        return curr_state
+    
+    def get_command_debug(self, state_tensor):
+        if(self.command is not None):
+            # 假设在mpc规划的dt时间段内，机械臂继续按照command执行，那么curr_state就要根据command做dt的推演 - 有这种想法比较合理 准！ 所有的参数 这里假定都是torch的
+            state_tensor = self.controller.rollout_fn.dynamics_model.get_next_state(state_tensor, self.command[0], self.control_dt)
+        command = self.controller.optimize(state_tensor.unsqueeze(0), shift_steps=1)
+        self.command = command # mean_action_sequence
+        act = self.command[0].cpu().detach().numpy()
+        return act
 
    
     def get_multimodal_command_debug(self, t_step, curr_state, debug=False, control_dt=0.01):
@@ -226,7 +204,6 @@ class ControlProcess(object):
         f_idx = find_first_idx(command_tstep, trunc_tstep) #- 1
         if(f_idx == -1):
             f_idx = 0
-        #print(f_idx)
         return command[f_idx:], command_tstep[f_idx:]
 
     def update_params(self, **kwargs):

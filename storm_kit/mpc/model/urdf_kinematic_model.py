@@ -148,7 +148,7 @@ class URDFKinematicModel(DynamicsModelBase):
             curr_state[1 * self.n_dofs:2 * self.n_dofs] = 0.0
             curr_state[:self.n_dofs] = act
         return curr_state
-    def tensor_step(self, state: torch.Tensor, act: torch.Tensor, state_seq: torch.Tensor, dt=None) -> torch.Tensor:
+    def tensor_step(self, state: torch.Tensor, act: torch.Tensor, state_seq: torch.Tensor) -> torch.Tensor:
         """
         Args:
         state: [1,N]
@@ -170,56 +170,28 @@ class URDFKinematicModel(DynamicsModelBase):
         state_seq[:,:, -1] = self._traj_tstep
 
         
-        return state_seq
+        return state_seq.to(inp_device)
         
         
     
-    def rollout_open_loop(self, start_state: torch.Tensor, act_seq: torch.Tensor,
-                          dt=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        # batch_size, horizon, d_act = act_seq.shape
-        curr_dt = self.dt if dt is None else dt
-        curr_horizon = self.horizon
+    def rollout_open_loop(self, start_state: torch.Tensor, act_seq: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
         # get input device:
         inp_device = start_state.device
         start_state = start_state.to(self.device, dtype=self.float_dtype)
         act_seq = act_seq.to(self.device, dtype=self.float_dtype)
         
-        # add start state to prev state buffer:
-        #print(start_state.shape, self.d_state)
-        if(self.prev_state_buffer is None):
-            self.prev_state_buffer = torch.zeros((10, self.d_state), **self.tensor_args)
-            self.prev_state_buffer[:,:] = start_state
-        self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=0)
-        self.prev_state_buffer[-1,:] = start_state
-
-        
-        #print(self.prev_state_buffer[:,-1])
-        # compute dt w.r.t previous data?
         state_seq = self.state_seq
         ee_pos_seq = self.ee_pos_seq
-        ee_rot_seq = self.ee_rot_seq
-        curr_horizon = self.horizon
         curr_batch_size = self.batch_size
         num_traj_points = self.num_traj_points
         link_pos_seq = self.link_pos_seq
         link_rot_seq = self.link_rot_seq
 
-        
-        
-        curr_state = self.prev_state_buffer[-1:,:self.n_dofs * 3]
- 
-        with profiler.record_function("tensor_step"):
-            # forward step with step matrix:
-            state_seq = self.tensor_step(curr_state, act_seq, state_seq, curr_dt)
-        
-        #print(start_state[:,self.n_dofs*2 : self.n_dofs*3])
+        state_seq = self.tensor_step(start_state, act_seq, state_seq)
 
         shape_tup = (curr_batch_size * num_traj_points, self.n_dofs)
-        # with profiler.record_function("fk + jacobian"):
-        #     ee_pos_seq, ee_rot_seq, lin_jac_seq, ang_jac_seq = self.robot_model.compute_fk_and_jacobian(state_seq[:,:,:self.n_dofs].view(shape_tup),
-        #                                                                                             state_seq[:,:,self.n_dofs:2 * self.n_dofs].view(shape_tup),
-        #                                                                                             link_name=self.ee_link_name)
-        ee_pos_seq, ee_rot_seq = self.robot_model.compute_fk(state_seq[:,:,:self.n_dofs].view(shape_tup),
+        ee_pos_seq  = self.robot_model.compute_fk(state_seq[:,:,:self.n_dofs].view(shape_tup),
                                                              state_seq[:,:,self.n_dofs:2 * self.n_dofs].view(shape_tup),
                                                              link_name=self.ee_link_name)
 
@@ -229,20 +201,11 @@ class URDFKinematicModel(DynamicsModelBase):
             link_pos_seq[:,:,ki,:] = link_pos.view((curr_batch_size, num_traj_points,3))
             link_rot_seq[:,:,ki,:,:] = link_rot.view((curr_batch_size, num_traj_points,3,3))
             
-        
         ee_pos_seq = ee_pos_seq.view((curr_batch_size, num_traj_points, 3))
-        ee_rot_seq = ee_rot_seq.view((curr_batch_size, num_traj_points, 3, 3))
-        # lin_jac_seq = lin_jac_seq.view((curr_batch_size, num_traj_points, 3, self.n_dofs))
-        # ang_jac_seq = ang_jac_seq.view((curr_batch_size, num_traj_points, 3, self.n_dofs))
-
         state_dict = {'state_seq':state_seq.to(inp_device),
                       'ee_pos_seq': ee_pos_seq.to(inp_device),
-                      'ee_rot_seq': ee_rot_seq.to(inp_device),
-                    #   'lin_jac_seq': lin_jac_seq.to(inp_device),
-                    #   'ang_jac_seq': ang_jac_seq.to(inp_device),
                       'link_pos_seq':link_pos_seq.to(inp_device),
-                      'link_rot_seq':link_rot_seq.to(inp_device),
-                      'prev_state_seq':self.prev_state_buffer.to(inp_device)}
+                      'link_rot_seq':link_rot_seq.to(inp_device)}
         return state_dict
 
 
