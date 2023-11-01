@@ -104,6 +104,17 @@ class ControlProcess(object):
         act = self.command[0].cpu().detach().numpy()
         return act
 
+
+
+    def get_real_multimodal_command_debug(self, state_tensor):
+        if(self.command is not None):
+            state_tensor = self.controller.rollout_fn.dynamics_model.get_next_state(state_tensor, self.command[0], self.control_dt)
+        command = self.controller.simplify_multimodal_optimize(state_tensor.unsqueeze(0), shift_steps=1)
+        self.command = command # mean_action_sequence
+        act = self.command[0].cpu().detach().numpy()
+        return act
+
+    
    
     def get_multimodal_command_debug(self, t_step, curr_state, debug=False, control_dt=0.01):
         """ This function runs the controller in the same process and waits for optimization to  complete before return of a new command

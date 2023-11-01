@@ -142,7 +142,7 @@ class PrimitiveCollisionCost(nn.Module):
         judge_cost = torch.sum(judge_disp_vec, dim=-1) # 对每个link分配相同的权重 做sum
 
 
-        return cost.to(inp_device) , judge_cost.to(inp_device)    
+        return cost.to(inp_device) , judge_cost.to(inp_device)
 
     def voxel_forward(self, link_pos_seq, link_rot_seq):
 

@@ -61,11 +61,11 @@ class ArmReacherThread(RolloutBase):
                                   tensor_args=self.tensor_args)
         
         
-        # self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, 
-        #                                                     tensor_args=self.tensor_args, 
-        #                                                     **self.exp_params['cost']['primitive_collision'],
-        #                                                     traj_dt=self.traj_dt,
-        #                                                     _fd_matrix_sphere = self._fd_matrix_sphere)
+        self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, 
+                                                            tensor_args=self.tensor_args, 
+                                                            **self.exp_params['cost']['primitive_collision'],
+                                                            traj_dt=self.traj_dt,
+                                                            _fd_matrix_sphere = self._fd_matrix_sphere)
 
         # Safe dynamic model
         self.robot_self_collision_cost = RobotSelfCollisionCost(robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['robot_self_collision'])
@@ -97,7 +97,7 @@ class ArmReacherThread(RolloutBase):
         state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq)
         state_batch = state_dict['state_seq']
         ee_pos_batch = state_dict['ee_pos_seq']
-        # link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
+        link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
         self.curr_ee_pos = ee_pos_batch[-1,0,:]
         goal_ee_pos = self.goal_ee_pos
 
@@ -105,10 +105,10 @@ class ArmReacherThread(RolloutBase):
         self.vel_cost = self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2])
         self.robot_collision = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs]) 
         # self.selfcoll_stop_bound = self.selfcoll_stopbound_cost.forward(state_batch[:,:,:self.n_dofs * 3])
-        # self.environment_collision , self.judge_environment_collision= self.primitive_collision_cost.optimal_forward(link_pos_batch, link_rot_batch)
-        self.cart_goal_cost = self.goal_cost_reward.forward(ee_pos_batch, goal_ee_pos)
+        self.environment_collision , _ = self.primitive_collision_cost.optimal_forward(link_pos_batch, link_rot_batch)
+        self.cart_goal_cost, self.cart_sparse_reward = self.goal_cost_reward.forward(ee_pos_batch, goal_ee_pos)
 
-        cost = self.bound_contraint + self.vel_cost + self.robot_collision + self.cart_goal_cost
+        cost = self.bound_contraint + self.vel_cost + self.robot_collision + self.cart_goal_cost + self.cart_sparse_reward + self.environment_collision
 
         if self.goal_jnq is not None:
             disp_vec = state_batch[:,:,0:self.n_dofs] - self.goal_jnq[:,0:self.n_dofs]

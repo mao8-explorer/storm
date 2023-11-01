@@ -75,6 +75,20 @@ class BaseTask():
         return cmd_des, info
 
 
+    def get_real_multimodal_command(self, curr_state):
+
+        # predict forward from previous action and previous state:
+        #self.state_filter.predict_internal_state(self.prev_qdd_des)
+
+        filt_state = self.state_filter.filter_joint_state(curr_state)
+        curr_state = np.concatenate((filt_state['position'], filt_state['velocity'], filt_state['acceleration']))
+        state_tensor = torch.as_tensor(curr_state,**self.tensor_args)
+        # next_command, val, info, best_action = self.control_process.get_command_debug(t_step, state_tensor.numpy(), control_dt=control_dt)
+        next_command = self.control_process.get_real_multimodal_command_debug(state_tensor)
+        cmd_des = self.state_filter.integrate_acc(next_command)
+        return cmd_des
+
+
     def get_command(self, curr_state):
 
         # predict forward from previous action and previous state:

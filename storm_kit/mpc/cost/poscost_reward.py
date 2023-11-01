@@ -58,8 +58,7 @@ class PoseCost_Reward(nn.Module):
         # 这样的一个函数的物理意义是：当小车靠近目标点，距离约0.05米后，越靠近目标点，惩罚越小或者说奖励越大
         exp_factor = -dist_sq / (2 * self.sigma**2)
         reward_cost = self.reward_weight * (1 - torch.exp(exp_factor))
-
-        cost = pose_cost + reward_cost
-        return cost.to(inp_device)
+        
+        return pose_cost.to(inp_device) , reward_cost.to(inp_device)
 
         

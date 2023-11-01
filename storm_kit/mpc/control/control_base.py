@@ -441,6 +441,45 @@ class Controller(ABC):
         return curr_action_seq.to(inp_device, dtype=inp_dtype), value, info
 
 
+    def simplify_multimodal_optimize(self, state,  shift_steps=1, n_iters=None):
+
+        """
+        1. generate trajectories based on multi-Policies include 
+            "mean_action | greedy_mean_action | sensi_mean_action & greedy_best_action | sensi_best_action"
+        2. compute  each-policy costs from the same trajectories : greedy 、sensi and judge cost
+        3. SoftMax each policy-cost to get each policy-action : greedy_mean_action and sensi_mean_action | greedy_covariance and sensi_covariance
+        4. from each-policy's top-N trajectories to compute greedy_mean_action and sensi_mean_action's Value Function Of Judge Policy 
+        5. echo policy-JudgeValueFunction is the weight proportion of the final path: 
+            mean_action = (1-step_mean)*old_mean_action + step_mean( w1 * greedy_mean_action + w2 * sensi_mean_mean)
+            covariance  = (1-step_covariance)*old_covariance + step_covariance( w1 * greedy_covariance + w2 * sensi_covariance)
+        
+        execute mean_action[0]
+        shift mean_action as hotstart for next loop
+
+        """
+        n_iters = n_iters if n_iters is not None else self.n_iters
+        # get input device:
+        inp_device = state.device
+        inp_dtype = state.dtype
+        state.to(**self.tensor_args)
+
+        # shift distribution to hotstart from previous timestep
+        if self.hotstart:
+            self._multimodal_shift(shift_steps)
+        else:
+            self.multimodal_reset_distribution()
+            
+        with torch.cuda.amp.autocast(enabled=True):
+            with torch.no_grad():
+                for _ in range(n_iters):
+                    # 1. samle multiPolicy_actions and compute differPolicy cost
+                    trajectories = self.generate_multimodal_rollouts(state)
+                    self._multimodal_update_distribution(trajectories) 
+
+                    if self.check_convergence():
+                        break
+        curr_action_seq = self._get_action_seq(mode=self.sample_mode)
+        return curr_action_seq.to(inp_device, dtype=inp_dtype)
 
     def get_optimal_value(self, state):
         """

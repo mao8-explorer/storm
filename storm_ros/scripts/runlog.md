@@ -49,3 +49,8 @@ whole_time: 29.04112148284912, opt_step_count: 1214, collison_count: 0, oneLoop:
 
 最终的优化结果 ReacherJnc
 whole_time: 29.463523864746094, opt_step_count: 1224, collison_count: 0, oneLoop: 24.071506425446152, oneOpt: 23.67206044446409
+
+
+whole_time: 55.81826162338257, opt_step_count: 977, collison_count: 0, oneLoop: 57.132304629869566, oneOpt: 53.49059651549543, pointcloudSDF: 3.007938576330304
+加入点云
+whole_time: 43.80925250053406, opt_step_count: 1083, collison_count: 0, oneLoop: 40.45175669486063, oneOpt: 36.369615644629306, pointcloudSDF: 3.4406759732317727

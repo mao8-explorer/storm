@@ -184,15 +184,15 @@ class ReacherEnvBase():
 
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
             rospy.loginfo(log_message)
-            # if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
-            #     self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
-            #     print("置零")
+            if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
+                self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[] , 'robot_position': [], 'robot_velocity': []}
+                rospy.loginfo("置零")
 
 
     def visual_top_trajs(self):
 
         # 可视化末端规划轨迹 MPPI.py --> top_trajs
-        top_trajs = self.policy.top_trajs.cpu().float().numpy()  # shape is 10*30*3
+        top_trajs = self.policy.controller.top_trajs.cpu().detach().numpy()  # shape is 10*30*3
         # 将该组轨迹的点转换为ROS消息中的点列表
         points = [Point(x=top_trajs[i][j][0], 
                         y=top_trajs[i][j][1], 
@@ -206,19 +206,35 @@ class ReacherEnvBase():
         # 发布marker消息
         self.marker_pub.publish(self.marker_EE_trajs)
 
+    def visual_top_trajs_multimodal(self):
+
+        # 可视化末端规划轨迹 MPPI.py --> top_trajs
+        top_trajs = self.rollout_fn.top_trajs.cpu().detach().numpy()  # shape is 10*30*3
+        # 将该组轨迹的点转换为ROS消息中的点列表
+        points = [Point(x=top_trajs[i][j][0], 
+                        y=top_trajs[i][j][1], 
+                        z=top_trajs[i][j][2]) 
+                # for i in range(1) for j in range(top_trajs.shape[1])]
+                for i in range(top_trajs.shape[0]) for j in range(top_trajs.shape[1])]
+            # 将点列表添加到marker消息中
+        self.marker_EE_trajs.points = points
+            # 更新header中的时间戳和ID
+        self.marker_EE_trajs.header.stamp = rospy.Time.now()
+        # 发布marker消息
+        self.marker_pub.publish(self.marker_EE_trajs)
+
 
     def traj_append(self):
         self.traj_log['position'].append(self.command['position'])
         self.traj_log['velocity'].append(self.command['velocity'])
         self.traj_log['acc'].append(self.command['acceleration'])
         self.traj_log['des'].append(self.jnq_des)
-
         # visual robot_state | command_state relationship
         self.traj_log['robot_position'].append(self.robot_state['position'])
         self.traj_log['robot_velocity'].append(self.robot_state['velocity'])
  
     def traj_append_multimodal(self):
-        self.traj_log['weights'].append(self.policy.controller.weights_divide.cpu().numpy())
+        self.traj_log['weights'].append(self.policy.controller.weights_divide.cpu().detach().numpy())
 
 
     def plot_traj_multimodal(self):
@@ -283,7 +299,13 @@ class ReacherEnvBase():
 
 
     def close(self):
-        self.command_pub.unregister()
+
+        self.command_pub.unregister() 
         self.state_sub.unregister()
-        self.ee_goal_sub.unregister()
-        self.marker_pub.unregister()
+        self.ee_goal_sub.unregister() 
+        self.env_pc_sub.unregister() 
+        self.marker_pub.unregister() 
+        self.coll_robot_pub.unregister() 
+        self.pub_env_pc.unregister() 
+        self.pub_robot_link_pc.unregister()
+        self.goal_command_fromMPC_pub.unregister()

@@ -92,7 +92,7 @@ cost:
 
 
   primitive_collision:
-    weight: 0.0
+    weight: 100.0
     vec_weight: [1.0, 1.0, 1.0, 5.0, 1.0, 1.0, 5.0] # panda_link: 2 3 4 5 6 7 panda_hand
     pv_weight: [1.0, 8.0]
     distance_threshold: 0.05
@@ -200,13 +200,13 @@ cost:
 
 multimodal_cost:
   jnq_goal_cost:
-    greedy_weight: 80.0
-    sensi_weight:  10.0
+    greedy_weight: 60.0
+    sensi_weight:  6.0
     judge_weight:  10.0
   environment_collision: 
     greedy_weight: 80.0
     sensi_weight:  250.0
-    judge_weight:  100.0
+    judge_weight:  150.0
   Cart_jnq_goal_reward:
     greedy_weight: 200.0
     sensi_weight:  10.0
