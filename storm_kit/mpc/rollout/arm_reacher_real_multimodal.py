@@ -136,7 +136,7 @@ class ArmReacherRealMultiModal(RolloutBase):
         # 1 greedy_best_action
         # 2 sensi_mean
         # 3 greedy_mean
-        self.top_trajs = torch.cat([ee_pos_batch[-1].unsqueeze(0),ee_pos_batch[0:4]])
+        self.top_trajs = torch.cat([ee_pos_batch[-1].unsqueeze(0),ee_pos_batch[0:2]])
         self.curr_ee_pos = ee_pos_batch[-1,0,:]
 
 
@@ -166,7 +166,13 @@ class ArmReacherRealMultiModal(RolloutBase):
             self.zero_vel_bound = self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=disp_vec)
 
         # for visualization and goal_ee_pos measure
-        self.top_trajs = torch.cat([ee_pos_batch[-1].unsqueeze(0),ee_pos_batch[0:4]])
+        # get some special indexes to visualization
+        # -1 mean_action
+        # 0 sensi_best_action
+        # 1 greedy_best_action
+        # 2 sensi_mean
+        # 3 greedy_mean
+        self.top_trajs = torch.cat([ee_pos_batch[-1].unsqueeze(0),ee_pos_batch[0:2]])
         self.curr_ee_pos = ee_pos_batch[-1,0,:]
 
         self.normal_cost = self.bound_contraint + self.vel_cost + self.robot_collision 
@@ -214,8 +220,7 @@ class ArmReacherRealMultiModal(RolloutBase):
             greedy_costs=greedy_cost_seq,#clone(),
             sensi_costs=sensi_cost_seq,
             judge_costs=judge_cost_seq,
-            rollout_time=0.0,
-            state_seq=state_dict['ee_pos_seq']
+            # state_seq=state_dict['ee_pos_seq']
         )
         return sim_trajs        
 

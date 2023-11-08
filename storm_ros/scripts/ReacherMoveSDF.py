@@ -11,7 +11,6 @@ import torch
 import numpy as np
 import rospy
 from storm_kit.mpc.task import ReacherTask, ReacherTaskThread
-from storm_ros.utils.tf_translation import get_world_T_cam
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import queue
 
@@ -55,7 +54,6 @@ class MPCReacherNode(ReacherEnvBase):
         self.ik_mSolve = ik_mSolve
         self.goal_ee_transform = np.eye(4)
         self.rollout_fn = self.policy.controller.rollout_fn
-        self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
         self.ros_handle_init()
 
     def control_loop(self):
@@ -66,8 +64,6 @@ class MPCReacherNode(ReacherEnvBase):
         opt_step_count = 0 
         opt_time_sum = 0 
         pointcloud_SDF_time_sum = 0
-        GoalUpdate_last_sum = 0
-        VisualUpdate_last_sum = 0
         self.goal_flagi = -1 # 调控目标点
         while not rospy.is_shutdown() and \
                 self.goal_flagi / len(self.goal_list) != lap_count:
@@ -82,11 +78,6 @@ class MPCReacherNode(ReacherEnvBase):
                 # Each row is a point (x, y, z)
                 #TODO :  pointcloudSDF_TIME_COST : 3.8244729934141732
                 pointcloud_SDF_time_last = rospy.get_time()
-                point_array = np.hstack((self.point_array, np.ones((self.point_array.shape[0], 1))))  # Adding homogenous coordinate
-                transformed_points = np.dot(point_array, self.world_T_cam.T)  # Transform all points at once
-                self.point_array = transformed_points[:, :3]  # Removing the homogenous coordinate
-                # mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll._compute_dynamic_sdfgrid(scene_pc)
-                # pointcloud_SDF_time_last = rospy.get_time()
                 self.collision_grid = self.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
                                      _opt_compute_dynamic_voxeltosdf(self.point_array,visual = True)
                 pointcloud_SDF_time_sum += rospy.get_time() - pointcloud_SDF_time_last

@@ -1,18 +1,22 @@
 """ Example spawning a robot on real-machine
-只关心 运动规划问题 mpc with TrackIK_Guild
-无碰撞
-无SDF参与
-无MultiModal
+加入抓取物体的功能 尝试将动态避障融入到整个抓取的行为中
+
+第一阶段 : 开闭夹爪
+
+定制化的抓取能力，有一个问题需要解决 : 桌面上的物体如何去抓取， 暂时不讨论要抓取物体的点云滤除工作
 """
 
 from ReacherBase import ReacherEnvBase
 import torch
 import numpy as np
 import rospy
-from storm_kit.mpc.task import ReacherTask, ReacherTaskThread
+from storm_kit.mpc.task import ReacherTaskRealMultiModal
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import queue
 import time
+from panda_grasp import PandaCommander
+
+
 class IKSolve:
     def __init__(self):
         self.num_proc = 1
@@ -34,25 +38,30 @@ class MPCReacherNode(ReacherEnvBase):
         super().__init__()
         #STORM Initialization
         # self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
-        self.policy = ReacherTaskThread(self.mpc_config, self.world_description, self.tensor_args)
-        x,y,z = 0.30 , 0.55 , 0.45
+        self.policy = ReacherTaskRealMultiModal(self.mpc_config, self.world_description, self.tensor_args)
         self.goal_list = [
-             [x,y,z],
-             [x,-y,z]]
+             [0.40, 0.40,  0.25],
+             [0.40, -0.40, 0.25]]
         self.ee_goal_pos = self.goal_list[0]
         self.thresh = 0.02 # goal next thresh in Cart
         self.ik_mSolve = ik_mSolve
         self.goal_ee_transform = np.eye(4)
         self.rollout_fn = self.policy.controller.rollout_fn
+        # self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
         self.ros_handle_init()
+        self.gripper = PandaCommander()
+        #  visual 控件
+        self.pointcloud_visual_rviz = False
 
     def control_loop(self):
         rospy.loginfo('[MPCPoseReacher]: Controller running')
-        lap_count = 6 # 跑5轮次
+        lap_count = 8 # 跑5轮次
+        self.goal_flagi = -1 # 调控目标点
         self.jnq_des = np.zeros(7)
         opt_step_count = 0 
-        opt_time_sum = 0 
-        self.goal_flagi = -1 # 调控目标点
+        opt_time_sum = 0  
+        pointcloud_SDF_time_sum = 0 # calculate voxel to sdf SUM time
+        last_shape = 0 # voxel cloud to sdf ; self.point_array shape of last dt
         start_time = time.time()
         while not rospy.is_shutdown() and \
                 self.goal_flagi / len(self.goal_list) != lap_count:
@@ -61,6 +70,19 @@ class MPCReacherNode(ReacherEnvBase):
                 # TODO: scene_grid update at here ... 
                 # 1. transform pointcloud to world frame 
                 # 2. compute sdf from pointcloud 
+                pointcloud_SDF_time_last = rospy.get_time()
+                # point_array = np.hstack((self.point_array, np.ones((self.point_array.shape[0], 1))))  # Adding homogenous coordinate
+                # transformed_points = np.dot(point_array, self.world_T_cam.T)  # Transform all points at once
+                # self.point_array = transformed_points[:, :3]  # Removing the homogenous coordinate
+                # if self.point_array is not None: 
+                # rospy.loginfo("point shape is : {}".format(self.point_array.shape))
+                if abs(self.point_array.shape[0] - last_shape) > 10: # 点云dt相似度 ，没必要每次都更新代价地图 简单的相似度阈值限制 在计算量与判断上做平衡 如何简单有效的判断点云变化程度？需要平衡
+                    self.collision_grid = self.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
+                                        _opt_compute_dynamic_voxeltosdf(self.point_array,visual = self.pointcloud_visual_rviz)
+                    last_shape = self.point_array.shape[0]
+                    # rospy.logwarn("update-->")
+                pointcloud_SDF_time_sum += rospy.get_time() - pointcloud_SDF_time_last
+          
                 # TODO: can it get from topic? call robotmodel to get ee_pos may costly
                 # 逆解获取请求发布 input_queue
                 qinit = self.robot_state['position']
@@ -68,7 +90,7 @@ class MPCReacherNode(ReacherEnvBase):
                 self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().detach().numpy()
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = opt_step_count)
                 opt_time_last = time.time()
-                command = self.policy.get_command(self.robot_state)
+                command = self.policy.get_real_multimodal_command(self.robot_state)
                 opt_time_sum += time.time() - opt_time_last
                 self.command = command
                 q_des ,qd_des = command['position'] ,command['velocity']
@@ -79,8 +101,10 @@ class MPCReacherNode(ReacherEnvBase):
                 self.mpc_command.velocity = qd_des
                 self.command_pub.publish(self.mpc_command)
 
-                # self.visual_top_trajs()
+                # self.visual_top_trajs_multimodal()
+                self.visual_multiTraj()
                 self.traj_append()
+                self.traj_append_multimodal()
                 # 逆解获取查询 output_queue
                 try :
                     output = self.ik_mSolve.output_queue.get()
@@ -102,12 +126,14 @@ class MPCReacherNode(ReacherEnvBase):
         
         end_time = time.time() - start_time
         rospy.loginfo("whole_time: {}, opt_step_count: {}, collison_count: {}, "
-                      "oneLoop: {}, oneOpt: {}".format(end_time, opt_step_count, self.curr_collision, 
+                      "oneLoop: {}, oneOpt: {}, pointcloudSDF: {}".format(end_time, opt_step_count, self.curr_collision, 
                                                        end_time / opt_step_count * 1000, 
-                                                       opt_time_sum / opt_step_count * 1000))
+                                                       opt_time_sum / opt_step_count * 1000,
+                                                       pointcloud_SDF_time_sum / opt_step_count * 1000,))
 
         
         self.close()
+        self.plot_traj_multimodal()
         self.plot_traj()
         rospy.loginfo("Closing ---all ---")
     

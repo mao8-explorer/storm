@@ -10,7 +10,7 @@ import torch
 import numpy as np
 import rospy
 from storm_kit.mpc.task import ReacherTaskRealMultiModal
-from storm_ros.utils.tf_translation import get_world_T_cam
+# from storm_ros.utils.tf_translation import get_world_T_cam
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import queue
 import time
@@ -36,16 +36,15 @@ class MPCReacherNode(ReacherEnvBase):
         #STORM Initialization
         # self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
         self.policy = ReacherTaskRealMultiModal(self.mpc_config, self.world_description, self.tensor_args)
-        x,y,z = 0.30 , 0.55 , 0.45
         self.goal_list = [
-             [x,y,z],
-             [x,-y,z]]
+             [0.40,  0.50,  0.30],
+             [0.40, -0.40,  0.30]]
         self.ee_goal_pos = self.goal_list[0]
-        self.thresh = 0.02 # goal next thresh in Cart
+        self.thresh = 0.03 # goal next thresh in Cart
         self.ik_mSolve = ik_mSolve
         self.goal_ee_transform = np.eye(4)
         self.rollout_fn = self.policy.controller.rollout_fn
-        self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
+        # self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
         self.ros_handle_init()
         #  visual 控件
         self.pointcloud_visual_rviz = False
@@ -57,6 +56,7 @@ class MPCReacherNode(ReacherEnvBase):
         opt_step_count = 0 
         opt_time_sum = 0 
         pointcloud_SDF_time_sum = 0
+        last_shape = 0
         self.goal_flagi = -1 # 调控目标点
         start_time = time.time()
         while not rospy.is_shutdown() and \
@@ -67,11 +67,15 @@ class MPCReacherNode(ReacherEnvBase):
                 # 1. transform pointcloud to world frame 
                 # 2. compute sdf from pointcloud 
                 pointcloud_SDF_time_last = rospy.get_time()
-                point_array = np.hstack((self.point_array, np.ones((self.point_array.shape[0], 1))))  # Adding homogenous coordinate
-                transformed_points = np.dot(point_array, self.world_T_cam.T)  # Transform all points at once
-                self.point_array = transformed_points[:, :3]  # Removing the homogenous coordinate
-                self.collision_grid = self.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
-                                     _opt_compute_dynamic_voxeltosdf(self.point_array,visual = self.pointcloud_visual_rviz)
+                # point_array = np.hstack((self.point_array, np.ones((self.point_array.shape[0], 1))))  # Adding homogenous coordinate
+                # transformed_points = np.dot(point_array, self.world_T_cam.T)  # Transform all points at once
+                # self.point_array = transformed_points[:, :3]  # Removing the homogenous coordinate
+                # if self.point_array is not None ->  rospy.loginfo("point shape is : {}".format(self.point_array.shape))
+                if  self.point_array.shape[0] > 0 and abs(self.point_array.shape[0] - last_shape) > 10: # 点云dt相似度 ，没必要每次都更新代价地图 简单的相似度阈值限制 在计算量与判断上做平衡 如何简单有效的判断点云变化程度？需要平衡
+                    self.collision_grid = self.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
+                                        _opt_compute_dynamic_voxeltosdf(self.point_array,visual = self.pointcloud_visual_rviz)
+                    last_shape = self.point_array.shape[0]
+                    # rospy.logwarn("update-->")
                 pointcloud_SDF_time_sum += rospy.get_time() - pointcloud_SDF_time_last
           
                 # TODO: can it get from topic? call robotmodel to get ee_pos may costly
@@ -85,14 +89,14 @@ class MPCReacherNode(ReacherEnvBase):
                 opt_time_sum += time.time() - opt_time_last
                 self.command = command
                 q_des ,qd_des = command['position'] ,command['velocity']
-                self.GoalUpdate()
                 #publish mpc command
                 self.mpc_command.header.stamp = rospy.Time.now()
                 self.mpc_command.position = q_des
                 self.mpc_command.velocity = qd_des
                 self.command_pub.publish(self.mpc_command)
-
-                self.visual_top_trajs_multimodal()
+                self.GoalUpdate()
+                # self.visual_top_trajs_multimodal()
+                self.visual_multiTraj()
                 self.traj_append()
                 self.traj_append_multimodal()
                 # 逆解获取查询 output_queue

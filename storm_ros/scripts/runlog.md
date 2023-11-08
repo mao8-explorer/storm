@@ -54,3 +54,10 @@ whole_time: 29.463523864746094, opt_step_count: 1224, collison_count: 0, oneLoop
 whole_time: 55.81826162338257, opt_step_count: 977, collison_count: 0, oneLoop: 57.132304629869566, oneOpt: 53.49059651549543, pointcloudSDF: 3.007938576330304
 加入点云
 whole_time: 43.80925250053406, opt_step_count: 1083, collison_count: 0, oneLoop: 40.45175669486063, oneOpt: 36.369615644629306, pointcloudSDF: 3.4406759732317727
+
+
+运动学 ReacherJnc.py
+whole_time: 29.893229961395264, opt_step_count: 1330, collison_count: 0, oneLoop: 22.47611275292877, oneOpt: 22.10017738485695
+
+
+whole_time: 47.83569407463074, opt_step_count: 1126, collison_count: 0, oneLoop: 42.482854417966905, oneOpt: 38.25283431668053, pointcloudSDF: 3.5189373243342073

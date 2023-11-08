@@ -246,7 +246,7 @@ class WorldGridCollision(WorldCollision):
         self.scene_sdf[unique_indices] = torch.tensor(0, **self.tensor_args)
         # step 5: flatten scene_sdf to 3d voxel grid
         self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
-        self.scene_sdf_matrix[:,:,0:2] = torch.tensor(0, **self.tensor_args) # safe ground 3*0.05 = 0.15m | real meachine
+        self.scene_sdf_matrix[:,:,0] = torch.tensor(0, **self.tensor_args) # safe ground 3*0.05 = 0.15m | real meachine
         # step 6: 计算内部点到外部点的距离变换 EDT 2Hz
         distances_inside = distance_transform_edt((self.scene_sdf_matrix).cpu())
         # version 1. direactly compute gradient
@@ -263,10 +263,10 @@ class WorldGridCollision(WorldCollision):
 
         self.scene_voxels  = self.scene_voxels.flatten() 
         # 对dist大于0.05小于0.30的区域进行运算 0.07 0.20 -> 0.10 0.30 
-        mask_mid = (self.scene_voxels > 0.10) & (self.scene_voxels < 0.30)
+        mask_mid = (self.scene_voxels > 0.07) & (self.scene_voxels < 0.30)
         self.scene_sdf[mask_mid] = torch.exp(-15 * (self.scene_voxels[mask_mid] - 0.10))
         # 对dist小于等于0.05的区域直接设置为1
-        self.scene_sdf[self.scene_voxels <= 0.10] = 1.0
+        self.scene_sdf[self.scene_voxels <= 0.07] = 1.0
         # 对dist大于0.30的区域直接设置为0
         self.scene_sdf[self.scene_voxels > 0.30] = 0.0 
 

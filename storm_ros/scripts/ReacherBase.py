@@ -12,6 +12,7 @@ import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointField
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
+from std_msgs.msg import ColorRGBA
 import matplotlib.pyplot as plt
 np.set_printoptions(precision=2)
 
@@ -50,7 +51,7 @@ class ReacherEnvBase():
         self.command_pub = rospy.Publisher(self.joint_command_topic, JointState, queue_size=1, tcp_nodelay=True, latch=False)
         self.state_sub = rospy.Subscriber(self.joint_states_topic, JointState, self.robot_state_callback, queue_size=1)
         self.ee_goal_sub = rospy.Subscriber(self.ee_goal_topic, PoseStamped, self.ee_goal_callback, queue_size=1)
-        self.env_pc_sub = rospy.Subscriber(self.env_pc_topic, PointCloud2, self.env_pc_callback, queue_size=5)
+        self.env_pc_sub = rospy.Subscriber(self.env_pc_topic, PointCloud2, self.env_pc_callback, queue_size=1)
         self.marker_pub = rospy.Publisher('trajectory_pub', Marker, queue_size=10)
         self.coll_robot_pub = rospy.Publisher('robot_collision', Float32, queue_size=10)
         self.pub_env_pc = rospy.Publisher('env_pc', PointCloud2, queue_size=5)
@@ -72,6 +73,7 @@ class ReacherEnvBase():
         self.goal_command_fromMPC.pose.position.y = self.ee_goal_pos[1]
         self.goal_command_fromMPC.pose.position.z = self.ee_goal_pos[2]
         self.goal_command_fromMPC_pub.publish(self.goal_command_fromMPC)
+        self.policy.update_params(goal_ee_pos = np.array(self.ee_goal_pos))
 
 
 
@@ -83,14 +85,9 @@ class ReacherEnvBase():
         self.marker_EE_trajs.action = Marker.ADD
         self.marker_EE_trajs.pose.orientation.w = 1.0
         self.marker_EE_trajs.type = Marker.SPHERE_LIST
-        self.marker_EE_trajs.scale.x = 0.005
-        self.marker_EE_trajs.scale.y = 0.005
-        self.marker_EE_trajs.scale.z = 0.005
-        self.marker_EE_trajs.color.r = 0
+        self.marker_EE_trajs.scale.x = self.marker_EE_trajs.scale.y = self.marker_EE_trajs.scale.z = 0.008
         self.marker_EE_trajs.color.g = 1
-        self.marker_EE_trajs.color.b = 0
         self.marker_EE_trajs.color.a = 1
-
         # joint_command_msg
         self.mpc_command = JointState()
         self.mpc_command.name = self.joint_names
@@ -143,6 +140,7 @@ class ReacherEnvBase():
             self.policy.update_params(goal_ee_pos = ee_goal_pos,
                                     goal_ee_quat = ee_goal_quat)  
             self.rollout_fn.goal_jnq = None
+            # self.ee_goal_pos = ee_goal_pos
             
     def env_pc_callback(self, env_pc_msg):
         point_generator = pc2.read_points(env_pc_msg)
@@ -168,10 +166,13 @@ class ReacherEnvBase():
         # TODO: can it get from topic? call robotmodel to get ee_pos may costly
         # pose_state = self.rollout_fn.get_ee_pose(self.curr_state_tensor)
         # cur_e_pos = np.ravel(pose_state['ee_pos_seq'].cpu().numpy())
-        cur_e_pos = self.rollout_fn.curr_ee_pos.cpu().detach().numpy()
+        # cur_e_pos = self.rollout_fn.curr_ee_pos.cpu().detach().numpy()
         # cur_e_quat = np.ravel(pose_state['ee_quat_seq'].cpu().numpy())
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
-        if (np.linalg.norm(np.array(self.ee_goal_pos - cur_e_pos)) < self.thresh):
+        # pos_error = torch.norm(self.rollout_fn.goal_ee_pos - self.rollout_fn.curr_ee_pos).cpu().detach().numpy()
+        # rospy.loginfo("pos_error : {}".format(pos_error))
+        # if pos_error < self.thresh:
+        if torch.norm(self.rollout_fn.goal_ee_pos - self.rollout_fn.curr_ee_pos) < self.thresh:
             self.goal_flagi += 1
             self.ee_goal_pos = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
             self.rollout_fn.goal_jnq = None
@@ -181,6 +182,7 @@ class ReacherEnvBase():
             self.goal_command_fromMPC.pose.position.y = self.ee_goal_pos[1]
             self.goal_command_fromMPC.pose.position.z = self.ee_goal_pos[2]        
             self.goal_command_fromMPC_pub.publish(self.goal_command_fromMPC)
+            self.policy.update_params(goal_ee_pos = np.array(self.ee_goal_pos))
 
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
             rospy.loginfo(log_message)
@@ -207,7 +209,12 @@ class ReacherEnvBase():
         self.marker_pub.publish(self.marker_EE_trajs)
 
     def visual_top_trajs_multimodal(self):
-
+        # get some special indexes to visualization
+        # -1 mean_action
+        # 0 sensi_best_action
+        # 1 greedy_best_action
+        # 2 sensi_mean
+        # 3 greedy_mean
         # 可视化末端规划轨迹 MPPI.py --> top_trajs
         top_trajs = self.rollout_fn.top_trajs.cpu().detach().numpy()  # shape is 10*30*3
         # 将该组轨迹的点转换为ROS消息中的点列表
@@ -215,10 +222,38 @@ class ReacherEnvBase():
                         y=top_trajs[i][j][1], 
                         z=top_trajs[i][j][2]) 
                 # for i in range(1) for j in range(top_trajs.shape[1])]
-                for i in range(top_trajs.shape[0]) for j in range(top_trajs.shape[1])]
+                for i in range(top_trajs.shape[0]) for j in range(top_trajs.shape[1]-10)]
             # 将点列表添加到marker消息中
         self.marker_EE_trajs.points = points
             # 更新header中的时间戳和ID
+        self.marker_EE_trajs.header.stamp = rospy.Time.now()
+        # 发布marker消息
+        self.marker_pub.publish(self.marker_EE_trajs)
+
+
+    def visual_multiTraj(self):
+        top_trajs = self.rollout_fn.top_trajs.cpu().detach().numpy()  # shape is 10*30*3
+        # 设置颜色，例如红色和蓝色
+        colors = [(0, 0, 1, 1), 
+                  (0, 1, 0, 1),
+                  (1, 0, 0, 1)]
+        self.marker_EE_trajs.colors = []  # 清空颜色列表
+        self.marker_EE_trajs.points = []
+        for i in range(top_trajs.shape[0]):
+            points = []
+            group_color = ColorRGBA(*colors[i % len(colors)])  # 根据分组设置颜色
+            for j in range(top_trajs.shape[1]-10):
+                point = Point(
+                    x=top_trajs[i][j][0],
+                    y=top_trajs[i][j][1],
+                    z=top_trajs[i][j][2]
+                )
+                points.append(point)
+                self.marker_EE_trajs.colors.append(group_color)  # 将颜色添加到颜色列表
+
+            self.marker_EE_trajs.points.extend(points)  # 添加所有点
+
+        # 更新header中的时间戳
         self.marker_EE_trajs.header.stamp = rospy.Time.now()
         # 发布marker消息
         self.marker_pub.publish(self.marker_EE_trajs)

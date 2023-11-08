@@ -105,10 +105,11 @@ class ArmReacherThread(RolloutBase):
         self.vel_cost = self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2])
         self.robot_collision = self.robot_self_collision_cost.forward(state_batch[:,:,:self.n_dofs]) 
         # self.selfcoll_stop_bound = self.selfcoll_stopbound_cost.forward(state_batch[:,:,:self.n_dofs * 3])
-        self.environment_collision , _ = self.primitive_collision_cost.optimal_forward(link_pos_batch, link_rot_batch)
         self.cart_goal_cost, self.cart_sparse_reward = self.goal_cost_reward.forward(ee_pos_batch, goal_ee_pos)
-
-        cost = self.bound_contraint + self.vel_cost + self.robot_collision + self.cart_goal_cost + self.cart_sparse_reward + self.environment_collision
+        cost = self.bound_contraint + self.vel_cost + self.robot_collision + self.cart_goal_cost + self.cart_sparse_reward
+        if self.exp_params['cost']['primitive_collision']['weight'] > 0:
+            self.environment_collision , _ = self.primitive_collision_cost.optimal_forward(link_pos_batch, link_rot_batch)
+            cost += self.environment_collision
 
         if self.goal_jnq is not None:
             disp_vec = state_batch[:,:,0:self.n_dofs] - self.goal_jnq[:,0:self.n_dofs]

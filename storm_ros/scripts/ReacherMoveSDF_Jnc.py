@@ -1,15 +1,11 @@
-""" Example spawning a robot on real-machine
-只关心 运动规划问题 mpc with TrackIK_Guild
-无碰撞
-无SDF参与
-无MultiModal
 """
-
+简化ReacherTask的尝试 --> ReacherTaskThread
+"""
 from ReacherBase import ReacherEnvBase
 import torch
 import numpy as np
 import rospy
-from storm_kit.mpc.task import ReacherTask, ReacherTaskThread
+from storm_kit.mpc.task import  ReacherTaskThread
 from storm_ros.utils.tf_translation import get_world_T_cam
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import queue
@@ -36,7 +32,7 @@ class MPCReacherNode(ReacherEnvBase):
         #STORM Initialization
         # self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
         self.policy = ReacherTaskThread(self.mpc_config, self.world_description, self.tensor_args)
-        x,y,z = 0.30 , 0.55 , 0.45
+        x,y,z = 0.30 , 0.45 , 0.30
         self.goal_list = [
              [x,y,z],
              [x,-y,z]]
