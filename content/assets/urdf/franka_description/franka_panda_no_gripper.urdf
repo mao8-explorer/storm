@@ -215,7 +215,7 @@
     <child link="ee_link"/>
     <!--origin rpy="0.0 0.0 1.570796325" xyz="0.0 0.0922 0.0"/-->
     <!--origin rpy="-1.57 0.0 1.57" xyz="0.0 0. 0.0"/-->
-    <origin rpy="0.0 0.0 -1.57" xyz="0.0 0. 0.1"/> 
+    <origin rpy="3.002 -1.469 0.109" xyz="0.0 0. 0.080"/> 
   </joint>
   <link name="ee_link">
     <collision>

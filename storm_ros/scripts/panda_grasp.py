@@ -28,16 +28,16 @@ class PandaCommander(object):
     def joints_cb(self, msg):
         self.gripper_width = msg.position[0] + msg.position[1]
 
-    def grasp(self, width=0.0, e_inner=0.1, e_outer=0.1, speed=0.1, force=10.0):
+    def grasp(self, width=0.0, e_inner=0.1, e_outer=0.1, speed=0.1, force=1.0, timeout=rospy.Duration(2.0)):
         epsilon = franka_gripper.msg.GraspEpsilon(e_inner, e_outer)
         goal = franka_gripper.msg.GraspGoal(width, epsilon, speed, force)
         self.grasp_client.send_goal(goal)
-        return self.grasp_client.wait_for_result(rospy.Duration(2.0))
+        return self.grasp_client.wait_for_result(timeout)
 
-    def move_gripper(self, width, speed=0.1):
+    def move_gripper(self, width, speed=0.1, timeout=rospy.Duration(2.0)):
         goal = franka_gripper.msg.MoveGoal(width, speed)
         self.move_client.send_goal(goal)
-        return self.move_client.wait_for_result(rospy.Duration(2.0))
+        return self.move_client.wait_for_result(timeout)
 
 
 if __name__ == "__main__":

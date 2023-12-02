@@ -36,6 +36,7 @@ class PoseCostQuaternion(nn.Module):
      
     r  &=  \sum_{i=0}^{num_rows} (R^{i,:} - R_{g}^{i,:})^2 \\
     cost &= \sum w \dot r
+    [https://math.stackexchange.com/questions/90081/quaternion-distance]
 
     
     """

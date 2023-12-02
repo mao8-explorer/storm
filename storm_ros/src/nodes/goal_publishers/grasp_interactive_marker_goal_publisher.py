@@ -22,7 +22,7 @@ class InteractiveMarkerGoalPub():
 
         self.joint_states_topic = rospy.get_param('~joint_states_topic', 'joint_states')
         self.ee_goal_topic = rospy.get_param('~ee_goal_topic', 'ee_goal')
-        self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 5)
+        self.goal_pub_freq = rospy.get_param('~goal_pub_freq', 30)
         self.fixed_frame = rospy.get_param('~fixed_frame', 'panda_link0')
         self.robot_urdf = os.path.join(self.storm_path, rospy.get_param('~robot_urdf', 'content/assets/urdf/franka_description/franka_panda_no_gripper.urdf'))
         self.ee_frame = rospy.get_param('~ee_frame', 'ee_link')
@@ -179,13 +179,13 @@ class InteractiveMarkerGoalPub():
         self.state_sub.unregister()
 
     def goal_command_fromMPC_callback(self, msg):
-        self.int_marker.pose.position = msg.pose.position
+        self.int_marker.pose = msg.pose
         # self.int_marker.pose = msg.pose
         self.server.insert(self.int_marker, self.marker_callback)
         self.server.applyChanges()
 
         self.ee_goal.header = msg.header
-        self.ee_goal.pose.position = msg.pose.position
+        self.ee_goal.pose = msg.pose
 
 
     def update_ee_goal_to_current(self):

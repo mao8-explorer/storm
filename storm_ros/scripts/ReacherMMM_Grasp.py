@@ -40,8 +40,8 @@ class MPCReacherNode(ReacherEnvBase):
         # self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
         self.policy = ReacherTaskRealMultiModal(self.mpc_config, self.world_description, self.tensor_args)
         self.goal_list = [
-             [0.40, 0.40,  0.25],
-             [0.40, -0.40, 0.25]]
+             [0.45, 0.55,  0.25],
+             [0.40, -0.50, 0.25]]
         self.ee_goal_pos = self.goal_list[0]
         self.thresh = 0.02 # goal next thresh in Cart
         self.ik_mSolve = ik_mSolve
@@ -49,13 +49,12 @@ class MPCReacherNode(ReacherEnvBase):
         self.rollout_fn = self.policy.controller.rollout_fn
         # self.world_T_cam = get_world_T_cam() # transform : "world", "rgb_camera_link"
         self.ros_handle_init()
-        self.gripper = PandaCommander()
-        #  visual 控件
-        self.pointcloud_visual_rviz = False
+        self.panda_grasp = PandaCommander()
+        self.panda_grasp.move_gripper(0.08) # initial gripper and open
 
     def control_loop(self):
         rospy.loginfo('[MPCPoseReacher]: Controller running')
-        lap_count = 8 # 跑5轮次
+        lap_count = 3 # 跑5轮次
         self.goal_flagi = -1 # 调控目标点
         self.jnq_des = np.zeros(7)
         opt_step_count = 0 
@@ -67,23 +66,14 @@ class MPCReacherNode(ReacherEnvBase):
                 self.goal_flagi / len(self.goal_list) != lap_count:
             try:
                 opt_step_count += 1
-                # TODO: scene_grid update at here ... 
-                # 1. transform pointcloud to world frame 
-                # 2. compute sdf from pointcloud 
                 pointcloud_SDF_time_last = rospy.get_time()
-                # point_array = np.hstack((self.point_array, np.ones((self.point_array.shape[0], 1))))  # Adding homogenous coordinate
-                # transformed_points = np.dot(point_array, self.world_T_cam.T)  # Transform all points at once
-                # self.point_array = transformed_points[:, :3]  # Removing the homogenous coordinate
-                # if self.point_array is not None: 
-                # rospy.loginfo("point shape is : {}".format(self.point_array.shape))
-                if abs(self.point_array.shape[0] - last_shape) > 10: # 点云dt相似度 ，没必要每次都更新代价地图 简单的相似度阈值限制 在计算量与判断上做平衡 如何简单有效的判断点云变化程度？需要平衡
+                if  self.point_array.shape[0] > 0 and abs(self.point_array.shape[0] - last_shape) > 10: # 点云dt相似度 ，没必要每次都更新代价地图 简单的相似度阈值限制 在计算量与判断上做平衡 如何简单有效的判断点云变化程度？需要平衡
                     self.collision_grid = self.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
-                                        _opt_compute_dynamic_voxeltosdf(self.point_array,visual = self.pointcloud_visual_rviz)
+                                        _opt_compute_dynamic_voxeltosdf(self.point_array)
                     last_shape = self.point_array.shape[0]
                     # rospy.logwarn("update-->")
                 pointcloud_SDF_time_sum += rospy.get_time() - pointcloud_SDF_time_last
           
-                # TODO: can it get from topic? call robotmodel to get ee_pos may costly
                 # 逆解获取请求发布 input_queue
                 qinit = self.robot_state['position']
                 self.goal_ee_transform[:3,3] =  self.rollout_fn.goal_ee_pos.cpu().detach().numpy()
@@ -94,13 +84,17 @@ class MPCReacherNode(ReacherEnvBase):
                 opt_time_sum += time.time() - opt_time_last
                 self.command = command
                 q_des ,qd_des = command['position'] ,command['velocity']
-                self.GoalUpdate()
                 #publish mpc command
                 self.mpc_command.header.stamp = rospy.Time.now()
                 self.mpc_command.position = q_des
                 self.mpc_command.velocity = qd_des
                 self.command_pub.publish(self.mpc_command)
-
+                if self.GoalUpdate(): # 如果到达目标点位 夹取物体 完成任务
+                    if self.goal_flagi % len(self.goal_list) == 0:
+                        rospy.sleep(2.0)
+                        self.panda_grasp.grasp(width=0.01, force=0.05, timeout=rospy.Duration(1.0)) 
+                    else : 
+                        self.panda_grasp.move_gripper(0.08, timeout=rospy.Duration(1.0))
                 # self.visual_top_trajs_multimodal()
                 self.visual_multiTraj()
                 self.traj_append()
@@ -133,6 +127,7 @@ class MPCReacherNode(ReacherEnvBase):
 
         
         self.close()
+        self.panda_grasp.move_gripper(0.08) # exit gripper and set open state
         self.plot_traj_multimodal()
         self.plot_traj()
         rospy.loginfo("Closing ---all ---")

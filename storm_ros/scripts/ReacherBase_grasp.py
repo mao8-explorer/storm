@@ -1,4 +1,7 @@
-
+# copy from ReacherBase and modify to fit grasp_experiment well
+"""
+goal_update : target_pose come from Graspnet
+"""
 import os
 import numpy as np
 import torch
@@ -138,7 +141,7 @@ class ReacherEnvBase():
             self.last_ee_goal_pos = ee_goal_pos
             self.last_ee_goal_quat = ee_goal_quat
             self.policy.update_params(goal_ee_pos = ee_goal_pos,
-                                    goal_ee_quat = ee_goal_quat)  
+                                     goal_ee_quat = ee_goal_quat)  
             self.rollout_fn.goal_jnq = None
             # self.ee_goal_pos = ee_goal_pos
             
@@ -161,28 +164,23 @@ class ReacherEnvBase():
 
         pub_handle.publish(self.pc_msg)   
     
-    def GoalUpdate(self):
 
-        if torch.norm(self.rollout_fn.goal_ee_pos - self.rollout_fn.curr_ee_pos) < self.thresh:
-            self.goal_flagi += 1
-            self.ee_goal_pos = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
-            self.rollout_fn.goal_jnq = None
-
-            self.goal_command_fromMPC.header.stamp = rospy.Time.now()
-            self.goal_command_fromMPC.pose.position.x = self.ee_goal_pos[0]
-            self.goal_command_fromMPC.pose.position.y = self.ee_goal_pos[1]
-            self.goal_command_fromMPC.pose.position.z = self.ee_goal_pos[2]        
-            self.goal_command_fromMPC_pub.publish(self.goal_command_fromMPC)
-            self.policy.update_params(goal_ee_pos = np.array(self.ee_goal_pos))
-
-            log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
-            rospy.loginfo(log_message)
-            if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
-                self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[] , 'robot_position': [], 'robot_velocity': []}
-                rospy.loginfo("置零")
-            
-            return True
-        return False
+    def Grasp_update_Pose(self, pose): 
+        self.rollout_fn.goal_jnq = None
+        ee_goal_pos = np.array([
+            pose.position.x,
+            pose.position.y,
+            pose.position.z])
+        ee_goal_quat = np.array([
+            pose.orientation.w,
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z])
+        self.goal_command_fromMPC.header.stamp = rospy.Time.now()
+        self.goal_command_fromMPC.pose = pose   
+        self.goal_command_fromMPC_pub.publish(self.goal_command_fromMPC)
+        self.policy.update_params(goal_ee_pos = ee_goal_pos,
+                                    goal_ee_quat = ee_goal_quat)  
 
 
 

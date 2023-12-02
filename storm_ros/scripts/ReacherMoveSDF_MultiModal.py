@@ -1,8 +1,5 @@
-""" Example spawning a robot on real-machine
-只关心 运动规划问题 mpc with TrackIK_Guild
-无碰撞
-无SDF参与
-无MultiModal
+""" 
+Example spawning a robot on real-machine
 """
 
 from ReacherBase import ReacherEnvBase
@@ -52,12 +49,12 @@ class MPCReacherNode(ReacherEnvBase):
     def control_loop(self):
         rospy.loginfo('[MPCPoseReacher]: Controller running')
         lap_count = 8 # 跑5轮次
+        self.goal_flagi = -1 # 调控目标点
         self.jnq_des = np.zeros(7)
         opt_step_count = 0 
         opt_time_sum = 0 
         pointcloud_SDF_time_sum = 0
         last_shape = 0
-        self.goal_flagi = -1 # 调控目标点
         start_time = time.time()
         while not rospy.is_shutdown() and \
                 self.goal_flagi / len(self.goal_list) != lap_count:
