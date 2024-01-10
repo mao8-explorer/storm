@@ -30,12 +30,12 @@ class FrankaEnvBase(RosVisualBase):
         self.viewer = gym_instance.viewer
         self.collision_grid = None
         self.curr_state_tensor = None
-        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
+        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[], 'collison': [], 'ee_pos':[],'run_message':[]}
 
     def _environment_init(self):
         self._initialize_robot_simulation() # robot_sim 
         self._initialize_world_and_camera() # world_instance
-        self._initialize_mpc_control() # mpc_control 
+        # self._initialize_mpc_control() # mpc_control 
         self._initialize_env_objects() # 设置 gym 可操作物 handle
         self._init_point_transform() # use for trans trajs_pos in robotCoordinate to world coordinate
     
@@ -52,8 +52,8 @@ class FrankaEnvBase(RosVisualBase):
         sim_params = robot_params['sim_params']  # get from -->'/home/zm/MotionPolicyNetworks/storm_ws/src/storm/content/configs/gym/franka.yml'
         sim_params['asset_root'] = get_assets_path()
         sim_params['collision_model']=None
-        robot_pose = sim_params['robot_pose']  # robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]
-
+        robot_pose = sim_params['robot_pose']  # robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]'
+        init_joint_state = sim_params['init_state']
         # create robot simulation: contains a generic robot class that can load a robot asset into sim and gives access to robot's state and control.
         self.robot_sim = RobotSim(
             gym_instance=self.gym_instance.gym, 
@@ -67,6 +67,11 @@ class FrankaEnvBase(RosVisualBase):
         # ensure world_robot transform
         self.w_T_r = self.robot_sim.spawn_robot_pose
 
+        # update goal_joint_space:
+        franka_bl_state = np.concatenate((init_joint_state,np.zeros(7)))
+        self.mpc_control.update_params(goal_state=franka_bl_state)
+        self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
+        self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
     def _initialize_world_and_camera(self):
         """
@@ -94,14 +99,6 @@ class FrankaEnvBase(RosVisualBase):
             w_T_r=self.w_T_r)
 
         self.gym_instance.build_sphere_geom()
-
-    def _initialize_mpc_control(self):
-        # update goal_joint_space:
-        franka_bl_state = np.array([-0.3, 0.3, 0.2, -2.0, 0.0, 2.4, 0.0,
-                                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        self.mpc_control.update_params(goal_state=franka_bl_state)
-        self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
-        self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
     def _initialize_env_objects(self):
              
@@ -190,7 +187,7 @@ class FrankaEnvBase(RosVisualBase):
         set_world_T_base = world_T_body_des * body_T_world * world_T_base
         self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, set_world_T_base)
 
-    def updateGymVisual_GymGoalUpdate(self , end_trajvisual = False):
+    def updateGymVisual_GymGoalUpdate(self):
                
         # trans ee_pose in robot_coordinate to world coordinate
         ee_pose = gymapi.Transform()
@@ -201,33 +198,32 @@ class FrankaEnvBase(RosVisualBase):
         ee_pose.r = gymapi.Quat(cur_e_quat[1], cur_e_quat[2], cur_e_quat[3], cur_e_quat[0])
         ee_pose = self.w_T_r * ee_pose
         self.gym.set_rigid_transform(self.env_ptr, self.ee_base_handle, ee_pose)
+        self.traj_log['ee_pos'].append(cur_e_pos)
 
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
         if (np.linalg.norm(np.array(self.g_pos - cur_e_pos)) < self.thresh):
+            if self.collision_hanppend : self.crash_rate += 1
+            self.collision_hanppend = False
             self.goal_flagi += 1
             self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
             self.update_goal_state()
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
             rospy.loginfo(log_message)
-            if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
-                self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
-                print("置零")
+            # if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
+            #     self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
+            #     print("置零")
 
         
-        if end_trajvisual :
-            self.visual_top_trajs_ingym_multimodal()
-            # self.visual_top_trajs_ingym()
-    
     def visual_top_trajs_ingym(self):
 
-        top_trajs = self.mpc_control.top_trajs  # .numpy()
+        top_trajs = self.mpc_control.controller.top_trajs  # .numpy()
         n_p, n_t = top_trajs.shape[0], top_trajs.shape[1]
         w_pts = self.w_robot_coord.transform_point(top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
 
         top_trajs = w_pts.cpu().numpy()
         color = np.array([0.0, 1.0, 0.0])
         for k in range(top_trajs.shape[0]):
-            pts = top_trajs[k, :, :]
+            pts = top_trajs[k, :20, :]
             color[0] = float(k) / float(top_trajs.shape[0])
             color[1] = 1.0 - float(k) / float(top_trajs.shape[0])
             self.gym_instance.draw_lines(pts, color=color)
@@ -245,13 +241,13 @@ class FrankaEnvBase(RosVisualBase):
         n_p, n_t = greedy_top_trajs.shape[0], greedy_top_trajs.shape[1]
         greedy_w_pts = self.w_robot_coord.transform_point(greedy_top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
         sensi_w_pts = self.w_robot_coord.transform_point(sensi_top_trajs.view(n_p * n_t, 3)).view(n_p, n_t, 3)
-        self.draw_lines(greedy_w_pts,color = np.array([1.0, 0.0, 0.0]) )
-        self.draw_lines(sensi_w_pts,color = np.array([0.0, 1.0, 0.0]) )
+        self.draw_lines(greedy_w_pts[:5,:20],color = np.array([1.0, 0.0, 0.0]) )
+        self.draw_lines(sensi_w_pts[:5,:20],color = np.array([0.0, 1.0, 0.0]) )
         visual_trajectory = self.mpc_control.controller.rollout_fn.visual_trajectory  # .numpy() # 5 * 30 *3
         n_p, n_t = visual_trajectory.shape[0], visual_trajectory.shape[1]
         w_pts = self.w_robot_coord.transform_point(visual_trajectory.view(n_p * n_t, 3)).view(n_p, n_t, 3)       
         top_trajs = w_pts.cpu().numpy()
-        self.gym_instance.draw_spheres(top_trajs)
+        self.gym_instance.draw_spheres(top_trajs[:5,:20])
 
         """
         暂停设计: 启动pause查看静止的轨迹分布
@@ -355,8 +351,14 @@ class FrankaEnvBase(RosVisualBase):
 
 
     def traj_append(self):
-        self.traj_log['position'].append(self.command['position'])
-        self.traj_log['velocity'].append(self.command['velocity'])
+        """
+        数据保存：
+        joint position | target 
+        ee_pos | collision
+        whole_time | opt_steps | collision_num
+        """
+        self.traj_log['position'].append(self.current_robot_state['position'])
+        self.traj_log['velocity'].append(self.current_robot_state['velocity'])
         self.traj_log['acc'].append(self.command['acceleration'])
         self.traj_log['des'].append(self.jnq_des)
 
@@ -398,3 +400,18 @@ class FrankaEnvBase(RosVisualBase):
             axs[2].legend()
         plt.savefig('trajectory.png')
         plt.show()
+
+    def ee_vel_evaluate(self):
+        # 轨迹数据
+        trajectory = np.matrix(self.traj_log['ee_pos'])
+        # 计算速度
+        velocity = np.diff(trajectory, axis=0)
+        # 计算速度的模长（即速度大小）
+        speed = np.linalg.norm(velocity, axis=1)
+        # 计算平均速度
+        average_speed = np.mean(speed)
+        # 计算最大速度
+        max_speed = np.max(speed)
+        # print("平均速度：", average_speed)
+        # print("最大速度：", max_speed)
+        return average_speed, max_speed

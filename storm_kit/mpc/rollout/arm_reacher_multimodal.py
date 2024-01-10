@@ -72,14 +72,16 @@ class ArmReacherMultiModal(RolloutBase):
         self.link_rot_seq = torch.zeros((1, 1, len(self.dynamics_model.link_names), 3, 3), **self.tensor_args)
         
         self.jnq_dist_cost = DistCost(**self.exp_params['cost']['joint_l2'], device=device,float_dtype=float_dtype) # Joint Space target
-        self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'], # Cartesian space target
+        # self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'], # Cartesian space target
+        #                           tensor_args=self.tensor_args)
+        self.goal_cost_reward = PoseCost_Reward(**exp_params['cost']['PoseCost_Reward'], # Cartesian space target
                                   tensor_args=self.tensor_args)
         
         self.jnq_sparse_reward = JnqSparseReward(**exp_params['cost']['Jnq_sparse_reward'], # Joint Space Reward
                                   tensor_args=self.tensor_args)
         
-        self.cart_sparse_reward = CartSparseReward(**exp_params['cost']['Cart_sparse_reward'], # Cartesian Space Reward
-                                  tensor_args=self.tensor_args)
+        # self.cart_sparse_reward = CartSparseReward(**exp_params['cost']['Cart_sparse_reward'], # Cartesian Space Reward
+        #                           tensor_args=self.tensor_args)
         
         self.primitive_collision_cost = PrimitiveCollisionCost(world_params=world_params, robot_params=robot_params, 
                                                             tensor_args=self.tensor_args, 
@@ -109,8 +111,8 @@ class ArmReacherMultiModal(RolloutBase):
         self.jnq_dist_cost.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
         self.primitive_collision_cost.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
         self.jnq_sparse_reward.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
-        self.cart_sparse_reward.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
-        self.goal_cost.weight = torch.tensor(1.0, device=device, dtype=float_dtype)
+        self.goal_cost_reward.pose_weight = torch.tensor(1.0, device=device, dtype=float_dtype)
+        self.goal_cost_reward.reward_weight = torch.tensor(1.0, device=device, dtype=float_dtype)
 
         self.targetcost_greedy_w = self.multiTargetCost['greedy_weight']
         self.collision_greedy_w  = self.multiCollisionCost['greedy_weight']
@@ -132,10 +134,9 @@ class ArmReacherMultiModal(RolloutBase):
     
     def multimodal_cost_fn(self, state_dict):
         state_batch = state_dict['state_seq']
-        ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
+        ee_pos_batch = state_dict['ee_pos_seq']
         link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
         goal_ee_pos = self.goal_ee_pos
-        goal_ee_rot = self.goal_ee_rot
 
         self.bound_contraint = self.bound_cost.forward(state_batch[:,:,:self.n_dofs * 3])
         self.vel_cost = self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2])
@@ -143,8 +144,8 @@ class ArmReacherMultiModal(RolloutBase):
         self.environment_collision , self.judge_environment_collision= self.primitive_collision_cost.optimal_forward(link_pos_batch, link_rot_batch)
 
         # 为什么要存在 因为逆解不存在时，也就是全局规划无解时，可以使用该方式引导
-        self.cart_goal_cost = self.goal_cost.forward(ee_pos_batch, ee_rot_batch, goal_ee_pos, goal_ee_rot)
-        self.cart_goal_reward = self.cart_sparse_reward.forward(ee_pos_batch,goal_ee_pos)
+        self.cart_goal_cost, self.cart_goal_reward = self.goal_cost_reward.forward(ee_pos_batch, goal_ee_pos)
+
 
         if self.goal_jnq is not None:
             disp_vec = state_batch[:,:,0:self.n_dofs] - self.goal_jnq[:,0:self.n_dofs]
@@ -180,7 +181,7 @@ class ArmReacherMultiModal(RolloutBase):
         """
         if self.goal_jnq is not None:
             greedy_cost_seq = self.jnq_goal_cost * self.targetcost_greedy_w +\
-                            self.environment_collision * self.collision_greedy_w +\
+                            self.judge_environment_collision * self.collision_greedy_w +\
                             (self.cart_goal_reward + self.jnq_goal_reward) * self.terminalsparse_greedy_w+\
                             self.cart_goal_cost * self.cart_targetcost_greedy_w +\
                             normal_cost   + self.zero_vel_bound 
@@ -197,7 +198,7 @@ class ArmReacherMultiModal(RolloutBase):
             
         else:
             greedy_cost_seq = \
-                            self.environment_collision * self.collision_greedy_w +\
+                            self.judge_environment_collision * self.collision_greedy_w +\
                             self.cart_goal_cost * self.cart_targetcost_greedy_w +\
                             self.cart_goal_reward * self.terminalsparse_greedy_w +\
                             normal_cost 
@@ -260,7 +261,7 @@ class ArmReacherMultiModal(RolloutBase):
         
         # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model. \
         #     compute_fk_and_jacobian(current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.exp_params['model']['ee_link_name'])
-        ee_pos_batch, ee_rot_batch = self.dynamics_model.robot_model.compute_fk(current_state[:,:self.dynamics_model.n_dofs], 
+        ee_pos_batch, ee_rot_batch = self.dynamics_model.robot_model.compute_fk_PosRot(current_state[:,:self.dynamics_model.n_dofs], 
                                                                                              current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], 
                                                                                              self.exp_params['model']['ee_link_name'])
 

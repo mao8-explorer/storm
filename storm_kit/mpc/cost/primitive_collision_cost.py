@@ -131,8 +131,8 @@ class PrimitiveCollisionCost(nn.Module):
                                                         0.5 * (torch.min(-cos_theta, torch.tensor(0.0).to(inp_device)))
                                                         )
         judge_cost_sdf = self.w1 * potential + self.w2 * potential * vel_abs
-        # cost_sdf = w1 * potential
-        # cost_sdf = w2 * potential * vel_abs
+        # cost_sdf = self.w1 * potential
+        # cost_sdf = self.w2 * potential * vel_abs
         cost_sdf = cost_sdf.view(batch_size, horizon, n_links) 
         disp_vec = self.weight * self.vec_weight * cost_sdf 
         cost = torch.sum(disp_vec, dim=-1) # 对每个link分配相同的权重 做sum

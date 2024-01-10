@@ -411,9 +411,9 @@ class Controller(ABC):
                     trajectories = self.generate_multimodal_rollouts(state)
 
                     self._multimodal_update_distribution(trajectories) 
-
-                    # self.greedy_mean_traj, self.sensi_mean_traj, self.greedy_best_traj, self.sensi_best_traj,self.mean_traj = \
-                    # self.get_multimodal_mean_trajectory(state)
+                    # TODO : 这里应该怎么写 更加完善呢 目前只适用于 2D pass ,不对Franka生效 暂行的方案就是注释
+                    self.greedy_mean_traj, self.sensi_mean_traj, self.greedy_best_traj, self.sensi_best_traj,self.mean_traj = \
+                    self.get_multimodal_mean_trajectory(state)
 
                     info['rollout_time'] += trajectories['rollout_time']
                     if self.check_convergence():

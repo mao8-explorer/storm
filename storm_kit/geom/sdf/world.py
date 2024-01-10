@@ -31,6 +31,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from scipy.ndimage import distance_transform_edt
 import copy
+import math
 matplotlib.use('tkagg')
 
 
@@ -297,10 +298,10 @@ class WorldGridCollision(WorldCollision):
 
         self.scene_voxels  = self.scene_voxels.flatten() 
         # 对dist大于0.05小于0.30的区域进行运算 0.07 0.20 -> 0.10 0.30 
-        mask_mid = (self.scene_voxels > 0.07) & (self.scene_voxels < 0.30)
+        mask_mid = (self.scene_voxels > 0.10) & (self.scene_voxels < 0.30)
         self.scene_sdf[mask_mid] = torch.exp(-15 * (self.scene_voxels[mask_mid] - 0.10))
         # 对dist小于等于0.05的区域直接设置为1
-        self.scene_sdf[self.scene_voxels <= 0.07] = 1.0
+        self.scene_sdf[self.scene_voxels <= 0.10] = 1.0
         # 对dist大于0.30的区域直接设置为0
         self.scene_sdf[self.scene_voxels > 0.30] = 0.0 
 
@@ -742,7 +743,7 @@ class WorldImageCollision(WorldCollision):
         return pt_coll
 
 
-      
+
 class WorldMoveableImageCollision(WorldCollision):
     def __init__(self, bounds, world_image, tensor_args={'device':"cpu", 'dtype':torch.float32}):
         super().__init__(1, tensor_args)
@@ -755,19 +756,23 @@ class WorldMoveableImageCollision(WorldCollision):
         self.ind_pt = None
         im = cv2.imread(world_image,0)
         _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
+        self.Start_Image = im.copy()
         self.im = im
-        shift = 3
-        self.up_down = True
-        if self.up_down: 
+        self.Reinit(shift=3,up_down=True)
+    
+    def Reinit(self, shift=3, up_down=True): # command handle
+        shift = shift
+        if up_down: 
             self.movelist = np.float32([
-            [[1, 0, 0], [0, 1, -shift]],
-            [[1, 0,  0], [0, 1, shift]]])
+            [[1, 0, 0], [0, 1,  shift]],
+            [[1, 0, 0], [0, 1, -shift]]])
         else:
             self.movelist = np.float32([
                 [[1, 0, -shift], [0, 1, 0]],
                 [[1, 0,  shift], [0, 1, 0]]])
         self.step_move = 20
-        self.move_ind = 10
+        self.move_ind = 10  
+        self.im = self.Start_Image.copy()
         
     def update_world(self):  
         """

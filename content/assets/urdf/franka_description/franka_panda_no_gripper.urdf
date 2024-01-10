@@ -210,12 +210,29 @@
       </geometry>
     </collision>
   </link>
-  <joint name="ee_fixed_joint" type="fixed">
+  <joint name="ee_grasp_joint" type="fixed">
     <parent link="panda_hand"/>
-    <child link="ee_link"/>
+    <child link="graspnet_link"/>
     <!--origin rpy="0.0 0.0 1.570796325" xyz="0.0 0.0922 0.0"/-->
     <!--origin rpy="-1.57 0.0 1.57" xyz="0.0 0. 0.0"/-->
     <origin rpy="3.002 -1.469 0.109" xyz="0.0 0. 0.080"/> 
+  </joint>
+  <link name="graspnet_link">
+    <collision>
+      <geometry>
+        <box size="0.01 0.01 0.01"/>
+      </geometry>
+
+      <origin rpy="0 0 0" xyz="0.0 0 0"/>
+    </collision>
+  </link>
+
+  <joint name="ee_fixed_joint" type="fixed">
+    <parent link="panda_hand"/>
+    <child link="ee_link"/>
+    <origin rpy="0.0 0.0 -1.57" xyz="0.0 0. 0.1"/> 
+    <!--origin rpy="-1.57 0.0 1.57" xyz="0.0 0. 0.0"/-->
+    <!-- <origin rpy="3.002 -1.469 0.109" xyz="0.0 0. 0.080"/>  -->
   </joint>
   <link name="ee_link">
     <collision>

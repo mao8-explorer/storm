@@ -94,7 +94,7 @@ class MPCReacherNode(ReacherEnvBase):
             try:
                 opt_step_count += 1
                 pointcloud_SDF_time_last = rospy.get_time()
-                if  self.point_array.shape[0] > 0 and abs(self.point_array.shape[0] - last_shape) > 10: # 点云dt相似度 ，没必要每次都更新代价地图 简单的相似度阈值限制 在计算量与判断上做平衡 如何简单有效的判断点云变化程度？需要平衡
+                if  self.point_array.shape[0] > 0 and abs(self.point_array.shape[0] - last_shape) > 3: # 点云dt相似度 ，没必要每次都更新代价地图 简单的相似度阈值限制 在计算量与判断上做平衡 如何简单有效的判断点云变化程度？需要平衡
                     self.collision_grid = self.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
                                         _opt_compute_dynamic_voxeltosdf(self.point_array)
                     last_shape = self.point_array.shape[0]

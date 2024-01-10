@@ -66,7 +66,7 @@ class BaseTask():
         state_tensor = self._state_to_tensor(filt_state)
 
         # next_command, val, info, best_action = self.control_process.get_command_debug(t_step, state_tensor.numpy(), control_dt=control_dt)
-        next_command, val, info, best_action = self.control_process.get_multimodal_command_debug(t_step, state_tensor.numpy(), control_dt=control_dt)
+        next_command, val, info, best_action = self.control_process.get_multimodal_command_debug(t_step, state_tensor.cpu().numpy(), control_dt=control_dt)
 
         qdd_des = next_command
         self.prev_qdd_des = qdd_des

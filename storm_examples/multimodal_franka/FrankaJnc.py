@@ -42,16 +42,16 @@ class MPCRobotController(FrankaEnvBase):
         self._environment_init()
         self.thresh = 0.03 # goal next thresh in Cart
         x,z,y = 0.45 , 0.45 , 0.45
-        self.goal_list = [
-             [x,y,-z],
-             [x,y,z],
-             [-x,y,z],
-            #  [-x,y,-z]
-            #  [-0.1,y,-0.5]
-             ]
         # self.goal_list = [
-        #      [0.20,0.30,-0.65],
-        #      [0.20,0.30,0.65],]
+        #      [x,y,-z],
+        #      [x,y,z],
+        #     #  [-x,y,z],
+        #     #  [-x,y,-z]
+        #     #  [-0.1,y,-0.5]
+        #      ]
+        self.goal_list = [
+             [0.20,0.30,-0.65],
+             [0.20,0.30,0.65],]
         self.goal_state = self.goal_list[0]
         self.update_goal_state()
         self.rollout_fn = self.mpc_control.controller.rollout_fn
@@ -75,20 +75,18 @@ class MPCRobotController(FrankaEnvBase):
                 opt_step_count += 1
                 self.gym_instance.step()
                 self.gym_instance.clear_lines()
-                
                 # monitor ee_pose_gym and update goal_param_mpc
                 self.monitorMPCGoalupdate()
                 # seed goal to MPC_Policy _ get Command
                 t_step += sim_dt
                 self.current_robot_state = self.robot_sim.get_state(self.env_ptr, self.robot_ptr) # "dict: pos | vel | acc"
-
                 qinit = self.current_robot_state['position'] # shape is (7,)
                 self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()
                 self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
                 # 逆解获取请求发布 input_queue
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
                 opt_time_last = time.time()
-                command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt)
+                command = self.mpc_control.get_command(self.current_robot_state)
                 opt_time_sum += time.time() - opt_time_last
                 # get position command:
                 self.command = command

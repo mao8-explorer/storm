@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import torch
 import cv2
 import copy
+import matplotlib.cm as cm
+from matplotlib.colors import CSS4_COLORS
 matplotlib.use('tkagg')
 torch.multiprocessing.set_start_method('spawn',force=True)
 
@@ -12,14 +14,16 @@ torch.multiprocessing.set_start_method('spawn',force=True)
 class Plotter:
     def __init__(self):
         self.tensor_args = {'device':'cuda','dtype':torch.float32}
-        self.fig = plt.figure()
-        self.ax = plt.subplot(1, 1, 1)
         self.X, self.Y = np.meshgrid(np.linspace(0, 1, 30), np.linspace(0, 1, 30))
         coordinates = np.column_stack((self.X.flatten(), self.Y.flatten()))
         self.coordinates = torch.as_tensor(coordinates, **self.tensor_args)
+        self.collision_count = 0
+        
+    def plot_init(self):
+        self.fig = plt.figure()
+        self.ax = plt.subplot(1, 1, 1)
         self.fig.canvas.mpl_connect('button_press_event', self.press_call_back)
         self.fig.canvas.mpl_connect('key_press_event', self.key_call_back)
-        self.collision_count = 0
 
     def plot_setting(self):
 
@@ -53,7 +57,7 @@ class Plotter:
         #  全局SDF_Gradient绘画 翻转x,y是坐标变化机理
         grad_y,grad_x = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(self.coordinates)
         #  绘制箭头
-        self.ax.quiver(self.X,self.Y, np.ravel(grad_x.view(30,-1).cpu()), np.ravel(grad_y.view(30,-1).cpu()),cmap=plt.cm.jet)
+        # self.ax.quiver(self.X,self.Y, np.ravel(grad_x.view(30,-1).cpu()), np.ravel(grad_y.view(30,-1).cpu()),cmap=plt.cm.jet)
     
         # 散点标签 ----------------------------------------------------------------
         # 当前位置状态 
@@ -62,9 +66,9 @@ class Plotter:
                         c=np.ravel(self.potential_curr.cpu()),s=np.array(200),cmap=plt.cm.jet, vmin=0, vmax=1)
         # 规划轨迹 batch_trajectories visual
 
-        mean_traj_greedy = self.simple_task.control_process.controller.mean_traj_greedy.cpu().numpy()
-        mean_traj_sensi = self.simple_task.control_process.controller.mean_traj_sensi.cpu().numpy()
-        top_trajs = self.simple_task.top_trajs
+        # mean_traj_greedy = self.simple_task.control_process.controller.mean_traj_greedy.cpu().numpy()
+        # mean_traj_sensi = self.simple_task.control_process.controller.mean_traj_sensi.cpu().numpy()
+        top_trajs = self.simple_task.controller.top_trajs
         _, _ ,coll_cost= self.simple_task.get_current_coll(top_trajs) 
         self.traj_log['top_traj'] = top_trajs.cpu().numpy()
         # 15条轨迹，前5条最优轨迹，后10条最差轨迹
@@ -76,10 +80,10 @@ class Plotter:
         self.ax.plot(np.ravel(self.traj_log['top_traj'][0,:,0].flatten()), np.ravel(self.traj_log['top_traj'][0,:,1].flatten()),
                 'g-',linewidth=1,markersize=3)          
         # MPPI : mean_trajectory 红线
-        self.ax.plot(np.ravel(mean_traj_greedy[:,0]),np.ravel(mean_traj_greedy[:,1]),
-                'r-',linewidth=2,markersize=3)  
-        self.ax.plot(np.ravel(mean_traj_sensi[:,0]),np.ravel(mean_traj_sensi[:,1]),
-                'g-',linewidth=2,markersize=3)  
+        # self.ax.plot(np.ravel(mean_traj_greedy[:,0]),np.ravel(mean_traj_greedy[:,1]),
+        #         'r-',linewidth=2,markersize=3)  
+        # self.ax.plot(np.ravel(mean_traj_sensi[:,0]),np.ravel(mean_traj_sensi[:,1]),
+        #         'g-',linewidth=2,markersize=3)  
 
         #  文字标签 ----------------------------------------------------------------
         #  velocity | potential | 夹角  | MPQ Value_Function估计 
@@ -115,14 +119,15 @@ class Plotter:
 
         self.traj_log['position'].append(self.current_state['position'])
         self.traj_log['velocity'].append(self.current_state['velocity'])
-        self.traj_log['command'].append(self.current_state['acceleration'])
+        # self.traj_log['command'].append(self.current_state['acceleration'])
         self.traj_log['acc'].append(self.current_state['acceleration'])
         self.traj_log['coll_cost'].append(self.potential_curr.cpu()[0])
         self.traj_log['des'].append(copy.deepcopy(self.goal_state))
 
 
 
-    def plot_traj(self):
+
+    def plot_traj(self, img_name = 'multimodalPPV.png'):
         plt.figure()
         position = np.matrix(self.traj_log['position'])
         vel = np.matrix(self.traj_log['velocity'])
@@ -146,15 +151,49 @@ class Plotter:
             axs[2].plot(acc[:,1], 'g', label='acc')
         plt.savefig('trajectory.png')
 
+
+
+        #prepare trajectory background
+        collision_map_path = "/home/zm/MotionPolicyNetworks/storm_ws/history/storm/content/assets/collision_maps/collision_map_cem.png"
+        im = cv2.imread(collision_map_path,0)
+        _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
+        rows, cols = im.shape
+        shift =  self.shift*10
+        if self.up_down: 
+            movelist = np.float32([
+            [[1, 0, 0], [0, 1,  shift]],
+            [[1, 0, 0], [0, 1, -shift]]])
+        else:
+            movelist = np.float32([
+                [[1, 0, -shift], [0, 1, 0]],
+                [[1, 0,  shift], [0, 1, 0]]])
+        im_down = cv2.warpAffine(im, movelist[1], (cols, rows),borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+        im_up = cv2.warpAffine(im, movelist[0], (cols, rows),borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+
+        # 创建叠加后的图像
+        overlay = np.zeros_like(im, dtype=np.float32)
+        alpha = 0.1  # 调整透明度的值
+        overlay[im_down > 0] += alpha
+        overlay[im_up > 0] += alpha
+
         plt.figure()
         extents = (self.traj_log['bounds'][0], self.traj_log['bounds'][1],
                 self.traj_log['bounds'][2], self.traj_log['bounds'][3])
         img_ax = plt.subplot(1,1,1)
-        img_ax.imshow(self.traj_log['world'], extent=extents, cmap='gray', alpha=0.4)
+        # img_ax.imshow(self.controller.rollout_fn.image_move_collision_cost.world_coll.Start_Image,cmap='gray', extent=extents)
+        img_ax.imshow(im, cmap='gray',extent=extents)
+        img_ax.imshow(overlay, cmap='gray', alpha=0.2,extent=extents)
         img_ax.plot(np.ravel(position[0,0]), np.ravel(position[0,1]), 'rX', linewidth=3.0, markersize=15)
         img_ax.plot(des[:,0], des[:,1],'gX', linewidth=3.0, markersize=15)
-        img_ax.scatter(np.ravel(position[:,0]),np.ravel(position[:,1]),c=np.ravel(coll))
+        # img_ax.scatter(np.ravel(position[:,0]),np.ravel(position[:,1]),c=np.ravel(coll),s=np.array(2),marker='+')
+
+        cmap = cm.get_cmap('viridis')
+        coll = np.ravel(coll)
+        for i in range(len(position) - 1):
+            plt.plot([position[i, 0], position[i+1, 0]], [position[i, 1], position[i+1, 1]], lw=1, color=cmap(coll[i]))
+        # plt.colorbar(label='Coll')
         img_ax.set_xlim(self.traj_log['bounds'][0], self.traj_log['bounds'][1])
         img_ax.set_ylim(self.traj_log['bounds'][2], self.traj_log['bounds'][3])
-        plt.savefig('091405_PPV_wholetheta.png')
+        plt.axis('off')
+        plt.savefig(img_name)
         plt.show()

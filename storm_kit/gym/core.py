@@ -64,7 +64,9 @@ class Gym(object):
             #cam_pos = gymapi.Vec3(2, 2.0, -2)
             #cam_target = gymapi.Vec3(-6, 0.0,6)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
-            # self.gym.add_ground(self.sim, gymapi.PlaneParams())
+            plane_handle= gymapi.PlaneParams()
+            # plane_handle.distance = 0.05
+            self.gym.add_ground(self.sim, plane_handle)
 
             self.gym.subscribe_viewer_keyboard_event(
                 self.viewer, gymapi.KEY_SPACE, "PAUSE"
@@ -180,7 +182,7 @@ class World(object):
             object_pose = w_T_r * object_pose
 
             obj_asset = gym_instance.create_sphere(sim_instance,radius, asset_options)
-            obj_handle = gym_instance.create_actor(env_ptr, obj_asset, object_pose, obj, 2, 2, self.ENV_SEG_LABEL)
+            obj_handle = gym_instance.create_actor(env_ptr, obj_asset, object_pose, obj, 2, 2, self.BG_SEG_LABEL)
             gym_instance.set_rigid_body_color(env_ptr, obj_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, obj_color)
 
         if('cube' in world_params['world_model']['coll_objs']):
@@ -209,7 +211,7 @@ class World(object):
 
         table_pose = self.robot_pose * pose
         table_handle = self.gym.create_actor(self.env_ptr, table_asset, table_pose,'table',
-                                             2,2,self.ENV_SEG_LABEL)
+                                             2,2,self.BG_SEG_LABEL)
         self.gym.set_rigid_body_color(self.env_ptr, table_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, obj_color)
         self.table_handles.append(table_handle)
 

@@ -161,45 +161,16 @@ class HolonomicModel(DynamicsModelBase):
         # get input device:
         inp_device = start_state.device
         start_state = start_state.to(**self.tensor_args)
+        curr_state = start_state
         act_seq = act_seq.to(**self.tensor_args)
 
-        if(self.prev_state_buffer is None):
-            self.prev_state_buffer = torch.zeros((10, self.d_state), **self.tensor_args)
-            self.prev_state_buffer[:,:] = start_state
-        self.prev_state_buffer = self.prev_state_buffer.roll(-1, dims=0)
-        self.prev_state_buffer[-1,:] = start_state
-
-        # compute acceleration from prev buffer:
-        
-        
-        curr_state = self.prev_state_buffer[-1:, :self.n_dofs * 3]
-
-        # make actions be dynamically safe:
-        # assuming sampled actions are snap:
-
-        # do 3rd order integration to get acceleration:
         nth_act_seq = self.integrate_action(act_seq)
-        #plt.plot(nth_act_seq[0,:,0].cpu().numpy())
-        #nth_act_seq = act_seq
-        #for i in range(self.action_order - 1):
-        #    nth_act_seq = self._integrate_matrix @ torch.diag(self.traj_dt) @ nth_act_seq
-
-        #plt.plot(nth_act_seq[0,:,0].cpu().numpy())
-        #plt.show()
-
-        
-        
         # forward step with step matrix:
         state_seq = self.step_fn(curr_state, nth_act_seq, self.state_seq, self._dt_h, self.n_dofs, self._integrate_matrix, self._fd_matrix)
         
         state_seq[:,:, -1] = self._traj_tstep
-
-        shape_tup = (self.batch_size * self.num_traj_points, self.n_dofs)
         
-        
-        state_dict = {'state_seq':state_seq.to(inp_device),
-                      'prev_state_seq':self.prev_state_buffer.to(inp_device),
-                      'nth_act_seq': nth_act_seq.to(inp_device)}
+        state_dict = {'state_seq':state_seq.to(inp_device)}
         return state_dict
 
     def single_step_fn(self, start_state: torch.Tensor, act_seq: torch.Tensor):

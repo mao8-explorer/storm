@@ -109,6 +109,7 @@ class MPPI(OLGaussianMPC):
         self.visual_traj = visual_traj
         if multimodal is not None:
             self.top_traj_select = multimodal['top_traj_select']
+        self.lamda = 0.8
 
     def _update_distribution(self, trajectories):
         """
@@ -132,8 +133,8 @@ class MPPI(OLGaussianMPC):
         top_values, bad_idx = torch.topk(self.total_costs, k=10) # Returns the k largest elements of the given input tensor along a given dimension. 
         #print(ee_pos_seq.shape, top_idx)
         self.top_values = top_values
-        # self.top_idx = torch.cat((good_idx, bad_idx), dim=0)
-        self.top_idx = good_idx
+        self.top_idx = torch.cat((good_idx, bad_idx), dim=0)
+        # self.top_idx = good_idx
         self.top_trajs = torch.index_select(vis_seq, 0, self.top_idx).squeeze(0)
         #print(self.top_traj.shape)
         #print(self.best_traj.shape, best_idx, w.shape)
@@ -208,7 +209,7 @@ class MPPI(OLGaussianMPC):
         sensi_costs = trajectories["sensi_costs"].to(**self.tensor_args)
         judge_costs = trajectories["judge_costs"].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
-        # vis_seq = trajectories['state_seq'].to(**self.tensor_args)
+        vis_seq = trajectories['state_seq'].to(**self.tensor_args)
 
         greedy_total_costs = cost_to_go(greedy_costs, self.gamma_seq)[:,0]
         sensi_total_costs = cost_to_go(sensi_costs, self.gamma_seq)[:,0]
@@ -218,8 +219,8 @@ class MPPI(OLGaussianMPC):
         self.sensi_mean , self.sensi_Value_w , self.sensi_best_action , sensi_cov_update , sensi_good_idx = self.softMax_cost(sensi_total_costs, judge_total_costs, actions)
 
 
-        # self.greedy_top_trajs = torch.index_select(vis_seq, 0, greedy_good_idx[:5]).squeeze(0)
-        # self.sensi_top_trajs = torch.index_select(vis_seq, 0, sensi_good_idx[:5]).squeeze(0)
+        self.greedy_top_trajs = torch.index_select(vis_seq, 0, greedy_good_idx)
+        self.sensi_top_trajs = torch.index_select(vis_seq, 0, sensi_good_idx)
         # 这里有很多错误 大量的改动需要 
         # w = torch.softmax((-1.0/self.beta) * torch.tensor((self.greedy_Value_w,self.sensi_Value_w)), dim=0).to(**self.tensor_args)
         # torch.exp(-1*(w_cat-w_cat.min())) / torch.sum(torch.exp(-1*(w_cat-w_cat.min())))
@@ -342,15 +343,18 @@ class MPPI(OLGaussianMPC):
         # total_value_function = self.logsumexp(top_total_costs)
         # policy_in_judge = self.logsumexp(differPolicyInJudgeCost + top_total_costs) - total_value_function
         # greedy_Value_w = policy_in_judge
-        A = differPolicyInJudgeCost + top_total_costs
-        Amin = A.min()
-        B = top_total_costs
-        Bmin = B.min()
-        value_w =  -self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (A - Amin)))) +\
-                    self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (B - Bmin)))) +\
-                    Amin - Bmin
+        # 方案二
+        A = -1.0/self.beta * differPolicyInJudgeCost + (-1.0/self.lamda * top_total_costs)
+        Amax = A.max()
+        B = -1.0/self.lamda * top_total_costs
+        Bmax = B.max()
+        value_w =  -self.beta*torch.log(torch.sum(torch.exp((A - Amax)))) +\
+                    self.beta*torch.log(torch.sum(torch.exp((B - Bmax)))) +\
+                   -self.beta*Amax +\
+                    self.beta*Bmax
+        
+        # 方案一
         # A = differPolicyInJudgeCost
-        # Amin = A.min()
         # value_w =  -self.beta*torch.log(torch.sum(torch.exp(-1.0/self.beta * (A - A.min())))) + A.min() 
         # # error = value_w - (Amin - Bmin)
 

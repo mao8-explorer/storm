@@ -50,7 +50,7 @@ model:
 cost:
   goal_state:
     vec_weight: [1.0, 1.0]
-    weight: 40.0
+    weight: 5.0
     gaussian_params: {'n':0, 'c':0.2, 's':0.0, 'r':10.0}
     # use for DDPG SAC
     # vec_weight: [1.0, 1.0]
@@ -59,9 +59,18 @@ cost:
 
   sparse_reward:
     vec_weight: [1.0, 1.0]
-    weight: 5.0
+    weight: 2.0
     sigma : 0.03
 
+  image_move_collision: # on robot acceleration
+    weight: 2.0  # 不宜过大 过大跟sdf 置为1 没区别了
+    vec_weight: [10.0, 80.0]
+    gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
+    # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
+    collision_file: 'collision_maps/collision_map_cem.png'
+    dist_thresh: 0.01
+  
+  
   zero_vel:
     weight: 0.0
     hinge_val: 0.2 #0.2
@@ -88,14 +97,6 @@ cost:
     collision_file: 'collision_maps/collision_map_cem.png'
     dist_thresh: 0.03
 
-  image_move_collision: # on robot acceleration
-    weight: 1.0  # 不宜过大 过大跟sdf 置为1 没区别了
-    vec_weight: [10.0, 80.0]
-    gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
-    # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
-    collision_file: 'collision_maps/collision_map_cem.png'
-    dist_thresh: 0.01
-  
   state_bound:
     weight: 1000.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
@@ -106,8 +107,9 @@ cost:
 
  
 multimodal_cost:
+  switch_on: False
   target_cost:
-    greedy_weight: 40.0
+    greedy_weight: 20.0
     sensi_weight: 5.0
     judge_weight: 10.0
 
@@ -118,7 +120,7 @@ multimodal_cost:
 
   terminal_reward:
     greedy_weight: 1.0
-    sensi_weight: 0.4
+    sensi_weight: 0.0
     judge_weight: 0.4
 
 

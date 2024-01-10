@@ -151,35 +151,16 @@ class ArmBase(RolloutBase):
 
     def cost_fn(self, state_dict, action_batch, no_coll=False, horizon_cost=True):
         
-        ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
         state_batch = state_dict['state_seq']
         # lin_jac_batch, ang_jac_batch = state_dict['lin_jac_seq'], state_dict['ang_jac_seq']
         link_pos_batch, link_rot_batch = state_dict['link_pos_seq'], state_dict['link_rot_seq']
-        prev_state = state_dict['prev_state_seq']
-        prev_state_tstep = state_dict['prev_state_seq'][:,-1]
+        # prev_state = state_dict['prev_state_seq']
+        # prev_state_tstep = state_dict['prev_state_seq'][:,-1]
         
         retract_state = self.retract_state
         # if self.exp_params['cost']['state_bound']['weight'] > 0:
             # compute collision cost:
         cost = self.bound_cost.forward(state_batch[:,:,:self.n_dofs * 3])
-        
-        # J_full = torch.cat((lin_jac_batch, ang_jac_batch), dim=-2)
-        
-
-        #null-space cost
-        #if self.exp_params['cost']['null_space']['weight'] > 0:
-        # null_disp_cost = self.null_cost.forward(state_batch[:,:,0:self.n_dofs] -
-        #                                         retract_state[:,0:self.n_dofs],
-        #                                         J_full,
-        #                                         proj_type='identity',
-        #                                         dist_type='squared_l2')
-        # cost = null_disp_cost
-
-        # if(no_coll == True and horizon_cost == False):
-        #     return cost
-        # if(self.exp_params['cost']['manipulability']['weight'] > 0.0):
-        #     cost += self.manipulability_cost.forward(J_full)
-        
         
         if(horizon_cost):
             if self.exp_params['cost']['stop_cost']['weight'] > 0:
@@ -188,16 +169,6 @@ class ArmBase(RolloutBase):
             if self.exp_params['cost']['stop_cost_acc']['weight'] > 0:
                 cost += self.stop_cost_acc.forward(state_batch[:, :, self.n_dofs*2 :self.n_dofs * 3])
 
-            if self.exp_params['cost']['smooth']['weight'] > 0:
-                order = self.exp_params['cost']['smooth']['order']
-                prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
-                n_mul = 1
-                state = state_batch[:,:, self.n_dofs * n_mul:self.n_dofs * (n_mul+1)]
-                p_state = prev_state[-order:,self.n_dofs * n_mul: self.n_dofs * (n_mul+1)].unsqueeze(0)
-                p_state = p_state.expand(state.shape[0], -1, -1)
-                state_buffer = torch.cat((p_state, state), dim=1)
-                traj_dt = torch.cat((prev_dt, self.traj_dt))
-                cost += self.smooth_cost.forward(state_buffer, traj_dt)
 
 
         # if self.exp_params['cost']['ee_vel']['weight'] > 0:
@@ -282,7 +253,7 @@ class ArmBase(RolloutBase):
         
         # ee_pos_batch, ee_rot_batch, lin_jac_batch, ang_jac_batch = self.dynamics_model.robot_model. \
         #     compute_fk_and_jacobian(current_state[:,:self.dynamics_model.n_dofs], current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], self.exp_params['model']['ee_link_name'])
-        ee_pos_batch, ee_rot_batch = self.dynamics_model.robot_model.compute_fk(current_state[:,:self.dynamics_model.n_dofs], 
+        ee_pos_batch, ee_rot_batch = self.dynamics_model.robot_model.compute_fk_PosRot(current_state[:,:self.dynamics_model.n_dofs], 
                                                                                              current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2], 
                                                                                              self.exp_params['model']['ee_link_name'])
 

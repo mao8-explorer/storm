@@ -206,7 +206,8 @@ class RobotSim():
             robot_dof_states['pos'][i] = self.init_state[i]
             robot_dof_states['vel'][i] = 0.0
         self.init_robot_state = robot_dof_states
-        self.gym.set_actor_dof_states(env_handle, robot_handle, robot_dof_states, gymapi.STATE_ALL)
+        self.gym.set_actor_dof_states(env_handle, robot_handle, robot_dof_states, gymapi.STATE_ALL) # 设置的是当前状态 并不是目标状态 下一个step机械臂会偏向目标状态
+        self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(robot_dof_states['pos']))
 
         if(self.collision_model_params is not None):
             self.init_collision_model(self.collision_model_params, env_handle, robot_handle)
@@ -250,8 +251,19 @@ class RobotSim():
             for i in range(len(robot_dof_states['pos'])):
                 robot_dof_states['pos'][i] = q_des[i]
                 robot_dof_states['vel'][i] = qd_des[i]
-            self.init_robot_state = robot_dof_states
+            # self.init_robot_state = robot_dof_states
+            """
+            # 首先 问题并没有解决  
+                理想情况下 使用set_actor_dof_position_targets 
+                            set_actor_dof_velocity_targets
+                          但是动力学很慢的
+            伪命题下的解决方式： set_actor_dof_states设置当前状态 set_actor_dof_position_targets|set_actor_dof_velocity_targets规避动力学问题 使得误差为0,完全
+            由set_actor_dof_states设置当前状态控制. 这当然是及其不合理的 但whatever 我们相信机械臂的开环控制能力 能够较好的达到开环条件
+            """
+            
             self.gym.set_actor_dof_states(env_handle, robot_handle, robot_dof_states, gymapi.STATE_ALL)
+            self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(robot_dof_states['pos']))
+            self.gym.set_actor_dof_velocity_targets(env_handle, robot_handle, np.float32(robot_dof_states['vel']))
         else :
             robot_dof_states = copy.deepcopy(self.gym.get_actor_dof_states(env_handle, robot_handle,
                                                                         gymapi.STATE_ALL))

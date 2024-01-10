@@ -1,3 +1,26 @@
+# 修正
+** 修正Franka Env Bug
+```python
+不能仅仅只是设置关节状态  还要对齐相应的目标状态 不然就默认目标为初始关节状态 0 0 0 ...
+  self.gym.set_actor_dof_states(env_handle, robot_handle, robot_dof_states, gymapi.STATE_ALL) # 设置的是当前状态 并不是目标状态 下一个step机械臂会偏向目标状态
+  self.gym.set_actor_dof_position_targets(env_handle, robot_handle, np.float32(robot_dof_states['pos']))
+```
+** 修正了MPPI.py算法 将β参数拆出来 分析清楚 \
+** 添加了多个benchmark文件，对比β影响 对比topN影响 对比PPV影响 来更好的分析最终结果\
+** 添加了多个轨迹指标： 
+1. crash-rate(一个lap有没有发生碰撞)
+2. path-length(代替opt_steps)，比较轨迹的长度
+3. avg.speed : 期望大家在同一个速度下去比较（目前效果不是很好，没有发现调速影响最大的参数）\
+
+** 对2D Mass 可视化 做修改，图片叠加虚影
+
+# TODO
+```python
+  # TODO : 这里应该怎么写 更加完善呢 目前只适用于 2D pass ,不对Franka生效 暂行的方案就是注释
+  self.greedy_mean_traj, self.sensi_mean_traj, self.greedy_best_traj, self.sensi_best_traj,self.mean_traj = 
+  self.get_multimodal_mean_trajectory(state)
+```
+
 # STORM
 **Stochastic Tensor Optimization for Robot Motion** - *A GPU Robot Motion Toolkit*
 

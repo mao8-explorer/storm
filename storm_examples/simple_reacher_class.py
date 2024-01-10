@@ -59,7 +59,8 @@ from visual.plot_simple import Plotter
 class holonomic_robot(Plotter):
     def __init__(self,args):
         super().__init__()
-
+        self.shift = 3
+        self.up_down = True
         self.goal_list = [
                 # [0.9098484848484849, 0.2006060606060608],
                 [0.8787878787878789, 0.7824675324675325], 
@@ -68,7 +69,7 @@ class holonomic_robot(Plotter):
         self.pause = False # 标志： 键盘是否有按键按下， 图像停止路径规划
         # load
         self.tensor_args = {'device':'cuda','dtype':torch.float32}
-        self.simple_task = SimpleTask(robot_file="simple_reacher.yml", tensor_args=self.tensor_args)
+        self.simple_task = SimpleTask(robot_file="simple_reacher_multimodal.yml", tensor_args=self.tensor_args)
         self.simple_task.update_params(goal_state=self.goal_state)
         self.controller = self.simple_task.controller           
         
@@ -80,6 +81,7 @@ class holonomic_robot(Plotter):
         self.traj_log = {'position':[], 'velocity':[], 'error':[], 'command':[], 'des':[],'coll_cost':[],
                     'acc':[], 'world':None, 'bounds':self.extents}
         self.current_state = {'position':np.array([0.12,0.2]), 'velocity':np.zeros(2) + 0.0, 'acceleration':np.zeros(2) + 0.0 }
+        self.plot_init()
 
 
     def run(self):
@@ -87,15 +89,15 @@ class holonomic_robot(Plotter):
         self.goal_flagi = -1 # 调控目标点
         self.loop_step = 0   #调控运行steps
         t_step = 0.0 # 记录run_time
-        goal_thresh = 0.04 # 目标点阈值
+        goal_thresh = 0.03 # 目标点阈值
         self.run_time = 0.0
-        lap_count = 10 # 跑5轮次
+        lap_count = 8 # 跑5轮次
         first_time = time.time()
         while(self.goal_flagi / len(self.goal_list) != lap_count):
             #  core_process
             self.controller.rollout_fn.image_move_collision_cost.world_coll.updateSDFPotientailGradient() #更新环境SDF
             last = time.time()
-            command = self.simple_task.get_command(t_step, self.current_state, self.sim_dt, WAIT=True)
+            command = self.simple_task.get_command(self.current_state)
             self.run_time += time.time() - last
             self.current_state = command # or command * scale
             # 这里的current_coll 反馈的不是是否发生碰撞，是forward计算的值，暂无意义

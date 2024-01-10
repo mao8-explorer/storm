@@ -14,6 +14,8 @@ from storm_kit.mpc.task.reacher_task import ReacherTask
 import rospy
 import queue
 import time
+import pickle
+import csv
 
 class IKSolve:
     def __init__(self):
@@ -48,22 +50,32 @@ class MPCRobotController(FrankaEnvBase):
         self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args )
         self._environment_init()
         self.envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
-        self.coll_dt_scale = 0.015 # left and right
-        self.coll_movebound_leftright = [-0.40,0.01] # 左右实验的位置边界
-        # self.coll_dt_scale = 0.01 # up and down
-        # self.coll_movebound_updown = [0.48,0.85] # 上下实验的位置边界
+        self.task_leftright = True
+        if self.task_leftright:
+            self.coll_dt_scale = 0.015 # left and right 0.02测试一次
+            self.coll_movebound_leftright = [-0.30,0.30] # 左右实验的位置边界 [-0.4,0.4]测试一次
+            self.goal_list = [ # 两个目标点位置
+                [0.25,0.40,-0.65],
+                [0.20,0.40,0.65]]
+        else:
+            self.coll_dt_scale = 0.015 # up and down
+            self.coll_movebound_updown = [0.40,0.80] # 上下实验的位置边界
+            self.goal_list = [ # 两个目标点位置
+                [0.20,0.35,-0.65],
+                [0.20,0.35,0.65]]
         self.uporient = -1.0
         self.thresh = 0.05 # goal next thresh in Cart
-        self.goal_list = [ # 两个目标点位置
-             [0.20,0.30,-0.65],
-             [0.20,0.30,0.65]]
         self.goal_state = self.goal_list[0]
         self.update_goal_state()
-        self.update_collision_state([0.45,0.50,0.0])
+        self.update_collision_state([0.40,0.60,-0.20])
         self.rollout_fn = self.mpc_control.controller.rollout_fn
         self.goal_ee_transform = np.eye(4)
         # 暂行多进程方案是通过传参的方式 引导ik_proc句柄 保证ik_proc在主进程启动 避免无法共享内存的问题
         self.ik_mSolve = ik_mSolve
+        #  visual 控件
+        self.gradient_visual_rviz = False
+        self.pointcloud_visual_rviz = False
+        self.fieldnames = ['whole_time', 'opt_step_count', 'collison_count','oneLoop','oneOpt','Avg.Speed', 'Max.Speed'] 
 
     def run(self):
         self.goal_flagi = -1 # 调控目标点
@@ -101,26 +113,34 @@ class MPCRobotController(FrankaEnvBase):
                 self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
                 opt_time_last = time.time()
-                command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt)
+                command = self.mpc_control.get_command(self.current_robot_state)
                 opt_time_sum += time.time() - opt_time_last
                 # get position command:
                 self.command = command
                 q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
-                self.updateGymVisual_GymGoalUpdate(end_trajvisual = True)
+                self.updateGymVisual_GymGoalUpdate()
+                # self.visual_top_trajs_ingym()
+                # self.updateRosMsg(visual_gradient = self.gradient_visual_rviz)
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 
 
+                # curr_coll max
                 curr_coll = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_state_collision
                 if (curr_coll > 0.95).any() : 
                     self.curr_collision += 1
                     collision_info = "Collision Count: {}, Collisions: {}".format(self.curr_collision, torch.nonzero(curr_coll > 0.95).flatten().cpu().numpy())
                     rospy.logwarn(collision_info)
-                # self._dynamic_object_moveDesign_updown()
-                self._dynamic_object_moveDesign_leftright()
+                if self.task_leftright:
+                    self._dynamic_object_moveDesign_leftright()
+                else :
+                    self._dynamic_object_moveDesign_updown()
+
                 self.traj_append()
+                self.traj_log['collison'].append(curr_coll.cpu().max())
+
                 # 逆解获取查询 output_queue
                 try :
                     output = self.ik_mSolve.output_queue.get()
@@ -137,17 +157,30 @@ class MPCRobotController(FrankaEnvBase):
 
             except KeyboardInterrupt:
                 rospy.logwarn('Closing')
-        rospy.loginfo("whole_time: {}, opt_step_count: {}, collison_count: {}, "
+
+        log_message = "whole_time: {}, opt_step_count: {}, collison_count: {}, " \
                       "oneLoop: {}, oneOpt: {}".format(time.time() - last, opt_step_count, self.curr_collision, 
                                                       (time.time() - last) / opt_step_count * 1000, 
-                                                       opt_time_sum / opt_step_count * 1000))
-        
-        
+                                                       opt_time_sum / opt_step_count * 1000)
+        avgvel, maxvel = self.ee_vel_evaluate()
+        row = {'whole_time':time.time() - last, 'opt_step_count': opt_step_count, 'collison_count':self.curr_collision, 
+               'oneLoop':(time.time() - last) / opt_step_count * 1000, 'oneOpt':opt_time_sum / opt_step_count * 1000,
+               'Avg.Speed':avgvel, 'Max.Speed':maxvel}
+        rospy.loginfo(log_message)
+        self.traj_log['run_message'].append(log_message)
         # self.mpc_control.close()
         self.coll_robot_pub.unregister() 
         self.pub_env_pc.unregister()
         self.pub_robot_link_pc.unregister()
-        self.plot_traj()
+        # with open('FrankaPV.pkl', 'wb') as f:
+        #     pickle.dump(self.traj_log, f)
+        # self.plot_traj()
+        with open('shieldMPPIevalation.csv', 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=self.fieldnames)
+            if not f.tell():
+                writer.writeheader()
+            writer.writerow(row)
+
         rospy.logwarn("mpc_close...")
         
 if __name__ == '__main__':

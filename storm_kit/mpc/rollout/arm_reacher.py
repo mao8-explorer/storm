@@ -24,7 +24,7 @@ import torch
 import torch.autograd.profiler as profiler
 
 from ...differentiable_robot_model.coordinate_transform import matrix_to_quaternion, quaternion_to_matrix
-from ..cost import DistCost, PoseCost, PoseCostQuaternion, ZeroCost, FiniteDifferenceCost,terminalCost , JnqSparseReward,CartSparseReward
+from ..cost import DistCost, PoseCost, PoseCostQuaternion,PoseCost_Reward, ZeroCost, FiniteDifferenceCost,terminalCost , JnqSparseReward,CartSparseReward
 from ...mpc.rollout.arm_base import ArmBase
 import queue
 
@@ -56,7 +56,9 @@ Todo:
         # self.goal_cost = PoseCost(**exp_params['cost']['goal_pose'],
         #                           tensor_args=self.tensor_args)
         #
-        self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
+        # self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
+        #                           tensor_args=self.tensor_args)
+        self.goal_cost_reward = PoseCost_Reward(**exp_params['cost']['PoseCost_Reward'], # Cartesian space target
                                   tensor_args=self.tensor_args)
         
         self.jnq_sparse_reward = JnqSparseReward(**exp_params['cost']['Jnq_sparse_reward'], # 目标限制
@@ -71,21 +73,19 @@ Todo:
     def cost_fn(self, state_dict, action_batch, no_coll=False, horizon_cost=True, return_dist=False):
 
         cost = super(ArmReacher, self).cost_fn(state_dict, action_batch, no_coll, horizon_cost)
-        ee_pos_batch, ee_rot_batch = state_dict['ee_pos_seq'], state_dict['ee_rot_seq']
+        ee_pos_batch = state_dict['ee_pos_seq']
         self.curr_ee_pos = ee_pos_batch[-1,0,:]
         
         state_batch = state_dict['state_seq']
         goal_ee_pos = self.goal_ee_pos
-        goal_ee_rot = self.goal_ee_rot
 
         # 为什么要存在 因为逆解不存在时，也就是全局规划无解时，可以使用该方式引导
-        goal_cost = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-                                            goal_ee_pos, goal_ee_rot)
-        cost += goal_cost
+        # goal_cost = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
+        #                                     goal_ee_pos, goal_ee_rot)
 
         #  pose sparse_reward design 加快末端位置收敛 
-        if self.exp_params['cost']['Cart_sparse_reward']['weight'] > 0: #!
-            cost += self.cart_sparse_reward.forward(ee_pos_batch,goal_ee_pos)
+        self.cart_goal_cost, self.cart_sparse_reward = self.goal_cost_reward.forward(ee_pos_batch, goal_ee_pos)
+        cost +=  self.cart_sparse_reward 
 
         if self.goal_jnq is not None:
             disp_vec = state_batch[:,:,0:self.n_dofs] - self.goal_jnq[:,0:self.n_dofs]

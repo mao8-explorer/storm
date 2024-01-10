@@ -62,13 +62,13 @@ class holonomic_robot(Plotter_MultiModal):
 
         self.goal_list = [
         # [0.9098484848484849, 0.2006060606060608],
-        [0.8787878787878789, 0.7824675324675325], 
-        [0.2240259740259739, 0.7851731601731602]] 
+        [0.8687878787878789, 0.7824675324675325], 
+         [0.2340259740259739, 0.7851731601731602]]
         self.goal_state = self.goal_list[-1]
         self.pause = False # 标志： 键盘是否有按键按下， 图像停止路径规划
         # load
         self.tensor_args = {'device':'cuda','dtype':torch.float32}
-        self.simple_task = SimpleTask(robot_file="simple_reacher.yml", tensor_args=self.tensor_args)
+        self.simple_task = SimpleTask(robot_file="simple_reacher_multimodal.yml", tensor_args=self.tensor_args)
         self.simple_task.update_params(goal_state=self.goal_state)
         self.controller = self.simple_task.controller           
         
@@ -79,7 +79,8 @@ class holonomic_robot(Plotter_MultiModal):
 
         self.traj_log = {'position':[], 'velocity':[], 'error':[], 'command':[], 'des':[],'coll_cost':[],
                     'acc':[], 'world':None, 'bounds':self.extents , 'weights':[]}
-        self.current_state = {'position':np.array([0.12,0.2]), 'velocity':np.zeros(2) + 0.0, 'acceleration':np.zeros(2) + 0.0 }
+        self.current_state = {'position':np.array([0.12,0.4]), 'velocity':np.zeros(2) + 0.0, 'acceleration':np.zeros(2) + 0.0 }
+        self.plot_init()
 
 
     def run(self):
@@ -87,9 +88,9 @@ class holonomic_robot(Plotter_MultiModal):
         self.goal_flagi = -1 # 调控目标点
         self.loop_step = 0   #调控运行steps
         t_step = 0.0 # 记录run_time
-        goal_thresh = 0.04 # 目标点阈值
+        goal_thresh = 0.03 # 目标点阈值
         self.run_time = 0.0
-        lap_count = 10 # 跑5轮次
+        lap_count = 8 # 跑5轮次
         first_time = time.time()
         while(self.goal_flagi / len(self.goal_list) != lap_count):
             #  core_process
@@ -120,7 +121,7 @@ class holonomic_robot(Plotter_MultiModal):
         whole_time = time.time() - first_time
         print(whole_time)
         plt.savefig('runend.png')
-        self.plot_traj()
+        # self.plot_traj()
 
 
 if __name__ == '__main__':

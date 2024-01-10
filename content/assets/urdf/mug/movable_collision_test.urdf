@@ -55,8 +55,8 @@
     <visual>
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="mug.obj" scale="3 3 4.5"/>
-        <!-- 4 4 5 | 3 3 3 -->
+        <mesh filename="mug.obj" scale="4 4 6"/>
+        <!-- 4 4 5 | 3 3 3 | 3 3 4.5 -->
       </geometry>
     </visual>
     <collision>

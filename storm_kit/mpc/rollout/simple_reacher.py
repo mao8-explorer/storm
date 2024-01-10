@@ -44,16 +44,11 @@ class SimpleReacher(object):
     def __init__(self, exp_params, tensor_args={'device':'cpu','dtype':torch.float32}):
         self.tensor_args = tensor_args
         self.exp_params = exp_params
+        device = self.tensor_args['device']
+        float_dtype = self.tensor_args['dtype']
         # 权重全部提取！ 很重要！
         # self.goal_state_weight = exp_params['cost']['goal_state']['weight']
         mppi_params = exp_params['mppi']
-
-        multimodal_mppi_costs = exp_params['multimodal_cost']
-        self.multiTargetCost = multimodal_mppi_costs['target_cost']
-        self.multiCollisionCost = multimodal_mppi_costs['coll_cost']
-        self.multiTerminalCost = multimodal_mppi_costs['terminal_reward']
-        
-
 
         # initialize dynamics model:
         dynamics_horizon = mppi_params['horizon'] # model_params['dt']
@@ -75,7 +70,7 @@ class SimpleReacher(object):
         
 
         self.goal_cost = DistCost(**exp_params['cost']['goal_state'], # 目标限制
-                                  tensor_args=self.tensor_args)
+                                  device=device,float_dtype=float_dtype)
         
         self.sparse_reward = SparseReward(**exp_params['cost']['sparse_reward'], # 目标限制
                                   tensor_args=self.tensor_args)
@@ -87,12 +82,12 @@ class SimpleReacher(object):
                                       tensor_args=self.tensor_args,
                                       traj_dt=self.dynamics_model.traj_dt)
 
-        self.zero_vel_cost = ZeroCost(device=self.tensor_args['device'], float_dtype=self.tensor_args['dtype'], **exp_params['cost']['zero_vel'])
+        # self.zero_vel_cost = ZeroCost(device=self.tensor_args['device'], float_dtype=self.tensor_args['dtype'], **exp_params['cost']['zero_vel'])
 
-        self.fd_matrix = build_fd_matrix(10 - self.exp_params['cost']['smooth']['order'], device=self.tensor_args['device'], dtype=self.tensor_args['dtype'], PREV_STATE=True, order=self.exp_params['cost']['smooth']['order'])
+        # self.fd_matrix = build_fd_matrix(10 - self.exp_params['cost']['smooth']['order'], device=self.tensor_args['device'], dtype=self.tensor_args['dtype'], PREV_STATE=True, order=self.exp_params['cost']['smooth']['order'])
 
-        self.smooth_cost = FiniteDifferenceCost(**self.exp_params['cost']['smooth'],
-                                                tensor_args=self.tensor_args)
+        # self.smooth_cost = FiniteDifferenceCost(**self.exp_params['cost']['smooth'],
+        #                                         tensor_args=self.tensor_args)
 
         
         self.image_collision_cost = ImageCollisionCost(
@@ -114,6 +109,26 @@ class SimpleReacher(object):
             dist_thresh=self.exp_params['cost']['image_collision']['dist_thresh'],
             tensor_args=self.tensor_args)
 
+        multimodal_mppi_costs = exp_params['multimodal_cost']
+        if multimodal_mppi_costs['switch_on']: # 启动并行 则权重均归1，隔离single_mppi
+            self.multiTargetCost = multimodal_mppi_costs['target_cost']
+            self.multiCollisionCost = multimodal_mppi_costs['coll_cost']
+            self.multiTerminalCost = multimodal_mppi_costs['terminal_reward']
+            # 权重归1 重新分配
+            self.goal_cost.weight = torch.tensor(1.0, **self.tensor_args)
+            self.image_move_collision_cost.weight = torch.tensor(1.0, **self.tensor_args)
+            self.sparse_reward.weight = torch.tensor(1.0, **self.tensor_args)
+
+            self.multiTargetCost_greedy_weight = self.multiTargetCost['greedy_weight']
+            self.multiCollisionCost_greedy_weight = self.multiCollisionCost['greedy_weight']
+            self.multiTerminalCost_greedy_weight = self.multiTerminalCost['greedy_weight']
+            self.multiTargetCost_sensi_weight = self.multiTargetCost['sensi_weight']
+            self.multiCollisionCost_sensi_weight = self.multiCollisionCost['sensi_weight']
+            self.multiTerminalCost_sensi_weight = self.multiTerminalCost['sensi_weight']
+            self.multiTargetCost_judge_weight = self.multiTargetCost['judge_weight']
+            self.multiCollisionCost_judge_weight = self.multiCollisionCost['judge_weight']
+            self.multiTerminalCost_judge_weight =  self.multiTerminalCost['judge_weight']
+
     def cost_fn(self, state_dict, action_batch, no_coll=False, horizon_cost=True, return_dist=False):
         
 
@@ -122,15 +137,11 @@ class SimpleReacher(object):
 
         goal_state = self.goal_state.unsqueeze(0)
         
-        cost, goal_dist = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs], RETURN_GOAL_DIST=True) #!
+        cost = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs]) #!
 
         if self.exp_params['cost']['sparse_reward']['weight'] > 0: #!
             cost += self.sparse_reward.forward(goal_state - state_batch[:,:,:self.n_dofs])
       
-        if self.exp_params['cost']['zero_vel']['weight'] > 0:
-            vel_cost = self.zero_vel_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs*2], goal_dist=goal_dist.unsqueeze(-1))
-            cost += vel_cost
-
         if(horizon_cost):
             if self.exp_params['cost']['stop_cost']['weight'] > 0: #!
                 vel_cost = self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2])
@@ -138,30 +149,6 @@ class SimpleReacher(object):
             if self.exp_params['cost']['stop_cost_acc']['weight'] > 0:
                 acc_cost = self.stop_cost_acc.forward(state_batch[:, :, self.n_dofs*2:self.n_dofs * 3])
                 cost += acc_cost
-
-
-        if self.exp_params['cost']['smooth']['weight'] > 0 and horizon_cost:
-            prev_state = state_dict['prev_state_seq']
-            prev_state_tstep = state_dict['prev_state_seq'][:,-1]
-
-            order = self.exp_params['cost']['smooth']['order']
-            prev_dt = (self.fd_matrix @ prev_state_tstep)[-order:]
-            #print(prev_state_tstep)
-            #print(prev_dt.shape, self.traj_dt.shape)
-            n_mul = 1
-            state = state_batch[:,:, self.n_dofs * n_mul:self.n_dofs * (n_mul+1)]
-            p_state = prev_state[-order:,self.n_dofs * n_mul: self.n_dofs * (n_mul+1)].unsqueeze(0)
-            #print(p_state.shape, state.shape)
-            p_state = p_state.expand(state.shape[0], -1, -1)
-            state_buffer = torch.cat((p_state, state), dim=1)
-            #print(self.traj_dt.shape, prev_dt.shape)
-            traj_dt = torch.cat((prev_dt, self.traj_dt))
-            #print(traj_dt)
-            smooth_cost = self.smooth_cost.forward(state_buffer,
-                                                   traj_dt)
-            #print()
-            #print(torch.min(smooth_cost),torch.max(smooth_cost))
-            cost += smooth_cost
 
         if self.exp_params['cost']['image_collision']['weight'] > 0:
             # compute collision cost:
@@ -195,6 +182,8 @@ class SimpleReacher(object):
             
             cost[:,-1] += torch.sum(term_cost, dim=-1)
         if(return_dist):
+            disp_vec = goal_state - state_batch[:,:,:self.n_dofs]
+            goal_dist = torch.norm(disp_vec, p=2, dim=-1,keepdim=False)
             return cost, goal_dist , coll_cost
         else:
             return cost
@@ -232,7 +221,7 @@ class SimpleReacher(object):
         state_batch = state_dict['state_seq']
         goal_state = self.goal_state.unsqueeze(0)
         
-        self.target_cost = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs]) * (1.0 / self.exp_params['cost']['goal_state']['weight']) 
+        self.target_cost = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs])
         self.coll_cost, self.judge_coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
 
         # 速度限制 禁止越界
@@ -322,19 +311,19 @@ class SimpleReacher(object):
         self.multiTerminalCost = multimodal_mppi_costs['terminal_reward']
         """
         self.multimodal_cost_fn(state_dict)
-        greedy_cost_seq = self.target_cost * self.multiTargetCost['greedy_weight'] +\
-                          self.coll_cost * self.multiCollisionCost['greedy_weight'] +\
-                          self.terminal_reward * self.multiTerminalCost['greedy_weight']+\
+        greedy_cost_seq = self.target_cost * self.multiTargetCost_greedy_weight +\
+                          self.judge_coll_cost * self.multiCollisionCost_greedy_weight +\
+                          self.terminal_reward * self.multiTerminalCost_greedy_weight+\
                           self.vel_cost + self.bound_contraint 
         
-        sensi_cost_seq =  self.target_cost * self.multiTargetCost['sensi_weight'] +\
-                          self.coll_cost * self.multiCollisionCost['sensi_weight']  +\
-                          self.terminal_reward * self.multiTerminalCost['sensi_weight'] +\
+        sensi_cost_seq =  self.target_cost * self.multiTargetCost_sensi_weight +\
+                          self.coll_cost * self.multiCollisionCost_sensi_weight  +\
+                          self.terminal_reward * self.multiTerminalCost_sensi_weight +\
                           self.vel_cost + self.bound_contraint 
         
-        judge_cost_seq = self.target_cost * self.multiTargetCost['judge_weight']+\
-                         self.judge_coll_cost * self.multiCollisionCost['judge_weight']  +\
-                         self.terminal_reward * self.multiTerminalCost['judge_weight']
+        judge_cost_seq = self.target_cost * self.multiTargetCost_judge_weight+\
+                         self.coll_cost * self.multiCollisionCost_judge_weight  +\
+                         self.terminal_reward * self.multiTerminalCost_judge_weight
         
         sim_trajs = dict(
             actions=act_seq,#.clone(),

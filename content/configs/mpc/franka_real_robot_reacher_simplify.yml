@@ -48,7 +48,7 @@ model:
     max_dt: 0.10
   #control_freq: 10
   #sim_freq: 100
-  ee_link_name: "ee_link"
+  ee_link_name: "graspnet_link" # 记得在IK_Proc中改一下
   init_state: [0.8, 0.3, 0.0, -1.57, 0.0, 1.86, 0.]
   link_names: ['panda_link4','panda_link5', 'panda_link6','panda_link7','panda_hand']
   #link_names: ['panda_link6']
@@ -61,7 +61,7 @@ model:
     link_objs: ['panda_link4','panda_link5', 'panda_link6','panda_link7','panda_hand']
     #link_objs: ['panda_link6']
     threshold: 0.35
-    bounds: [[-0.8, -0.8, -0.23],[0.8,0.8,1.0]]
+    bounds: [[-0.8, -0.8, -0.23],[0.8,0.8,1.5]]
     collision_spheres: '../robot/franka_represent.yml'
     self_collision_weights: 'robot_self/franka_real_robot_self_sdf.pt'
     dof: 7
@@ -73,7 +73,7 @@ model:
   world_collision_params:
     model_path: '/home/zm/MotionPolicyNetworks/SceneCollisionNet/weights/scene_coll_nn'
     label_map: {'robot': 2, 'ground':0}
-    bounds: [[-0.8, -0.8, -0.23],[0.8,0.8,1.0]]
+    bounds: [[-0.8, -0.8, -0.23],[0.8,0.8,1.5]]
     #bounds: [[-0.5, -0.8, 0.0],[0.5,0.8,1.0]]
     grid_resolution: 0.05
 
@@ -93,7 +93,7 @@ cost:
 
   primitive_collision:
     weight: 100.0
-    vec_weight: [1.0, 5.0, 1.0, 1.0, 5.0] # panda_link: 2 3 | 4 5 6 7 panda_hand
+    vec_weight: [1.0, 5.0, 1.0, 1.0, 5.0] # panda_link:  4 5 6 7 panda_hand
     pv_weight: [1.0, 8.0]
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}

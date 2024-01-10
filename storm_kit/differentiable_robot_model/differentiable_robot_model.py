@@ -560,6 +560,19 @@ class DifferentiableRobotModel(torch.nn.Module):
         # return ee_pos.to(inp_device), ee_rot.to(inp_device)
         return ee_pos.to(inp_device)
     
+    def compute_fk_PosRot(
+                self, q: torch.Tensor, qd:torch.Tensor, link_name: str
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # st=time.time()
+        inp_device = q.device
+        q = q.to(**self.tensor_args)
+        qd = qd.to(**self.tensor_args)
+
+        ee_pos, ee_rot= self.compute_forward_kinematics(q, qd, link_name)
+        # return ee_pos.to(inp_device), ee_rot.to(inp_device)
+        return ee_pos.to(inp_device), ee_rot.to(inp_device)
+    
+    
     def compute_fk_and_jacobian(
                 self, q: torch.Tensor, qd:torch.Tensor, link_name: str
         ) -> Tuple[torch.Tensor, torch.Tensor]:
