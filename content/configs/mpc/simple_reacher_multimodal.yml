@@ -51,7 +51,7 @@ model:
 cost:
   goal_state:
     vec_weight: [1.0, 1.0]
-    weight: 10.0
+    weight: 20.0
     gaussian_params: {'n':0, 'c':0.2, 's':0.0, 'r':10.0}
     # use for DDPG SAC
     # vec_weight: [1.0, 1.0]
@@ -69,7 +69,7 @@ cost:
 
   sparse_reward:
     vec_weight: [1.0, 1.0]
-    weight: 2.0
+    weight: 5.0
     sigma : 0.03
 
 
@@ -102,23 +102,40 @@ cost:
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
 
  
+# multimodal_cost:
+#   # switch_on: False
+#   switch_on: True # 目的是上面single的权重归一 隔离好
+#   target_cost:
+#     greedy_weight: 20.0 
+#     sensi_weight: 1.0
+#     judge_weight: 3.0
+
+#   coll_cost: 
+#     greedy_weight: 1.0
+#     sensi_weight: 5.0
+#     judge_weight: 3.0
+
+#   terminal_reward:
+#     greedy_weight: 5.0
+#     sensi_weight: 0.0
+#     judge_weight: 0.2 
+
 multimodal_cost:
-  # switch_on: False
-  switch_on: True # 目的是上面single的权重归一 隔离好
+  switch_on: False
   target_cost:
     greedy_weight: 20.0
-    sensi_weight: 1.0
-    judge_weight: 3.0
+    sensi_weight: 5.0
+    judge_weight: 10.0
 
   coll_cost: 
     greedy_weight: 1.0
     sensi_weight: 5.0
-    judge_weight: 3.0
+    judge_weight: 2.0
 
   terminal_reward:
     greedy_weight: 5.0
     sensi_weight: 0.0
-    judge_weight: 0.2 
+    judge_weight: 0.4
 
 
 multimodal:

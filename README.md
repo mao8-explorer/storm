@@ -1,3 +1,34 @@
+# log version :  quiver gradient visual differ colors
+** 给到 collision 创新点的具体可视化 pontential 与 velocity 夹角 大于90  红色， 小于90 绿色 \
+主要文件 plot_simple.py
+```python 
+    # quiver gradient visual differ colors
+    # 绘制mean_traj gradient效果图
+    best_traj, vel_traj = top_trajs[0, :, :2], top_trajs[0, :, 2:4]  # best_traj shape is N*2
+    best_traj_x, best_traj_y = best_traj[:, 0], best_traj[:, 1] 
+    grad_traj_y, grad_traj_x = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(best_traj)
+    vel_abs = torch.linalg.norm(vel_traj, ord=2, dim=1) #轨迹点 速度绝对值
+    gradientXY = torch.column_stack((grad_traj_x,grad_traj_y)) # 轨迹点梯度 组合
+    gradient_abs = torch.linalg.norm(gradientXY, ord=2, dim=1) # 轨迹点梯度 绝对值
+    # 计算速度向量和SDF梯度向量的点积
+    dot_product = torch.sum(vel_traj * gradientXY, dim=1)
+    # 计算余弦值
+    cos_thetas = dot_product / (vel_abs * gradient_abs + 1e-6)
+    # 计算夹角（弧度）
+    thetas = torch.acos(cos_thetas) *180/ torch.pi
+
+    potentialXY = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_value(best_traj) + 0.1
+
+    # 根据角度设置箭头颜色
+    arrow_colors = ['red' if theta > 90 else 'green' for theta in thetas]
+    # 梯度箭头
+    self.ax.quiver(best_traj_x.cpu(), best_traj_y.cpu(), grad_traj_x.cpu(), grad_traj_y.cpu(),
+                color=arrow_colors, alpha=0.8, scale = 1.0 / potentialXY.cpu().numpy() * 2.5 , width=0.004)
+
+    # 轨迹点标注（大一些，白色）
+    self.ax.plot(best_traj_x.cpu(), best_traj_y.cpu(), 'o', markersize=10, color='white', alpha=0.8)
+
+```
 # 修正
 ** 修正Franka Env Bug
 ```python

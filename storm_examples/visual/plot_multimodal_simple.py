@@ -22,6 +22,7 @@ class Plotter_MultiModal(object):
     def plot_init(self):
         self.fig = plt.figure()
         self.ax = plt.subplot(1, 1, 1)
+        self.ax.axis('off')
         self.fig.canvas.mpl_connect('button_press_event', self.press_call_back)
         self.fig.canvas.mpl_connect('key_press_event', self.key_call_back)
 
@@ -42,6 +43,11 @@ class Plotter_MultiModal(object):
         # ax.plot(0.08,0.2, 'rX', linewidth=3.0, markersize=15) # 起始点
 
         # 箭头标签 ----------------------------------------------------------------
+        #  全局SDF_Gradient绘画 翻转x,y是坐标变化机理
+        grad_y,grad_x = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(self.coordinates)
+        # # #  绘制箭头
+        self.ax.quiver(self.X,self.Y, np.ravel(grad_x.view(30,-1).cpu()), np.ravel(grad_y.view(30,-1).cpu()), color=CSS4_COLORS['khaki'], alpha=0.8)
+
         # 当前状态速度指向 | 当前位置SDF梯度指向 | 全局地图SDF梯度可视化
         velocity_magnitude = np.linalg.norm(self.current_state['velocity'], axis=0)  # 计算速度大小
         self.ax.quiver( np.ravel(self.current_state['position'][0]), np.ravel(self.current_state['position'][1]),
@@ -54,10 +60,7 @@ class Plotter_MultiModal(object):
         self.ax.quiver(np.ravel(self.current_state['position'][0]), np.ravel(self.current_state['position'][1]),
                     np.ravel(grad_x_curr.cpu()),np.ravel(grad_y_curr.cpu()),color='red') # 当前位置所在SDF梯度
         
-        #  全局SDF_Gradient绘画 翻转x,y是坐标变化机理
-        # grad_y,grad_x = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(self.coordinates)
-        # # #  绘制箭头
-        # self.ax.quiver(self.X,self.Y, np.ravel(grad_x.view(30,-1).cpu()), np.ravel(grad_y.view(30,-1).cpu()), color=CSS4_COLORS['khaki'], alpha=0.8)
+
         # 散点标签 ----------------------------------------------------------------
         # 当前位置状态 
         self.ax.plot(self.goal_state[0], self.goal_state[1], 'gX', linewidth=3.0, markersize=15) # 目标点
@@ -69,8 +72,19 @@ class Plotter_MultiModal(object):
         sensi_mean_traj = self.simple_task.control_process.controller.sensi_mean_traj.cpu().numpy()
         mean_traj = self.simple_task.control_process.controller.mean_traj.cpu().numpy()
 
-        greedy_top_trajs = self.simple_task.control_process.controller.greedy_top_trajs.cpu().numpy()
-        sensi_top_trajs = self.simple_task.control_process.controller.sensi_top_trajs.cpu().numpy()
+        # multimodal mean trajectories
+        # greedy_top_trajs = self.simple_task.control_process.controller.greedy_top_trajs.cpu().numpy()
+        # sensi_top_trajs = self.simple_task.control_process.controller.sensi_top_trajs.cpu().numpy()
+        # sample multi-mean trajs.
+        # sensi_sample_trajs = self.simple_task.control_process.controller.sensi_sample_trajs.cpu().numpy()
+        # greedy_sample_trajs = self.simple_task.control_process.controller.greedy_sample_trajs.cpu().numpy()
+        # mean_sample_trajs = self.simple_task.control_process.controller.mean_sample_trajs.cpu().numpy()  
+        # self.ax.scatter(np.ravel(sensi_sample_trajs[:,:,0].flatten()), np.ravel(sensi_sample_trajs[:,:,1].flatten()),
+        #         c='green',s=np.array(2))   
+        # self.ax.scatter(np.ravel(greedy_sample_trajs[:,:,0].flatten()), np.ravel(greedy_sample_trajs[:,:,1].flatten()),
+        #         c='green',s=np.array(2))   
+        # self.ax.scatter(np.ravel(mean_sample_trajs[:,:,0].flatten()), np.ravel(mean_sample_trajs[:,:,1].flatten()),
+        #         c='green',s=np.array(2))   
         # top_trajs = self.simple_task.top_trajs
         # _, _ ,coll_cost= self.simple_task.get_current_coll(top_trajs) 
         # self.traj_log['top_traj'] = top_trajs.cpu().numpy()
@@ -86,11 +100,11 @@ class Plotter_MultiModal(object):
         #         'g-',linewidth=1,markersize=3)          
         # MPPI : mean_trajectory 红线
         self.ax.plot(np.ravel(greedy_mean_traj[:,0]),np.ravel(greedy_mean_traj[:,1]),
-                'r-',linewidth=2,markersize=3)  
+                'r-',linewidth=3,markersize=3)  
         self.ax.plot(np.ravel(sensi_mean_traj[:,0]),np.ravel(sensi_mean_traj[:,1]),
-                'b-',linewidth=2,markersize=3)  
+                'g-',linewidth=3,markersize=3)  
         self.ax.plot(np.ravel(mean_traj[:,0]),np.ravel(mean_traj[:,1]),
-                'g-',linewidth=4,markersize=3)  
+                'b-',linewidth=4,markersize=3)  
 
         #  文字标签 ----------------------------------------------------------------
         #  velocity | potential | 夹角  | MPQ Value_Function估计 
