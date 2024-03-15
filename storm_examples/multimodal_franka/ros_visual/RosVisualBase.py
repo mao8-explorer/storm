@@ -150,11 +150,11 @@ class RosVisualBase(object):
         # self.coll_robot_pub.publish(self.coll_msg)
 
         # pub env_pointcloud and robot_link_spheres --------------------------------
-        # w_batch_link_spheres = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
-        # spheres = [s[-1*30][:, :3].cpu().numpy() for s in w_batch_link_spheres]
-        # # 将所有球体位置信息合并为一个NumPy数组
-        # robotsphere_positions = np.concatenate(spheres, axis=0)
-        # self.pub_pointcloud(robotsphere_positions, self.pub_robot_link_pc)
+        w_batch_link_spheres = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.robot_coll.w_batch_link_spheres 
+        spheres = [s[-1*30][:, :3].cpu().numpy() for s in w_batch_link_spheres]
+        # 将所有球体位置信息合并为一个NumPy数组
+        robotsphere_positions = np.concatenate(spheres, axis=0)
+        self.pub_pointcloud(robotsphere_positions, self.pub_robot_link_pc)
 
         # pub collision_grid_map --------------------------------
         # self.pub_pointcloud(self.collision_grid.cpu().numpy() , self.pub_env_pc)

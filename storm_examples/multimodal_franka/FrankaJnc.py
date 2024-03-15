@@ -15,7 +15,7 @@ from storm_kit.mpc.task.reacher_task import ReacherTask
 import rospy
 import queue
 import time
-
+import csv
 
 
 class IKSolve:
@@ -40,45 +40,53 @@ class MPCRobotController(FrankaEnvBase):
         super().__init__(gym_instance = gym_instance)
         self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args )
         self._environment_init()
-        self.thresh = 0.03 # goal next thresh in Cart
         x,z,y = 0.45 , 0.45 , 0.45
-        # self.goal_list = [
-        #      [x,y,-z],
-        #      [x,y,z],
-        #     #  [-x,y,z],
-        #     #  [-x,y,-z]
-        #     #  [-0.1,y,-0.5]
-        #      ]
         self.goal_list = [
-             [0.20,0.30,-0.65],
-             [0.20,0.30,0.65],]
-        self.goal_state = self.goal_list[0]
+             [x,y, z],
+             [-x,y, z],
+             [-x,y, -z],
+             [x,y, -z],
+             ]
+        # self.goal_list = [
+        #      [0.20,0.30,-0.65],
+        #      [0.20,0.30,0.65],]
+        self.goal_state = self.goal_list[-1]
         self.update_goal_state()
         self.rollout_fn = self.mpc_control.controller.rollout_fn
         self.goal_ee_transform = np.eye(4)
         # 暂行多进程方案是通过传参的方式 引导ik_proc句柄 保证ik_proc在主进程启动 避免无法共享内存的问题
         self.ik_mSolve = ik_mSolve
 
+        self.fieldnames = ['whole_time', 'opt_step_count', 'collison_count', 'crash_rate', 
+                      'ee_path_length', 'joints_path_length', 
+                      'Avg.Speed', 'Max.Speed','Mean_weight',
+                      'oneLoop','oneOpt','Note'] 
+        
+    
+        self.sim_dt = self.mpc_control.exp_params['control_dt']
+        self.lap_count = 8
+        self.thresh = 0.02 # goal next thresh in Cart
+
+
     def run(self):
-        self.goal_flagi = 0 # 调控目标点
-        sim_dt = self.mpc_control.exp_params['control_dt']
+        self.goal_flagi = -1 # 调控目标点
         t_step = gym_instance.get_sim_time()
-        lap_count = 10 # 跑5轮次
         self.jnq_des = np.zeros(7)
         last = time.time()
         opt_step_count = 0 
         self.curr_collision = 0
         opt_time_sum = 0
+        self.crash_rate = 0.0
+        self.collision_hanppend = False
         while not rospy.is_shutdown() and \
-                self.goal_flagi / len(self.goal_list) != lap_count:
+                self.goal_flagi / len(self.goal_list) != self.lap_count:
             try:
-                opt_step_count += 1
                 self.gym_instance.step()
                 self.gym_instance.clear_lines()
                 # monitor ee_pose_gym and update goal_param_mpc
                 self.monitorMPCGoalupdate()
                 # seed goal to MPC_Policy _ get Command
-                t_step += sim_dt
+                t_step += self.sim_dt
                 self.current_robot_state = self.robot_sim.get_state(self.env_ptr, self.robot_ptr) # "dict: pos | vel | acc"
                 qinit = self.current_robot_state['position'] # shape is (7,)
                 self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()
@@ -94,10 +102,14 @@ class MPCRobotController(FrankaEnvBase):
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
                 self.updateGymVisual_GymGoalUpdate()
+                self.visual_top_trajs_ingym()
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 
-                self.traj_append()
+                if self.goal_flagi > -1 :
+                    self.traj_append()
+                    opt_step_count += 1
+                    self.traj_log['collision'].append(0.0)
                 # 逆解获取查询 output_queue
                 try :
                     output = self.ik_mSolve.output_queue.get()
@@ -113,14 +125,35 @@ class MPCRobotController(FrankaEnvBase):
                     continue
             except KeyboardInterrupt:
                 print('Closing')
-        print("whole_time: ",time.time() - last, "opt_step_count:",opt_step_count ,\
-              " opt_time_sum: ",opt_time_sum, " oneloop: ",(time.time() - last)/opt_step_count*1000 , " oneOpt: ",opt_time_sum/opt_step_count*1000)
+
+        avgvel, maxvel, ee_traj_length, joints_path_length = self.ee_vel_evaluate()
+
+        row = {
+            'whole_time': round(time.time() - last, 3),
+            'opt_step_count': opt_step_count, 
+            'collison_count':self.curr_collision, 
+            'crash_rate': round(self.crash_rate / (self.lap_count*len(self.goal_list)) * 100, 3),  
+            'ee_path_length': round(ee_traj_length, 3), 
+            'joints_path_length': round(joints_path_length, 3), 
+            'Avg.Speed': round(avgvel, 3), 
+            'Max.Speed': round(maxvel, 3),
+            'oneLoop':(time.time() - last) / opt_step_count * 1000, 
+            'oneOpt':opt_time_sum / opt_step_count * 1000,
+               }
+        # 将字典的内容转换为字符串并打印到终端
+        log_message = "\n".join(["{}: {}".format(key, value) for key, value in row.items()])
+        rospy.loginfo(log_message)
 
         # self.mpc_control.close()
         self.coll_robot_pub.unregister() 
         self.pub_env_pc.unregister()
         self.pub_robot_link_pc.unregister()
-        self.plot_traj()
+        with open('./SDFcost_Franka/SDFcost_CompareForFranka.csv', 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=self.fieldnames)
+            if not f.tell():
+                writer.writeheader()
+            writer.writerow(row)
+        self.plot_traj(root_path = './SDFcost_Franka/' , img_name = 'PPV.png')
         print("mpc_close...")
 
 

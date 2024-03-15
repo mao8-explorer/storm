@@ -132,7 +132,7 @@ class Plotter_MultiModal(object):
         self.ax.text(1.04, 0.78, f'collision_count: {self.collision_count}', fontsize=12, color='black')
 
         plt.pause(1e-10)
-        self.traj_append()
+        # self.traj_append()
 
     def press_call_back(self,event):
         self.goal_state = [event.xdata,event.ydata]
@@ -144,16 +144,15 @@ class Plotter_MultiModal(object):
 
 
     def traj_append(self):
-
         self.traj_log['position'].append(self.current_state['position'])
+        self.traj_log['coll_cost'].append(self.potential_curr.cpu()[0])
         self.traj_log['velocity'].append(self.current_state['velocity'])
         # self.traj_log['command'].append(self.current_state['acceleration'])
         self.traj_log['acc'].append(self.current_state['acceleration'])
-        self.traj_log['coll_cost'].append(self.potential_curr.cpu()[0])
         self.traj_log['des'].append(copy.deepcopy(self.goal_state))
         self.traj_log['weights'].append(self.controller.weights_divide.cpu().numpy())
 
-    def plot_traj(self, img_name = 'multimodalPPV.png'):
+    def plot_traj(self, root_path = './SDFcostlog/'  , img_name = 'multimodalPPV.png'):
         plt.figure()
         position = np.matrix(self.traj_log['position'])
         vel = np.matrix(self.traj_log['velocity'])
@@ -180,8 +179,10 @@ class Plotter_MultiModal(object):
             axs[3].plot(weights[:,0], 'r', label='greedy')
             axs[3].plot(weights[:,1], 'g', label='sensi')
             axs[3].legend()
-        plt.savefig('trajectory.png')
 
+            plt.tight_layout()  # 可以加入这一句对图像进行优化布局
+            plt.savefig(root_path + 'traj_'+img_name)  # 保存图片
+            plt.close()  # 关闭图像避免显示
 
         #prepare trajectory background
         collision_map_path = "/home/zm/MotionPolicyNetworks/storm_ws/history/storm/content/assets/collision_maps/collision_map_cem.png"
@@ -213,7 +214,7 @@ class Plotter_MultiModal(object):
         # img_ax.imshow(self.controller.rollout_fn.image_move_collision_cost.world_coll.Start_Image,cmap='gray', extent=extents)
         img_ax.imshow(im, cmap='gray',extent=extents)
         img_ax.imshow(overlay, cmap='gray', alpha=0.2,extent=extents)
-        img_ax.plot(np.ravel(position[0,0]), np.ravel(position[0,1]), 'rX', linewidth=3.0, markersize=15)
+        # img_ax.plot(np.ravel(position[0,0]), np.ravel(position[0,1]), 'rX', linewidth=3.0, markersize=15)
         img_ax.plot(des[:,0], des[:,1],'gX', linewidth=3.0, markersize=15)
         # img_ax.scatter(np.ravel(position[:,0]),np.ravel(position[:,1]),c=np.ravel(coll),s=np.array(2),marker='+')
 
@@ -225,5 +226,6 @@ class Plotter_MultiModal(object):
         img_ax.set_xlim(self.traj_log['bounds'][0], self.traj_log['bounds'][1])
         img_ax.set_ylim(self.traj_log['bounds'][2], self.traj_log['bounds'][3])
         plt.axis('off')
-        plt.savefig(img_name)
+        plt.savefig(root_path + img_name)
         plt.show()
+        # plt.close()  # 关闭图像避免显示

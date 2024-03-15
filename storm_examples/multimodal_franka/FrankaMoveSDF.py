@@ -50,24 +50,24 @@ class MPCRobotController(FrankaEnvBase):
         self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args )
         self._environment_init()
         self.envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
-        self.task_leftright = True
+        self.task_leftright = False
         if self.task_leftright:
             self.coll_dt_scale = 0.015 # left and right 0.02测试一次
-            self.coll_movebound_leftright = [-0.30,0.30] # 左右实验的位置边界 [-0.4,0.4]测试一次
+            self.coll_movebound_leftright = [-0.40,0.40] # 左右实验的位置边界 [-0.4,0.4]测试一次
             self.goal_list = [ # 两个目标点位置
-                [0.25,0.40,-0.65],
-                [0.20,0.40,0.65]]
+                [0.25,0.40,  0.65],
+                [0.20,0.40, -0.65]]
         else:
             self.coll_dt_scale = 0.015 # up and down
             self.coll_movebound_updown = [0.40,0.80] # 上下实验的位置边界
             self.goal_list = [ # 两个目标点位置
-                [0.20,0.35,-0.65],
-                [0.20,0.35,0.65]]
+                [0.20,0.35,  0.65],
+                [0.20,0.35, -0.65]]
         self.uporient = -1.0
-        self.thresh = 0.05 # goal next thresh in Cart
-        self.goal_state = self.goal_list[0]
+        self.init_coll_pos = [0.40,0.60,-0.20]
+        self.goal_state = self.goal_list[-1]
         self.update_goal_state()
-        self.update_collision_state([0.40,0.60,-0.20])
+        self.update_collision_state(self.init_coll_pos)
         self.rollout_fn = self.mpc_control.controller.rollout_fn
         self.goal_ee_transform = np.eye(4)
         # 暂行多进程方案是通过传参的方式 引导ik_proc句柄 保证ik_proc在主进程启动 避免无法共享内存的问题
@@ -75,25 +75,45 @@ class MPCRobotController(FrankaEnvBase):
         #  visual 控件
         self.gradient_visual_rviz = False
         self.pointcloud_visual_rviz = False
-        self.fieldnames = ['whole_time', 'opt_step_count', 'collison_count','oneLoop','oneOpt','Avg.Speed', 'Max.Speed'] 
+        self.fieldnames = ['whole_time', 'opt_step_count', 'collision_count', 'crash_rate', 
+                      'ee_path_length', 'joints_path_length', 
+                      'Avg.Speed', 'Max.Speed',
+                      'goal_w', 'collision_w',
+                      'oneLoop','oneOpt'] 
+
+        self.sim_dt = self.mpc_control.exp_params['control_dt']
+        self.lap_count = 10
+        self.thresh = 0.05 # goal next thresh in Cart
+
+    def reinit(self, bounds):
+        if self.task_leftright:
+            self.coll_movebound_leftright = bounds
+        self.init_coll_pos = [0.40,0.60,-0.20]
+        self.goal_state = self.goal_list[-1]
+        self.update_goal_state()
+        self.update_collision_state(self.init_coll_pos)
+        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 
+                         'weights':[], 'collision': [], 'ee_pos':[],'run_message':[],
+                         'cart_goal_pos':[], 'thresh_index':[]}
+        
 
     def run(self):
         self.goal_flagi = -1 # 调控目标点
-        sim_dt = self.mpc_control.exp_params['control_dt']
         t_step = gym_instance.get_sim_time()
         obs = {}
-        lap_count = 8 # 跑5轮次
         self.jnq_des = np.zeros(7)
         last = time.time()
         # 指标性元素
         opt_step_count = 0 
         opt_time_sum = 0
         self.curr_collision = 0
+        self.crash_rate = 0.0
+        self.collision_hanppend = False
         while not rospy.is_shutdown() and \
-            self.goal_flagi / len(self.goal_list) != lap_count:
+            self.goal_flagi / len(self.goal_list) != self.lap_count and \
+            opt_step_count < 3000 :
             try:
-                opt_step_count += 1
-                t_step += sim_dt
+                t_step += self.sim_dt
                 self.gym_instance.step()
                 self.gym_instance.clear_lines()
                 # generate pointcloud 6ms
@@ -129,17 +149,20 @@ class MPCRobotController(FrankaEnvBase):
 
                 # curr_coll max
                 curr_coll = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_state_collision
-                if (curr_coll > 0.95).any() : 
+                if (curr_coll > 0.90).any() : 
                     self.curr_collision += 1
-                    collision_info = "Collision Count: {}, Collisions: {}".format(self.curr_collision, torch.nonzero(curr_coll > 0.95).flatten().cpu().numpy())
+                    self.collision_hanppend = True
+                    collision_info = "Collision Count: {}, Collisions: {}".format(self.curr_collision, torch.nonzero(curr_coll > 0.90).flatten().cpu().numpy())
                     rospy.logwarn(collision_info)
                 if self.task_leftright:
                     self._dynamic_object_moveDesign_leftright()
                 else :
                     self._dynamic_object_moveDesign_updown()
 
-                self.traj_append()
-                self.traj_log['collison'].append(curr_coll.cpu().max())
+                if self.goal_flagi > -1 :
+                    self.traj_append()
+                    opt_step_count += 1
+                    self.traj_log['collision'].append(curr_coll.cpu().max())
 
                 # 逆解获取查询 output_queue
                 try :
@@ -158,34 +181,28 @@ class MPCRobotController(FrankaEnvBase):
             except KeyboardInterrupt:
                 rospy.logwarn('Closing')
 
-        log_message = "whole_time: {}, opt_step_count: {}, collison_count: {}, " \
-                      "oneLoop: {}, oneOpt: {}".format(time.time() - last, opt_step_count, self.curr_collision, 
-                                                      (time.time() - last) / opt_step_count * 1000, 
-                                                       opt_time_sum / opt_step_count * 1000)
-        avgvel, maxvel = self.ee_vel_evaluate()
-        row = {'whole_time':time.time() - last, 'opt_step_count': opt_step_count, 'collison_count':self.curr_collision, 
-               'oneLoop':(time.time() - last) / opt_step_count * 1000, 'oneOpt':opt_time_sum / opt_step_count * 1000,
-               'Avg.Speed':avgvel, 'Max.Speed':maxvel}
+        avgvel, maxvel, ee_traj_length, joints_path_length = self.ee_vel_evaluate()
+
+        row = {
+            'whole_time': round(time.time() - last, 3),
+            'opt_step_count': opt_step_count, 
+            'collision_count':self.curr_collision, 
+            'crash_rate': round(self.crash_rate / (self.lap_count*len(self.goal_list)) * 100, 3),  
+            'ee_path_length': round(ee_traj_length, 3), 
+            'joints_path_length': round(joints_path_length, 3), 
+            'Avg.Speed': round(avgvel, 3), 
+            'Max.Speed': round(maxvel, 3),
+            'oneLoop':(time.time() - last) / opt_step_count * 1000, 
+            'oneOpt':opt_time_sum / opt_step_count * 1000,
+               }
+        # 将字典的内容转换为字符串并打印到终端
+        log_message = "\n".join(["{}: {}".format(key, value) for key, value in row.items()])
         rospy.loginfo(log_message)
-        self.traj_log['run_message'].append(log_message)
-        # self.mpc_control.close()
-        self.coll_robot_pub.unregister() 
-        self.pub_env_pc.unregister()
-        self.pub_robot_link_pc.unregister()
-        # with open('FrankaPV.pkl', 'wb') as f:
-        #     pickle.dump(self.traj_log, f)
-        # self.plot_traj()
-        with open('shieldMPPIevalation.csv', 'a', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=self.fieldnames)
-            if not f.tell():
-                writer.writeheader()
-            writer.writerow(row)
 
-        rospy.logwarn("mpc_close...")
-        
+        return row
+
+
 if __name__ == '__main__':
-
-
     ik_mSolve = IKSolve() # 多进程的问题 （应该是没有正确的解决 含有糊弄的成分 主要就像要让 IKProc在主进程启动 同时 在spawn之前启动）
     torch.multiprocessing.set_start_method('spawn', force=True)
     # torch.set_num_threads(8)
@@ -196,5 +213,60 @@ if __name__ == '__main__':
     sim_params = load_yaml(join_path(get_gym_configs_path(), 'physx.yml'))
     sim_params['headless'] = False
     gym_instance = Gym(**sim_params)
-    controller = MPCRobotController(gym_instance , ik_mSolve)    
-    controller.run()
+    FrankaController = MPCRobotController(gym_instance , ik_mSolve)    
+
+    def run_experiment(bounds, csv_filename):
+        with open(csv_filename, 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=FrankaController.fieldnames)
+            if not f.tell():
+                writer.writeheader()
+
+            for g_w in np.arange(10, 80.1, 10):
+                for coll_w in np.arange(80, 250, 20):
+                    # if g_w not in [10, 20, 50, 80] or coll_w not in [80, 100, 150, 200, 250]:
+
+                    FrankaController.rollout_fn.dist_cost.weight = torch.tensor(g_w, **FrankaController.tensor_args)
+                    FrankaController.rollout_fn.primitive_collision_cost.weight = torch.tensor(coll_w, **FrankaController.tensor_args)
+
+                    results = []
+                    for i in range(4):
+                        FrankaController.reinit(bounds=bounds)
+                        row  = FrankaController.run()
+                        
+                        row['goal_w'] = g_w 
+                        row['collision_w'] = coll_w
+
+                        writer.writerow(row)
+                        f.flush()  # 刷新缓冲
+                        results.append(row)
+                        if row['opt_step_count'] == 3000:  break
+                        img_name='P_'+str(g_w)+'_'+ str(coll_w)+'_'+str(i)+'_leftright_'
+                        FrankaController.plot_traj(root_path='./SDFcost_Franka/temp/', img_name = img_name, plot_traj_multimodal=False)
+                        # with open(img_name+'.pkl', 'wb') as fpkl:
+                        #      pickle.dump(FrankaController.traj_log, fpkl)
+
+                    if len(results) > 1: 
+                        params = {key: [] for key in row}
+                        for result in results:
+                            for key in result:
+                                params[key].append(result[key])
+                        averages = {key: round(np.mean(values), 3) for key, values in params.items()}
+                        for key in params:
+                            q1 = np.percentile(params[key], 25)
+                            q3 = np.percentile(params[key], 75)
+                            iqr = q3 - q1
+                            outlier_range = 1.5 * iqr
+                            params[key] = [value for value in params[key] if (q1 - outlier_range) <= value <= (q3 + outlier_range)]
+
+                        averages_no_outliers = {key: round(np.mean(values), 3) if values else 'N/A' for key, values in params.items()}
+                        writer.writerow(averages) # 均值保存
+                        writer.writerow(averages_no_outliers) # 箱线图数据
+                        f.flush()  # 刷新缓冲
+
+
+    # bounds = [-0.30, 0.30]
+    # run_experiment(bounds, './SDFcost_Franka/SDFcost_FrankaScatter_bound0.03_vel0.02.csv')
+
+
+    bounds = [-0.40, 0.40]
+    run_experiment(bounds, './SDFcost_Franka/SDFcost_FrankaScatter_bound0.04.csv')

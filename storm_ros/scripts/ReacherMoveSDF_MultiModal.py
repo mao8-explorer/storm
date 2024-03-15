@@ -34,8 +34,8 @@ class MPCReacherNode(ReacherEnvBase):
         # self.policy = ReacherTask(self.mpc_config, self.world_description, self.tensor_args)
         self.policy = ReacherTaskRealMultiModal(self.mpc_config, self.world_description, self.tensor_args)
         self.goal_list = [
-             [0.40,  0.50,  0.30],
-             [0.40, -0.40,  0.30]]
+             [0.40,  0.50,  0.3],
+             [0.40, -0.40,  0.3]]
         self.ee_goal_pos = self.goal_list[0]
         self.thresh = 0.03 # goal next thresh in Cart
         self.ik_mSolve = ik_mSolve
@@ -48,7 +48,7 @@ class MPCReacherNode(ReacherEnvBase):
 
     def control_loop(self):
         rospy.loginfo('[MPCPoseReacher]: Controller running')
-        lap_count = 8 # 跑5轮次
+        lap_count = -1 # 跑5轮次
         self.goal_flagi = -1 # 调控目标点
         self.jnq_des = np.zeros(7)
         opt_step_count = 0 

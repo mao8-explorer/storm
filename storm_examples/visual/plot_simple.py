@@ -57,14 +57,14 @@ class Plotter:
         
         self.ax.quiver(np.ravel(self.current_state['position'][0]), np.ravel(self.current_state['position'][1]),
                     np.ravel(grad_x_curr.cpu()),np.ravel(grad_y_curr.cpu()),color='red') # 当前位置所在SDF梯度
-        #  全局SDF_Gradient绘画 翻转x,y是坐标变化机理
-        grad_y,grad_x = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(self.coordinates)
-        #  绘制箭头
-        self.ax.quiver(self.X,self.Y, grad_x.view(30,-1).cpu(),grad_y.view(30,-1).cpu(), color=CSS4_COLORS['khaki'], alpha=0.8)
+        # #  全局SDF_Gradient绘画 翻转x,y是坐标变化机理
+        # grad_y,grad_x = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(self.coordinates)
+        # #  绘制箭头
+        # self.ax.quiver(self.X,self.Y, grad_x.view(30,-1).cpu(),grad_y.view(30,-1).cpu(), color=CSS4_COLORS['khaki'], alpha=0.8)
 
         # 散点标签 ----------------------------------------------------------------
         # 当前位置状态 
-        self.ax.plot(self.goal_state[0], self.goal_state[1], 'gX', linewidth=3.0, markersize=15) # 目标点
+        self.ax.plot(self.goal_state[0], self.goal_state[1], 'rX', linewidth=3.0, markersize=15) # 目标点
         self.ax.scatter(np.ravel(self.current_state['position'][0]),np.ravel(self.current_state['position'][1]),
                         c=np.ravel(self.potential_curr.cpu()),s=np.array(200),cmap=plt.cm.jet, vmin=0, vmax=1)
         # 规划轨迹 batch_trajectories visual
@@ -77,39 +77,39 @@ class Plotter:
     
         # quiver gradient visual differ colors
         # 绘制mean_traj gradient效果图
-        best_traj, vel_traj = top_trajs[0, :, :2], top_trajs[0, :, 2:4]  # best_traj shape is N*2
-        best_traj_x, best_traj_y = best_traj[:, 0], best_traj[:, 1] 
-        grad_traj_y, grad_traj_x = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(best_traj)
-        vel_abs = torch.linalg.norm(vel_traj, ord=2, dim=1) #轨迹点 速度绝对值
-        gradientXY = torch.column_stack((grad_traj_x,grad_traj_y)) # 轨迹点梯度 组合
-        gradient_abs = torch.linalg.norm(gradientXY, ord=2, dim=1) # 轨迹点梯度 绝对值
-        # 计算速度向量和SDF梯度向量的点积
-        dot_product = torch.sum(vel_traj * gradientXY, dim=1)
-        # 计算余弦值
-        cos_thetas = dot_product / (vel_abs * gradient_abs + 1e-6)
-        # 计算夹角（弧度）
-        thetas = torch.acos(cos_thetas) *180/ torch.pi
+            # best_traj, vel_traj = top_trajs[0, :, :2], top_trajs[0, :, 2:4]  # best_traj shape is N*2
+            # best_traj_x, best_traj_y = best_traj[:, 0], best_traj[:, 1] 
+            # grad_traj_y, grad_traj_x = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_gradxy(best_traj)
+            # vel_abs = torch.linalg.norm(vel_traj, ord=2, dim=1) #轨迹点 速度绝对值
+            # gradientXY = torch.column_stack((grad_traj_x,grad_traj_y)) # 轨迹点梯度 组合
+            # gradient_abs = torch.linalg.norm(gradientXY, ord=2, dim=1) # 轨迹点梯度 绝对值
+            # # 计算速度向量和SDF梯度向量的点积
+            # dot_product = torch.sum(vel_traj * gradientXY, dim=1)
+            # # 计算余弦值
+            # cos_thetas = dot_product / (vel_abs * gradient_abs + 1e-6)
+            # # 计算夹角（弧度）
+            # thetas = torch.acos(cos_thetas) *180/ torch.pi
 
-        potentialXY = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_value(best_traj) + 0.1
+            # potentialXY = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_value(best_traj) + 0.1
 
-        # 根据角度设置箭头颜色
-        arrow_colors = ['red' if theta > 90 else 'green' for theta in thetas]
-        # 梯度箭头
-        self.ax.quiver(best_traj_x.cpu(), best_traj_y.cpu(), grad_traj_x.cpu(), grad_traj_y.cpu(),
-                    color=arrow_colors, alpha=0.8, scale = 1.0 / potentialXY.cpu().numpy() * 2.5 , width=0.004)
+            # # 根据角度设置箭头颜色
+            # arrow_colors = ['red' if theta > 90 else 'green' for theta in thetas]
+            # # 梯度箭头
+            # self.ax.quiver(best_traj_x.cpu(), best_traj_y.cpu(), grad_traj_x.cpu(), grad_traj_y.cpu(),
+            #             color=arrow_colors, alpha=0.8, scale = 1.0 / potentialXY.cpu().numpy() * 2.5 , width=0.004)
 
-        # 轨迹点标注（大一些，白色）
-        self.ax.plot(best_traj_x.cpu(), best_traj_y.cpu(), 'o', markersize=10, color='white', alpha=0.8)
+            # # 轨迹点标注（大一些，白色）
+            # self.ax.plot(best_traj_x.cpu(), best_traj_y.cpu(), 'o', markersize=10, color='white', alpha=0.8)
 
 
         # # 15条轨迹，前5条最优轨迹，后10条最差轨迹
-        # self.ax.scatter(np.ravel(self.traj_log['top_traj'][:5,:,0].flatten()), np.ravel(self.traj_log['top_traj'][:5,:,1].flatten()),
-        #         c='green',s=np.array(2))
+        self.ax.scatter(np.ravel(self.traj_log['top_traj'][:,:,0].flatten()), np.ravel(self.traj_log['top_traj'][:,:,1].flatten()),
+                c='green',s=np.array(2))
         # self.ax.scatter(np.ravel(self.traj_log['top_traj'][5:,:,0].flatten()), np.ravel(self.traj_log['top_traj'][5:,:,1].flatten()),
         #         c=np.ravel(coll_cost[0].cpu().numpy()[100:]),  s=np.array(2))
         # random_shooting: best_trajectory 绿线
         self.ax.plot(np.ravel(self.traj_log['top_traj'][0,:,0].flatten()), np.ravel(self.traj_log['top_traj'][0,:,1].flatten()),
-                'b-',linewidth=4,markersize=3)          
+                'b-',linewidth=2,markersize=3)          
         # MPPI : mean_trajectory 红线
         # self.ax.plot(np.ravel(mean_traj_greedy[:,0]),np.ravel(mean_traj_greedy[:,1]),
         #         'r-',linewidth=2,markersize=3)  
@@ -135,7 +135,7 @@ class Plotter:
         self.ax.text(1.04, 0.81, f'opt_hz: {self.loop_step /self.run_time}', fontsize=12, color='black')
         self.ax.text(1.04, 0.78, f'collision_count: {self.collision_count}', fontsize=12, color='black')
         plt.pause(1e-10)
-        self.traj_append()
+        # self.traj_append()
 
     def press_call_back(self,event):
         self.goal_state = [event.xdata,event.ydata]
@@ -214,7 +214,7 @@ class Plotter:
         # img_ax.imshow(self.controller.rollout_fn.image_move_collision_cost.world_coll.Start_Image,cmap='gray', extent=extents)
         img_ax.imshow(im, cmap='gray',extent=extents)
         img_ax.imshow(overlay, cmap='gray', alpha=0.2,extent=extents)
-        img_ax.plot(np.ravel(position[0,0]), np.ravel(position[0,1]), 'rX', linewidth=3.0, markersize=15)
+        # img_ax.plot(np.ravel(position[0,0]), np.ravel(position[0,1]), 'rX', linewidth=3.0, markersize=15)
         img_ax.plot(des[:,0], des[:,1],'gX', linewidth=3.0, markersize=15)
         # img_ax.scatter(np.ravel(position[:,0]),np.ravel(position[:,1]),c=np.ravel(coll),s=np.array(2),marker='+')
 

@@ -157,7 +157,7 @@ class MPCRobotController(FrankaEnvBase):
             except KeyboardInterrupt:
                 rospy.logwarn('Closing')
 
-        avgvel, maxvel = self.ee_vel_evaluate()
+        avgvel, maxvel, ee_traj_length, joints_path_length = self.ee_vel_evaluate()
         weights = np.matrix(self.traj_log['weights'])
         mean_w = np.mean(weights, axis=0)
 

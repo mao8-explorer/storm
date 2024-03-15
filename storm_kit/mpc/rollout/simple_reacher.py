@@ -158,7 +158,7 @@ class SimpleReacher(object):
             
         if self.exp_params['cost']['image_move_collision']['weight'] > 0: #!
             # compute collision cost:
-            coll_cost , judge_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
+            coll_cost , judge_cost, _ = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
             #print (coll_cost.shape)
             cost += coll_cost
 
@@ -208,7 +208,7 @@ class SimpleReacher(object):
         vel_cost = self.stop_cost.forward(state_batch[:, :, self.n_dofs:self.n_dofs * 2])
         cost += vel_cost
         
-        coll_cost ,judge_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
+        coll_cost ,judge_cost,_ = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
         cost += coll_cost * 5.0
 
         bound_contraint= self.bound_cost.forward(state_batch[:,:,:self.n_dofs])
@@ -222,7 +222,7 @@ class SimpleReacher(object):
         goal_state = self.goal_state.unsqueeze(0)
         
         self.target_cost = self.goal_cost.forward(goal_state - state_batch[:,:,:self.n_dofs])
-        self.coll_cost, self.judge_coll_cost = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
+        self.coll_cost, self.judge_coll_cost, self.greedy_coll = self.image_move_collision_cost.forward(state_batch[:,:,:2*self.n_dofs])
 
         # 速度限制 禁止越界
         self.terminal_reward = self.sparse_reward.forward(goal_state - state_batch[:,:,:self.n_dofs])
@@ -322,7 +322,7 @@ class SimpleReacher(object):
                           self.vel_cost + self.bound_contraint 
         
         judge_cost_seq = self.target_cost * self.multiTargetCost_judge_weight+\
-                         self.coll_cost * self.multiCollisionCost_judge_weight  +\
+                         self.judge_coll_cost * self.multiCollisionCost_judge_weight  +\
                          self.terminal_reward * self.multiTerminalCost_judge_weight
         
         sim_trajs = dict(

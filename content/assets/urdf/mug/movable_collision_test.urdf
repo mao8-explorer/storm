@@ -56,8 +56,11 @@
       <origin xyz="0.0 0.0 0.0"/>
       <geometry>
         <mesh filename="mug.obj" scale="4 4 6"/>
-        <!-- 4 4 5 | 3 3 3 | 3 3 4.5 -->
+        <!-- 4 4 5 | 3 3 3 | 3 3 4.5 | 4 4 6 -->
       </geometry>
+      <material name="light_brown">
+        <color rgba="0.7 0.5 0.3 1.0"/> <!-- 淡棕色的RGBA值 -->
+      </material>
     </visual>
     <collision>
       <origin xyz="0.0 0.0 0.0"/>

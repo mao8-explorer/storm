@@ -85,7 +85,7 @@ class MPCRobotController(FrankaEnvBase):
                 # 逆解获取请求发布 input_queue
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
                 opt_time_last = time.time()
-                command = self.mpc_control.get_command(t_step, self.current_robot_state, control_dt=sim_dt)
+                command = self.mpc_control.get_command(self.current_robot_state)
                 opt_time_sum += time.time() - opt_time_last
                 # get position command:
                 self.command = command
@@ -93,6 +93,7 @@ class MPCRobotController(FrankaEnvBase):
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
                 self._dynamic_goal_track(t_step)
+                self.visual_top_trajs_ingym()
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 

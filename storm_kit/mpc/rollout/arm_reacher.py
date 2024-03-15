@@ -85,7 +85,7 @@ Todo:
 
         #  pose sparse_reward design 加快末端位置收敛 
         self.cart_goal_cost, self.cart_sparse_reward = self.goal_cost_reward.forward(ee_pos_batch, goal_ee_pos)
-        cost +=  self.cart_sparse_reward 
+        cost +=  self.cart_sparse_reward  + self.cart_goal_cost
 
         if self.goal_jnq is not None:
             disp_vec = state_batch[:,:,0:self.n_dofs] - self.goal_jnq[:,0:self.n_dofs]

@@ -63,6 +63,9 @@ model:
     collision_spheres: '../robot/franka_represent.yml'
     self_collision_weights: 'robot_self/franka_real_robot_self_sdf.pt'
     dof: 7
+    horizon: 30
+    num_link_objs: 7
+    num_particles: 580
 
   world_collision_params:
     model_path: '/home/zm/MotionPolicyNetworks/SceneCollisionNet/weights/scene_coll_nn'
@@ -83,6 +86,12 @@ cost:
     weight: 100.0
     sigma : 0.05
 
+  PoseCost_Reward:
+    pose_weight: 10.0
+    reward_weight: 100.0
+    position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
+    sigma : 0.05
+    
 
   primitive_collision:
     weight: 0.0

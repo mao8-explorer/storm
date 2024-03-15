@@ -11,6 +11,11 @@ from storm_kit.gym.sim_robot import RobotSim
 from storm_kit.util_file import get_gym_configs_path, join_path, get_assets_path
 from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
+from pytransform3d.urdf import UrdfTransformManager
+from pytransform3d.transformations import transform_from_pq
+
 import rospy
 from ros_visual import RosVisualBase
 
@@ -30,7 +35,10 @@ class FrankaEnvBase(RosVisualBase):
         self.viewer = gym_instance.viewer
         self.collision_grid = None
         self.curr_state_tensor = None
-        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[], 'collison': [], 'ee_pos':[],'run_message':[]}
+        self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[], 'collision': [], 'ee_pos':[],'run_message':[],
+                         'cart_goal_pos':[], 'thresh_index':[]}
+        
+
 
     def _environment_init(self):
         self._initialize_robot_simulation() # robot_sim 
@@ -177,6 +185,7 @@ class FrankaEnvBase(RosVisualBase):
             self.g_q[0] = pose.r.w
             self.mpc_control.update_params(goal_ee_pos=self.g_pos,goal_ee_quat=self.g_q)
 
+
     def update_goal_state(self):
         # target_base 与 body的讨论见草稿 10.07
         goal_state = self.goal_state
@@ -198,17 +207,20 @@ class FrankaEnvBase(RosVisualBase):
         ee_pose.r = gymapi.Quat(cur_e_quat[1], cur_e_quat[2], cur_e_quat[3], cur_e_quat[0])
         ee_pose = self.w_T_r * ee_pose
         self.gym.set_rigid_transform(self.env_ptr, self.ee_base_handle, ee_pose)
-        self.traj_log['ee_pos'].append(cur_e_pos)
+        if self.goal_flagi > -1 : self.traj_log['ee_pos'].append(cur_e_pos)
 
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
         if (np.linalg.norm(np.array(self.g_pos - cur_e_pos)) < self.thresh):
+            # TODO : crash_rate 指标性元素
             if self.collision_hanppend : self.crash_rate += 1
             self.collision_hanppend = False
-            self.goal_flagi += 1
             self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
+            self.goal_flagi += 1
             self.update_goal_state()
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
             rospy.loginfo(log_message)
+            self.traj_log['cart_goal_pos'].append(self.g_pos.copy())
+            # self.traj_log['thresh_index'].append(self.opt_step_count)
             # if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
             #     self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
             #     print("置零")
@@ -365,23 +377,14 @@ class FrankaEnvBase(RosVisualBase):
     def traj_append_multimodal(self):
         self.traj_log['weights'].append(self.mpc_control.controller.weights_divide.cpu().numpy())
 
-    def plot_traj_multimodal(self):
-        weights = np.matrix(self.traj_log['weights'])
-        plt.figure()
-        axs = [plt.subplot(2,1,i+1) for i in range(2)]
-        axs[0].set_title('weight assignment')
-        axs[0].plot(weights[:,0], 'r', label='greedy')
-        axs[0].legend() 
-        axs[1].plot(weights[:,1], 'g', label='sensi')
-        axs[1].legend() 
-        plt.savefig('weight_assignment.png')
 
-    def plot_traj(self):
+    def plot_traj(self, root_path = './SDFcost_Franka/'  , img_name = 'multimodalPPV', plot_traj_multimodal = False):
         plt.figure()
         position = np.matrix(self.traj_log['position'])
         vel = np.matrix(self.traj_log['velocity'])
         acc = np.matrix(self.traj_log['acc'])
         des = np.matrix(self.traj_log['des'])
+
         axs = [plt.subplot(3,1,i+1) for i in range(3)]
         if(len(axs) >= 3):
             axs[0].set_title('Position')
@@ -398,20 +401,162 @@ class FrankaEnvBase(RosVisualBase):
             axs[2].plot(acc[:,0], 'r',label='joint1')
             axs[2].plot(acc[:,2], 'g', label='joint3')
             axs[2].legend()
-        plt.savefig('trajectory.png')
-        plt.show()
+        plt.tight_layout()              
+        plt.savefig(root_path + 'traj_'+img_name + '.png')  # 保存图片
+        plt.close()  # 关闭图像避免显示
+
+        if plot_traj_multimodal:
+            weights = np.matrix(self.traj_log['weights'])
+            plt.figure()
+            axs = [plt.subplot(2,1,i+1) for i in range(2)]
+            axs[0].set_title('weight assignment')
+            axs[0].plot(weights[:,0], 'r', label='greedy')
+            axs[0].legend() 
+            axs[1].plot(weights[:,1], 'g', label='sensi')
+            axs[1].legend() 
+            plt.tight_layout()   
+            plt.savefig(root_path + 'weight_'+ img_name + '.png')  # 保存图片
+            plt.close()
+
+        trajs = np.matrix(self.traj_log['ee_pos'])
+        cart_goal_poses = np.matrix(self.traj_log['cart_goal_pos'])
+        collisions = np.matrix(self.traj_log['collision']) # shape 为 1 * N
+        # 创建一个新的图像，并指定图像尺寸
+        fig = plt.figure(figsize=(10, 8))
+        # 创建一个3d的坐标系
+        ax = fig.add_subplot(111, projection='3d')
+        # 提取x,y,z轴的数据
+        x = trajs[:,0].flatten().tolist()[0]
+        y = trajs[:,1].flatten().tolist()[0]
+        z = trajs[:,2].flatten().tolist()[0]
+        coll = np.array(collisions.tolist()[0])
+
+        # 创建一个集合来保存线段
+        points = np.array([x, y, z]).T.reshape(-1, 1, 3)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        # 基于 'c' 值创建一个色彩映射
+        norm = plt.Normalize(coll.min(), coll.max())
+        lc = Line3DCollection(segments, cmap='viridis', norm=norm)
+        # 设置每一段的色彩
+        lc.set_array(coll)
+        # 在3D绘图中添加线段集合
+        ax.add_collection(lc)
+        # 添加颜色条
+        cbar = plt.colorbar(lc)
+        cbar.set_label('collision probability')
+
+
+        # 提取目标点位的X, Y, Z坐标
+        x_goals = cart_goal_poses[:, 0].A1  # 将矩阵第一列转换为一维数组
+        y_goals = cart_goal_poses[:, 1].A1  # 将矩阵第二列转换为一维数组
+        z_goals = cart_goal_poses[:, 2].A1  # 将矩阵第三列转换为一维数组
+
+        # 绘制所有目标点位并指定星型标记
+        ax.scatter(x_goals, y_goals, z_goals, color='red', s=150, marker='X', label='Cartesian Goal Poses')
+        # 增加网格线
+        # ax.grid(True)
+
+        # ---- 设置三维柱状物 ----
+        # 给定的四元数和位置
+        q_mug_w = np.array([0.33402004837989807, 0.27801668643951416, 0.6680400967597961, -0.604036271572113])
+        p_mug_w = np.array([0.4000000059604645, 0.6000000238418579, 0])
+        pq = np.hstack((p_mug_w, q_mug_w))  # Position and unit quaternion for no rotation
+        T_mug_w = transform_from_pq(pq)
+        # 创建从世界坐标系到坐标系c的旋转矩阵
+        R_w_R = np.array([[1, 0, 0], 
+                          [0, 0, -1], 
+                          [0, 1, 0]])
+        # 创建从世界坐标系到robot的变换矩阵
+        T_w_R = np.eye(4)
+        T_w_R[:3, :3] = R_w_R
+        T_mug_R = np.dot(T_w_R, T_mug_w)
+        # 创建变换管理器的实例
+        tm = UrdfTransformManager()
+        # 从文件中加载 URDF 模型
+        with open("content/assets/urdf/mug/movable_collision_test.urdf", 'r') as urdf_file:
+            urdf_string = urdf_file.read()
+        tm.load_urdf(urdf_string, mesh_path='content/assets/urdf/mug/')
+        # 添加 base 框架的坐标轴
+        ax = tm.plot_frames_in("base", ax=ax, s=0.0, show_name=False)
+        # 设置多个 mug 的位置和透明度
+        if self.task_leftright:
+            poses = [
+                np.array([ self.init_coll_pos[0], self.coll_movebound_leftright[0],  self.init_coll_pos[1] ]),
+                np.array([  self.init_coll_pos[0],  
+                          1/2*(self.coll_movebound_leftright[0] + self.coll_movebound_leftright[1]),
+                            self.init_coll_pos[1] ]),
+                np.array([ self.init_coll_pos[0], self.coll_movebound_leftright[1],  self.init_coll_pos[1] ])
+            ]
+        else:
+            poses = [
+                np.array([ self.init_coll_pos[0], -self.init_coll_pos[-1],  self.coll_movebound_updown[0], ]),
+                np.array([ self.init_coll_pos[0], -self.init_coll_pos[-1], 
+                           1/2*(self.coll_movebound_updown[0] + self.coll_movebound_updown[1]) ]),
+                np.array([ self.init_coll_pos[0], -self.init_coll_pos[-1],  self.coll_movebound_updown[1] ])
+            ]
+        alphas = [0.1, 0.4, 0.1]  # 设置透明度
+        for pos, alpha in zip(poses, alphas):
+            T_mug_R[:3, -1] = pos
+            tm.add_transform("mug", "base", T_mug_R)
+            tm.plot_visuals("base", ax=ax, convex_hull_of_mesh=False, alpha=alpha)
+
+        # 设置绘图范围
+        ax.set_xlim3d(-0.1, 0.8)
+        ax.set_ylim3d(-0.8, 0.8)
+        ax.set_zlim3d( 0.2, 1.0)
+
+        ax.set_xticks(np.arange(-0.1, 0.8, 0.4))  # 设置x轴标注的步长为1
+        ax.set_yticks(np.arange(-0.8, 0.8, 0.4))  # 设置y轴标注的步长为0.2
+        ax.set_zticks(np.arange( 0.2, 1.0, 0.2))  # 设置y轴标注的步长为0.2
+
+        # 设置轴标签
+        ax.set_xlabel('X Axis', fontsize=12)
+        ax.set_ylabel('Y Axis', fontsize=12)
+        ax.set_zlabel('Z Axis', fontsize=12)
+        # 设置标题
+        ax.set_title(img_name, fontsize=16)
+        # 显示图例，并指定图例字体大小
+        ax.legend(loc='upper left', fontsize=10)
+        # 设置背景色
+        ax.set_facecolor('white')
+        ax.view_init(elev=15.682, azim=-15.58)
+        plt.savefig(root_path + img_name + '01.png')
+        ax.view_init(elev=15.682, azim=15.58)
+        plt.savefig(root_path + img_name + '02.png')
+        # 显示图像
+
+        # def on_change(event):
+        #     elev, azim = ax.elev, ax.azim
+        #     print(f"elev: {elev}, azim: {azim}")
+
+        # cid = fig.canvas.mpl_connect('motion_notify_event', on_change)
+
+        # plt.show()
+        plt.close()
+        
+
+
 
     def ee_vel_evaluate(self):
-        # 轨迹数据
-        trajectory = np.matrix(self.traj_log['ee_pos'])
-        # 计算速度
-        velocity = np.diff(trajectory, axis=0)
-        # 计算速度的模长（即速度大小）
-        speed = np.linalg.norm(velocity, axis=1)
+        # end_effector path length
+        ee_traj = np.matrix(self.traj_log['ee_pos'])
+        # 计算位移差分
+        diff = np.diff(ee_traj, axis=0)
+        # 差分模长
+        distance = np.linalg.norm(diff, axis=1)
+        # 累加差分得 末端距离
+        ee_traj_length = np.sum(distance)
         # 计算平均速度
-        average_speed = np.mean(speed)
+        average_speed = np.mean(distance) / self.sim_dt
         # 计算最大速度
-        max_speed = np.max(speed)
-        # print("平均速度：", average_speed)
-        # print("最大速度：", max_speed)
-        return average_speed, max_speed
+        max_speed = np.max(distance) / self.sim_dt
+
+        # joints_path length : 7 link
+        position = np.matrix(self.traj_log['position']) # shape is N X 7
+         # 计算相邻点之间的差分 
+        diff = np.diff(position, axis=0) # shape is N-1 X 7
+        joints_path_length = np.sum(np.abs(diff)) # 取7 links' path sum up
+
+        
+        return average_speed, max_speed, ee_traj_length, joints_path_length

@@ -25,7 +25,7 @@
 use_cuda: True
 cuda_device_num: 0
 
-control_dt: 0.07   # 0.02 0.05
+control_dt: 0.075   # 0.02 0.05
 run_open_loop: False
 control_space: 'acc'
 float_dtype: 'float32'
@@ -39,11 +39,11 @@ model:
     learnable_links: []
   name: "franka_panda"
   max_acc: 0.50
-  dt: 0.07
+  dt: 0.075
   dt_traj_params:
     base_dt: 0.07
     base_ratio: 0.5
-    max_dt: 0.07
+    max_dt: 0.10
   #control_freq: 10
   #sim_freq: 100
   ee_link_name: "ee_link"
@@ -200,11 +200,11 @@ multimodal_cost:
   jnq_goal_cost:
     greedy_weight: 80.0
     sensi_weight:  10.0
-    judge_weight:  10.0
+    judge_weight:  20.0
   environment_collision: 
     greedy_weight: 80.0
     sensi_weight:  250.0
-    judge_weight:  100.0
+    judge_weight:  150.0
   Cart_jnq_goal_reward:
     greedy_weight: 200.0
     sensi_weight:  10.0
@@ -213,6 +213,7 @@ multimodal_cost:
     greedy_weight: 30.0
     sensi_weight:  10.0
     judge_weight:  10.0
+
 
 multimodal:
   top_traj_select: 20
