@@ -1,20 +1,30 @@
-"""
-本文件意在阐述 
-不同的goal_weight / collision_weight 对 collision / crash_rate / opt_step / path length 的影响
-分析具体的分布结果
-意在 阐述 一般性的 single-layer MPPI 的性能局限
+#
+# MIT License
+#
+# Copyright (c) 2020-2021 NVIDIA CORPORATION.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.#
 
-goal_cost : 5 -> 40 (interval = 5)   8个
-coll_cost : 1 -> 4 (interval = 0.5)  7个
-56个点
-
-terminal_reward : 0 1 5 20 4种方案测试
-
-"""
+from shutil import move
 import matplotlib
 matplotlib.use('tkagg')
 import time
-import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -31,11 +41,24 @@ import torch
 import time
 import csv
 
+
 torch.multiprocessing.set_start_method('spawn',force=True)
-from visual.plot_simple import Plotter
+from visual.plot_multimodal_simple import Plotter_MultiModal
 
 
-class holonomic_robot(Plotter):
+# goal_list = [
+#         [0.5368799557440532, 0.40112220436764046],
+#         [0.18783751745212196, 0.41692789968652044]] # for escape min_distance
+
+# goal_list = [
+#         [0.30, 0.63],
+#         [0.27, 0.17]] # for escape min_distance
+
+# self.goal_list = [
+#         # [0.9098484848484849, 0.2006060606060608],
+#         [0.8787878787878789, 0.7824675324675325], 
+#         [0.2240259740259739, 0.7851731601731602]]
+class holonomic_robot(Plotter_MultiModal):
     def __init__(self):
         super().__init__()
 
@@ -44,9 +67,8 @@ class holonomic_robot(Plotter):
         self.up_down = False
         self.goal_list = [
         # [0.9098484848484849, 0.2006060606060608],
-         [0.8687878787878789, 0.7824675324675325], 
-         [0.2340259740259739, 0.7851731601731602]]
-
+        [0.8787878787878789, 0.7824675324675325], 
+        [0.2240259740259739, 0.7851731601731602]] 
         self.goal_state = self.goal_list[-1]
         self.pause = False # 标志： 键盘是否有按键按下， 图像停止路径规划
         # load
@@ -58,16 +80,18 @@ class holonomic_robot(Plotter):
         self.controller.rollout_fn.image_move_collision_cost.world_coll.Reinit(self.shift, self.up_down) # command handle
 
         exp_params = self.simple_task.exp_params
+        
         self.sim_dt = exp_params['control_dt'] #0.1
         self.extents = np.ravel(exp_params['model']['position_bounds'])
-        self.current_state = {'position':np.array([0.12,0.2]), 'velocity':np.zeros(2) + 0.0, 'acceleration':np.zeros(2) + 0.0 }
+
         self.traj_log = {'position':[], 'velocity':[], 'error':[], 'command':[], 'des':[],'coll_cost':[],
                     'acc':[], 'world':None, 'bounds':self.extents , 'weights':[]}
+        self.current_state = {'position':np.array([0.12,0.2]), 'velocity':np.zeros(2) + 0.0, 'acceleration':np.zeros(2) + 0.0 }
         self.plot_init()
         self.lap_count = 20
         self.goal_thresh = 0.03 # 目标点阈值
 
-    def ReInit(self,current_state):
+    def ReInit(self, current_state):
         self.traj_log = {'position':[], 'velocity':[], 'error':[], 'command':[], 'des':[],'coll_cost':[],
                     'acc':[], 'world':None, 'bounds':self.extents , 'weights':[]}
         self.goal_state = self.goal_list[-1]
@@ -76,13 +100,11 @@ class holonomic_robot(Plotter):
         # image 调整到初始位置 agent归位
         self.controller.rollout_fn.image_move_collision_cost.world_coll.Reinit(self.shift, self.up_down) # command handle
 
-
     def run(self):
         # temp parameters
         self.goal_flagi = -1 # 调控目标点
         self.loop_step = 0   #调控运行steps
         t_step = 0.0 # 记录run_time
-
         self.run_time = 0.0
         self.collisions_all = 0
         self.crash_rate = 0.
@@ -91,9 +113,10 @@ class holonomic_robot(Plotter):
             #  core_process
             self.controller.rollout_fn.image_move_collision_cost.world_coll.updateSDFPotientailGradient() #更新环境SDF
             last = time.time()
-            command = self.simple_task.get_command(self.current_state)
+            command, value_function = self.simple_task.get_multimodal_command(t_step, self.current_state, self.sim_dt)
             self.run_time += time.time() - last
             self.current_state = command # or command * scale
+            self.value_function = value_function
             # 这里的current_coll 反馈的不是是否发生碰撞，是forward计算的值，暂无意义
             _, goal_dist,_ = self.simple_task.get_current_error(self.current_state) 
             # goal_reacher update
@@ -103,17 +126,11 @@ class holonomic_robot(Plotter):
                 self.goal_state = self.goal_list[(self.goal_flagi+1) % len(self.goal_list)]
                 self.simple_task.update_params(goal_state=self.goal_state) # 目标更变
                 self.goal_flagi += 1
-                
+        
+
             t_step += self.sim_dt
-            
-
+            self.loop_step += 1
             # self.plot_setting()
-            # if self.pause:
-            #     while True:
-            #         time.sleep(0.5)
-            #         self.plot_setting()
-            #         if not self.pause: break
-
             curr_pose = torch.as_tensor(self.current_state['position'], **self.tensor_args).unsqueeze(0)
             self.potential_curr = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_value(curr_pose) # 当前势场
             if self.potential_curr[0] > 0.80 : 
@@ -137,74 +154,74 @@ class holonomic_robot(Plotter):
         max_speed = np.max(speed_magnitude)
 
         return trajectory_length, average_speed, max_speed
+             
 
-            
-fieldnames =  ['whileloop_count', 'collision_count', 'crash_rate', 'path_length', 'Avg.Speed', 'Max.Speed', 
-               'coll_w', 'goal_w', 'reward_w', 'note'] 
+fieldnames = ['β', 'whileloop_count', 'collision_count', 'crash_rate', 'path_length', 'Avg.Speed', 'Max.Speed', 'judge_coll_weight','note'] 
 
-def run_experiment():
+def run_experiment(top_traj_select):
+
 
     CarController = holonomic_robot()
+    # CarController.controller.top_traj_select = top_traj_select
 
-    with open('./SDFcostlog/enhanced_benchmark_cost_scatter_Left.csv', 'a', newline='') as f:
+
+    current_state_dict = np.array([[0.12,0.2],[0.14, 0.15],[0.12, 0.4],[0.10, 0.30]])
+    # move_speed = [3]
+
+
+    with open('./SDFcostlog/Beta_2D_Left_20.csv', 'a', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
+
         if not f.tell():
             writer.writeheader()
-                
-        current_state_dict = np.array([[0.12,0.2],[0.14, 0.15],[0.12, 0.4],[0.10, 0.30]])
 
-        # for r_w in [1.0, 5.0, 10.0]:
-        for r_w in [1.0]:
-            CarController.controller.rollout_fn.sparse_reward.weight = torch.tensor(r_w, **CarController.tensor_args)
-            for g_w in np.arange(5, 40.1, 5):
-                CarController.controller.rollout_fn.goal_cost.weight = torch.tensor(g_w, **CarController.tensor_args)
-                for coll_w in np.arange(2, 4.1, 1.0):
-                    CarController.controller.rollout_fn.image_move_collision_cost.weight = torch.tensor(coll_w, **CarController.tensor_args)
+        # self.current_state = {'position':np.array([0.12,0.2]), 'velocity':np.zeros(2) + 0.0, 'acceleration':np.zeros(2) + 0.0 }
 
-                    results = []
-                    for i in range(current_state_dict.shape[0]):
-                        CarController.ReInit(current_state = current_state_dict[i])
-                        trajectory_length, average_speed, max_speed = CarController.run() 
+        for lamda in [0.1,0.3,0.5, 0.8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 15, 20]:
+        # for lamda in [100,200,300,400,500]:
+            CarController.controller.lamda = lamda
 
-                        row = {
-                            'whileloop_count': CarController.loop_step, 
-                            'collision_count': CarController.collisions_all,
-                            'crash_rate': round(CarController.crash_rate / (CarController.lap_count*len(CarController.goal_list)) * 100, 3),  
-                            'path_length': round(trajectory_length, 3), 
-                            'Avg.Speed': round(average_speed,3), 
-                            'Max.Speed': round(max_speed,3),
-                            'coll_w': coll_w,
-                            'goal_w': g_w,
-                            'reward_w': r_w
-                            }
-                        writer.writerow(row)
-                        f.flush()  # 刷新缓冲
-                        print(row)
-                        results.append(row)
+            results = []
+            for i in range(current_state_dict.shape[0]):
+                CarController.ReInit(current_state = current_state_dict[i])
+                trajectory_length, average_speed, max_speed = CarController.run() 
 
-                    params = {key: [] for key in row}
-                    for result in results:
-                        for key in result:
-                            params[key].append(result[key])
-                    averages = {key: round(np.mean(values),3) for key, values in params.items()}
-                    averages['note'] = 'average'
-                    for key in params:
-                        q1 = np.percentile(params[key], 25)
-                        q3 = np.percentile(params[key], 75)
-                        iqr = q3 - q1
-                        outlier_range = 1.5 * iqr
-                        params[key] = [value for value in params[key] if (q1 - outlier_range) <= value <= (q3 + outlier_range)]
+                row = {
+                    'β': lamda,
+                    'whileloop_count': CarController.loop_step, 
+                    'collision_count': CarController.collisions_all,
+                    'crash_rate': round(CarController.crash_rate / (CarController.lap_count*len(CarController.goal_list)) * 100, 3),  
+                    'path_length': round(trajectory_length, 3), 
+                    'Avg.Speed': round(average_speed,3), 
+                    'Max.Speed': round(max_speed,3),
+                    }
+                writer.writerow(row)
+                f.flush()  # 刷新缓冲
+                print(row)
+                # CarController.plot_traj(root_path = './SDFcostlog/' , img_name = 'Rg_Coll_w_'+str(round(coll_w,1)) + '.png')
+                results.append(row)
+            
+            params = {key: [] for key in row}
+            for result in results:
+                for key in result:
+                    params[key].append(result[key])
+            averages = {key: round(np.mean(values),3) for key, values in params.items()}
+            averages['note'] = 'average'
+            for key in params:
+                q1 = np.percentile(params[key], 25)
+                q3 = np.percentile(params[key], 75)
+                iqr = q3 - q1
+                outlier_range = 1.5 * iqr
+                params[key] = [value for value in params[key] if (q1 - outlier_range) <= value <= (q3 + outlier_range)]
 
-                    averages_no_outliers = {key: round(np.mean(values),3) if values else 'N/A' for key, values in params.items()}
-                    averages_no_outliers['note'] = 'averages_no_outliers'
-                    writer.writerow(averages) # 均值保存
-                    writer.writerow(averages_no_outliers) # 箱线图数据
-
+            averages_no_outliers = {key: round(np.mean(values),3) if values else 'N/A' for key, values in params.items()}
+            averages_no_outliers['note'] = 'averages_no_outliers'
+            writer.writerow(averages) # 均值保存
+            writer.writerow(averages_no_outliers) # 箱线图数据
 
 
 if __name__ == '__main__':  
   
   print("Experiment start...")
-  run_experiment()
+  run_experiment(top_traj_select=30)
   print("Experiment finished!")
-  

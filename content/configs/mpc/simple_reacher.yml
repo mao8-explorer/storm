@@ -1,31 +1,9 @@
-##
-## MIT License
-##
-## Copyright (c) 2020-2021 NVIDIA CORPORATION.
-##
-## Permission is hereby granted, free of charge, to any person obtaining a
-## copy of this software and associated documentation files (the "Software"),
-## to deal in the Software without restriction, including without limitation
-## the rights to use, copy, modify, merge, publish, distribute, sublicense,
-## and/or sell copies of the Software, and to permit persons to whom the
-## Software is furnished to do so, subject to the following conditions:
-##
-## The above copyright notice and this permission notice shall be included in
-## all copies or substantial portions of the Software.
-##
-## THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-## IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-## FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-## THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-## LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-## FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-## DEALINGS IN THE SOFTWARE.##
+# 该参数在 2D 左右实验以及 上下实验两个点位中 取得较好的结果
 
-# @package _global_
 use_cuda: True
 cuda_device_num: 0
 
-control_dt: 0.1
+control_dt: 0.085
 control_space: 'acc'
 float_dtype: 'float32'
 state_filter_coeff: 1.0
@@ -38,57 +16,52 @@ model:
   #  learnable_links: []
   #name: "franka_panda"
   dt: 0.0
-  max_action: 0.1 #10.0
+  max_action: 0.10 # 0.1
+  # max_action: 0.1 # for parallel mppi
 
   dt_traj_params:
-    base_dt: 0.1
+    base_dt: 0.08
     base_ratio: 0.5
-    max_dt: 0.2
+    max_dt: 0.12
   init_state: [0.0,0.0]
   position_bounds: [[0.0, 1], [0.0,1]]
   
 cost:
   goal_state:
     vec_weight: [1.0, 1.0]
-    weight: 5.0
+    weight: 10.0
     gaussian_params: {'n':0, 'c':0.2, 's':0.0, 'r':10.0}
     # use for DDPG SAC
     # vec_weight: [1.0, 1.0]
     # weight: 1.0
     # gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0} # turn 'c' to zero
 
-  sparse_reward:
-    vec_weight: [1.0, 1.0]
-    weight: 2.0
-    sigma : 0.03
-
   image_move_collision: # on robot acceleration
-    weight: 2.0  # 不宜过大 过大跟sdf 置为1 没区别了
+    weight: 2.0 # 不宜过大 过大跟sdf 置为1 没区别了
     vec_weight: [10.0, 80.0]
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
     # gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     collision_file: 'collision_maps/collision_map_cem.png'
     dist_thresh: 0.01
-  
-  
-  zero_vel:
-    weight: 0.0
-    hinge_val: 0.2 #0.2
-    gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
     
+
+  sparse_reward:
+    vec_weight: [1.0, 1.0]
+    weight: 1.0
+    sigma : 0.03 # 0.03 ——》 0.05 拓宽陷落半径
+
+
+
   stop_cost:
-    weight: 10.0
-    max_nlimit: 0.05 #0.2
+    weight: 20.0
+    max_nlimit: 0.02 #0.2
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
+    
   stop_cost_acc:
     weight: 0.0
     max_limit: 0.01 #0.2
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':10.0}
     
-  smooth: # on robot acceleration
-    weight: 0.0 
-    gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
-    order: 3 # on velocity
 
   image_collision: # on robot acceleration
     weight: 0.0 
@@ -97,6 +70,7 @@ cost:
     collision_file: 'collision_maps/collision_map_cem.png'
     dist_thresh: 0.03
 
+  
   state_bound:
     weight: 1000.0 
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
@@ -106,22 +80,40 @@ cost:
     gaussian_params: {'n':0, 'c':1.0, 's':0, 'r':10.0}
 
  
-multimodal_cost:
+# multimodal_cost:
+  # switch_on: False
+  # # switch_on: True # 目的是上面single的权重归一 隔离好
+  # target_cost:
+  #   greedy_weight: 20.0 
+  #   sensi_weight: 1.0
+  #   judge_weight: 5.0
+
+  # coll_cost: 
+  #   greedy_weight: 1.0
+  #   sensi_weight: 5.0
+  #   judge_weight: 3.0
+
+  # terminal_reward:
+  #   greedy_weight: 5.0
+  #   sensi_weight: 0.0
+  #   judge_weight: 0.4 
+
+multimodal_cost:         
   switch_on: False
   target_cost:
-    greedy_weight: 20.0
+    greedy_weight: 40.0
     sensi_weight: 5.0
     judge_weight: 10.0
 
   coll_cost: 
     greedy_weight: 1.0
-    sensi_weight: 5.0
+    sensi_weight: 3.0
     judge_weight: 2.0
 
   terminal_reward:
-    greedy_weight: 1.0
+    greedy_weight: 20.0
     sensi_weight: 0.0
-    judge_weight: 0.4
+    judge_weight: 1.0
 
 
 multimodal:

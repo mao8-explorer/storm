@@ -108,7 +108,7 @@ multimodal_cost:
   coll_cost: 
     greedy_weight: 1.0
     sensi_weight: 3.0
-    judge_weight: 2.0
+    judge_weight: 1.2
 
   terminal_reward:
     greedy_weight: 20.0
@@ -117,7 +117,7 @@ multimodal_cost:
 
 
 multimodal:
-  top_traj_select: 30
+  top_traj_select: 20
   random_shoot_particles: {'sensi_random': 30, 'greedy_random': 30, 'sensi_mean': 50, 'greedy_mean': 50}
 
 

@@ -193,8 +193,8 @@ class MPCRobotController(FrankaEnvBase):
         self.coll_robot_pub.unregister() 
         self.pub_env_pc.unregister()
         self.pub_robot_link_pc.unregister()
-        with open('FrankaPM20.150.LEFT0.40.pkl', 'wb') as f:
-            pickle.dump(self.traj_log, f)
+        # with open('FrankaPM20.150.LEFT0.40.pkl', 'wb') as f:
+        #     pickle.dump(self.traj_log, f)
         # self.plot_traj()
         with open('./SDFcost_Franka/SDFcost_CompareForFranka.csv', 'a', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=self.fieldnames)
