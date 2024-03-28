@@ -57,7 +57,7 @@ class holonomic_robot(Plotter_MultiModal):
 
         # Task parameter
         self.shift = 3
-        self.up_down = False
+        self.up_down = True
         self.goal_list = [
         # [0.9098484848484849, 0.2006060606060608],
          [0.8687878787878789, 0.7824675324675325], 
@@ -178,7 +178,7 @@ def run_experiment():
         self.multiTerminalCost_judge_weight =  self.multiTerminalCost['judge_weight']
     """
 
-    with open('./SDFcostlog/version0101/PM_LEFT.csv', 'a', newline='') as f:
+    with open('./SDFcostlog/version0101/Larger_PM_UP.csv', 'a', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not f.tell():
             writer.writeheader()
@@ -195,67 +195,70 @@ def run_experiment():
             [[0.8787878787878789, 0.7824675324675325], 
             [0.2240259740259739, 0.7851731601731602]] 
             ]  
-        with open('./SDFcostlog/version0101/PM_LEFT_meanstd.csv', 'a', newline='') as var_file:
+        with open('./SDFcostlog/version0101/Larger_PM_UP_meanstd.csv', 'a', newline='') as var_file:
             var_writer = csv.DictWriter(var_file, fieldnames=fieldnames)
             if not var_file.tell():
                 var_writer.writeheader()
 
             for lamda in [0.8,1.0,2.0]:
                 CarController.controller.lamda = lamda
-                for coll_w in np.arange(1.0, 2.55, 0.1):
-                    CarController.controller.rollout_fn.multiCollisionCost_judge_weight = round(coll_w , 1)
+                # for coll_w in np.arange(1.0, 2.55, 0.1):
+                #     CarController.controller.rollout_fn.multiCollisionCost_judge_weight = round(coll_w , 1)
+                for g_w in np.arange(5, 40.1, 5):
+                    CarController.controller.rollout_fn.multiTargetCost_judge_weight = round(g_w , 1)
+                    for coll_w in np.arange(1, 4.1, 0.5):
+                        CarController.controller.rollout_fn.multiCollisionCost_judge_weight = round(coll_w , 1)
 
-                    results = []
-                    for j in range(goals_list.__len__()):
-                        for i in range(current_state_dict.shape[0]):
-                            first_time = time.time()
-                            CarController.ReInit(current_state = current_state_dict[i], goal_list = goals_list[j])
-                            trajectory_length, average_speed, max_speed, mean_w = CarController.run() 
-                            lap_time = time.time() - first_time  
+                        results = []
+                        for j in range(goals_list.__len__()):
+                            for i in range(current_state_dict.shape[0]):
+                                first_time = time.time()
+                                CarController.ReInit(current_state = current_state_dict[i], goal_list = goals_list[j])
+                                trajectory_length, average_speed, max_speed, mean_w = CarController.run() 
+                                lap_time = time.time() - first_time  
 
-                            row = {
-                                'lamda': lamda,
-                                'running_time': round(lap_time, 3),
-                                'whileloop_count': CarController.loop_step, 
-                                'collision_count': CarController.collisions_all,
-                                'crash_rate': round(CarController.crash_rate / (CarController.lap_count*len(CarController.goal_list)) * 100, 3),  
-                                'path_length': round(trajectory_length, 3), 
-                                'Avg.Speed': round(average_speed,3), 
-                                'Max.Speed': round(max_speed,3),
-                                'Mean_weight': mean_w,
-                                'judge_coll_weight': round(coll_w,1),
+                                row = {
+                                    'lamda': lamda,
+                                    'running_time': round(lap_time, 3),
+                                    'whileloop_count': CarController.loop_step, 
+                                    'collision_count': CarController.collisions_all,
+                                    'crash_rate': round(CarController.crash_rate / (CarController.lap_count*len(CarController.goal_list)) * 100, 3),  
+                                    'path_length': round(trajectory_length, 3), 
+                                    'Avg.Speed': round(average_speed,3), 
+                                    'Max.Speed': round(max_speed,3),
+                                    'Mean_weight': mean_w,
+                                    'judge_coll_weight': round(coll_w,1),
+                                    }
+                                writer.writerow(row)
+                                f.flush()  # 刷新缓冲
+                                print(row)
+                                # CarController.plot_traj(root_path = './SDFcostlog/' , img_name = 'Rg_Coll_w_'+str(round(coll_w,1)) + '.png')
+                                results.append(row)
+                            
+                        params = {key: [] for key in row}
+                        for result in results:
+                            for key in result:
+                                params[key].append(result[key])
+                        averages = {key: round(np.mean(values),3) for key, values in params.items()}
+                        averages['note'] = 'average'
+                        for key in params:
+                            q1 = np.percentile(params[key], 25)
+                            q3 = np.percentile(params[key], 75)
+                            iqr = q3 - q1
+                            outlier_range = 1.5 * iqr
+                            params[key] = [value for value in params[key] if (q1 - outlier_range) <= value <= (q3 + outlier_range)]
 
-                                }
-                            writer.writerow(row)
-                            f.flush()  # 刷新缓冲
-                            print(row)
-                            # CarController.plot_traj(root_path = './SDFcostlog/' , img_name = 'Rg_Coll_w_'+str(round(coll_w,1)) + '.png')
-                            results.append(row)
-                        
-                    params = {key: [] for key in row}
-                    for result in results:
-                        for key in result:
-                            params[key].append(result[key])
-                    averages = {key: round(np.mean(values),3) for key, values in params.items()}
-                    averages['note'] = 'average'
-                    for key in params:
-                        q1 = np.percentile(params[key], 25)
-                        q3 = np.percentile(params[key], 75)
-                        iqr = q3 - q1
-                        outlier_range = 1.5 * iqr
-                        params[key] = [value for value in params[key] if (q1 - outlier_range) <= value <= (q3 + outlier_range)]
-
-                    averages_no_outliers = {key: round(np.mean(values),3) if values else 'N/A' for key, values in params.items()}
-                    averages_no_outliers['note'] = 'averages_no_outliers'
-                    writer.writerow(averages) # 均值保存
-                    writer.writerow(averages_no_outliers) # 箱线图数据
-                    f.flush()  # 刷新缓冲
-                    var_writer.writerow(averages_no_outliers)
-                    # Calculate variance and write it to a new file
-                    variances = {key: round(np.var(values), 3) if values != 'N/A' else 'N/A' for key, values in params.items()}
-                    variances['note'] = 'variance'
-                    var_writer.writerow(variances)
-                    var_file.flush()
+                        averages_no_outliers = {key: round(np.mean(values),3) if values else 'N/A' for key, values in params.items()}
+                        averages_no_outliers['note'] = 'averages_no_outliers'
+                        writer.writerow(averages) # 均值保存
+                        writer.writerow(averages_no_outliers) # 箱线图数据
+                        f.flush()  # 刷新缓冲
+                        var_writer.writerow(averages_no_outliers)
+                        # Calculate variance and write it to a new file
+                        variances = {key: round(np.var(values), 3) if values != 'N/A' else 'N/A' for key, values in params.items()}
+                        variances['note'] = 'variance'
+                        var_writer.writerow(variances)
+                        var_file.flush()
 
 
 if __name__ == '__main__':  

@@ -1,7 +1,7 @@
-# *.pkl
-# *.csv
-# SDFcostlog/
-# SDFcost_Franka/
+*.pkl
+*.csv
+SDFcostlog/
+SDFcost_Franka/
 
 .vscode*
 *.hdf5

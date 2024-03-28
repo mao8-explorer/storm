@@ -147,12 +147,12 @@ def run_experiment():
 
     
 
-    with open('./SDFcostlog/version0101/enhanced_benchmark_cost_scatter_UP_PPV.csv', 'a', newline='') as f:
+    with open('./SDFcostlog/version0101/SM_UP_PPV.csv', 'a', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not f.tell():
             writer.writeheader()
                 
-        current_state_dict = np.array([[0.12,0.2],[0.14, 0.15],[0.12, 0.4],[0.10, 0.30]])
+        current_state_dict = np.array([[0.12,0.2],[0.13, 0.15],[0.10, 0.30]])
         # current_state_dict = np.array([[0.12,0.2],[0.14, 0.15]])
         goals_list = [
             [[0.8687878787878789, 0.7824675324675325], 
@@ -163,9 +163,9 @@ def run_experiment():
             # [0.2040259740259739, 0.7851731601731602]],
             [[0.8787878787878789, 0.7824675324675325], 
             [0.2240259740259739, 0.7851731601731602]] 
-            ]    
+            ]      
         # Open the file for writing averages and variances
-        with open('./SDFcostlog/version0101/enhanced_benchmark_cost_scatter_UP_PPV_meanstd.csv', 'a', newline='') as var_file:
+        with open('./SDFcostlog/version0101/SM_UP_PPV_meanstd.csv', 'a', newline='') as var_file:
             var_writer = csv.DictWriter(var_file, fieldnames=fieldnames)
             if not var_file.tell():
                 var_writer.writeheader()
@@ -173,9 +173,9 @@ def run_experiment():
             # for r_w in [1.0, 5.0, 10.0]:
             for r_w in [1.0]:
                 CarController.controller.rollout_fn.sparse_reward.weight = torch.tensor(r_w, **CarController.tensor_args)
-                for g_w in np.arange(5, 40.1, 2):
+                for g_w in np.arange(35, 40.1, 5):
                     CarController.controller.rollout_fn.goal_cost.weight = torch.tensor(g_w, **CarController.tensor_args)
-                    for coll_w in np.arange(1, 4.1, 1.0):
+                    for coll_w in np.arange(1, 4.1, 0.5):
                         CarController.controller.rollout_fn.image_move_collision_cost.weight = torch.tensor(coll_w, **CarController.tensor_args)
 
                         results = []
