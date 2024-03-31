@@ -67,8 +67,9 @@ class holonomic_robot(Plotter_MultiModal):
         self.up_down = False
         self.goal_list = [
         # [0.9098484848484849, 0.2006060606060608],
-        [0.8787878787878789, 0.7824675324675325], 
-        [0.2240259740259739, 0.7851731601731602]] 
+         [0.8687878787878789, 0.7824675324675325], 
+         [0.2340259740259739, 0.7851731601731602]]
+
         self.goal_state = self.goal_list[-1]
         self.pause = False # 标志： 键盘是否有按键按下， 图像停止路径规划
         # load
@@ -80,13 +81,11 @@ class holonomic_robot(Plotter_MultiModal):
         self.controller.rollout_fn.image_move_collision_cost.world_coll.Reinit(self.shift, self.up_down) # command handle
 
         exp_params = self.simple_task.exp_params
-        
         self.sim_dt = exp_params['control_dt'] #0.1
         self.extents = np.ravel(exp_params['model']['position_bounds'])
-
+        self.current_state = {'position':np.array([0.12,0.2]), 'velocity':np.zeros(2) + 0.0, 'acceleration':np.zeros(2) + 0.0 }
         self.traj_log = {'position':[], 'velocity':[], 'error':[], 'command':[], 'des':[],'coll_cost':[],
                     'acc':[], 'world':None, 'bounds':self.extents , 'weights':[]}
-        self.current_state = {'position':np.array([0.12,0.2]), 'velocity':np.zeros(2) + 0.0, 'acceleration':np.zeros(2) + 0.0 }
         self.plot_init()
         self.lap_count = 20
         self.goal_thresh = 0.03 # 目标点阈值
@@ -107,6 +106,7 @@ class holonomic_robot(Plotter_MultiModal):
         self.goal_flagi = -1 # 调控目标点
         self.loop_step = 0   #调控运行steps
         t_step = 0.0 # 记录run_time
+
         self.run_time = 0.0
         self.collisions_all = 0
         self.crash_rate = 0.
@@ -129,17 +129,16 @@ class holonomic_robot(Plotter_MultiModal):
                 self.simple_task.update_params(goal_state=self.goal_state) # 目标更变
                 self.goal_flagi += 1
         
-
             t_step += self.sim_dt
+        
+
             # self.plot_setting()
             # if self.pause:
             #     while True:
             #         time.sleep(0.5)
             #         self.plot_setting()
             #         if not self.pause: break
-            
-            self.loop_step += 1
-            # self.plot_setting()
+
             curr_pose = torch.as_tensor(self.current_state['position'], **self.tensor_args).unsqueeze(0)
             self.potential_curr = self.controller.rollout_fn.image_move_collision_cost.world_coll.get_pt_value(curr_pose) # 当前势场
             if self.potential_curr[0] > 0.80 : 
@@ -165,7 +164,6 @@ class holonomic_robot(Plotter_MultiModal):
         mean_w = np.mean(weights, axis=0)[0,0]
 
         return trajectory_length, average_speed, max_speed, mean_w
-             
 
 fieldnames = ['topK', 'judge_coll_weight', 'lamda', 'running_time',
               'whileloop_count', 'collision_count', 'crash_rate', 

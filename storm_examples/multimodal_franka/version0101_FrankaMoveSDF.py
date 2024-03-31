@@ -79,7 +79,7 @@ class MPCRobotController(FrankaEnvBase):
                       'ee_path_length', 'joints_path_length', 
                       'Avg.Speed', 'Max.Speed',
                       'goal_w', 'collision_w',
-                      'oneLoop','oneOpt'] 
+                      'oneLoop','oneOpt','note'] 
 
         self.sim_dt = self.mpc_control.exp_params['control_dt']
         self.lap_count = 10
@@ -216,52 +216,67 @@ if __name__ == '__main__':
     FrankaController = MPCRobotController(gym_instance , ik_mSolve)    
 
     def run_experiment(bounds, csv_filename):
-        with open(csv_filename, 'a', newline='') as f:
+        with open('./SDFcost_Franka/raw/'+ csv_filename, 'a', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=FrankaController.fieldnames)
             if not f.tell():
                 writer.writeheader()
 
-            for g_w in np.arange(10, 80.1, 10):
-                for coll_w in np.arange(80, 250, 20):
-                    # if g_w not in [10, 20, 50, 80] or coll_w not in [80, 100, 150, 200, 250]:
-
-                    FrankaController.rollout_fn.dist_cost.weight = torch.tensor(g_w, **FrankaController.tensor_args)
-                    FrankaController.rollout_fn.primitive_collision_cost.weight = torch.tensor(coll_w, **FrankaController.tensor_args)
-
-                    results = []
-                    for i in range(4):
-                        FrankaController.reinit(bounds=bounds)
-                        row  = FrankaController.run()
+            with open('./SDFcost_Franka/meanstd/'+ csv_filename, 'a', newline='') as var_file:
+                var_writer = csv.DictWriter(var_file, fieldnames=FrankaController.fieldnames)
+                if not var_file.tell():
+                    var_writer.writeheader()
                         
-                        row['goal_w'] = g_w 
-                        row['collision_w'] = coll_w
+                for g_w in np.arange(10, 80.1, 10):
+                    for coll_w in np.arange(80, 250, 20):
+                        # if g_w not in [10, 20, 50, 80] or coll_w not in [80, 100, 150, 200, 250]:
 
-                        writer.writerow(row)
-                        f.flush()  # 刷新缓冲
-                        results.append(row)
-                        if row['opt_step_count'] == 3000:  break
-                        # img_name='P_'+str(g_w)+'_'+ str(coll_w)+'_'+str(i)+'_leftright_'
-                        # FrankaController.plot_traj(root_path='./SDFcost_Franka/temp/', img_name = img_name, plot_traj_multimodal=False)
-                        # with open(img_name+'.pkl', 'wb') as fpkl:
-                        #      pickle.dump(FrankaController.traj_log, fpkl)
+                        FrankaController.rollout_fn.dist_cost.weight = torch.tensor(g_w, **FrankaController.tensor_args)
+                        FrankaController.rollout_fn.primitive_collision_cost.weight = torch.tensor(coll_w, **FrankaController.tensor_args)
 
-                    if len(results) > 1: 
-                        params = {key: [] for key in row}
-                        for result in results:
-                            for key in result:
-                                params[key].append(result[key])
-                        averages = {key: round(np.mean(values), 3) for key, values in params.items()}
-                        for key in params:
-                            q1 = np.percentile(params[key], 25)
-                            q3 = np.percentile(params[key], 75)
-                            iqr = q3 - q1
-                            outlier_range = 1.5 * iqr
-                            params[key] = [value for value in params[key] if (q1 - outlier_range) <= value <= (q3 + outlier_range)]
+                        results = []
+                        for i in range(6):
+                            FrankaController.reinit(bounds=bounds)
+                            row  = FrankaController.run()
+                            
+                            row['goal_w'] = g_w 
+                            row['collision_w'] = coll_w
 
-                        averages_no_outliers = {key: round(np.mean(values), 3) if values else 'N/A' for key, values in params.items()}
-                        writer.writerow(averages) # 均值保存
-                        writer.writerow(averages_no_outliers) # 箱线图数据
-                        f.flush()  # 刷新缓冲
+                            writer.writerow(row)
+                            f.flush()  # 刷新缓冲
+                            results.append(row)
+                            if row['opt_step_count'] == 3000:  break
+                            # img_name='P_'+str(g_w)+'_'+ str(coll_w)+'_'+str(i)+'_leftright_'
+                            # FrankaController.plot_traj(root_path='./SDFcost_Franka/temp/', img_name = img_name, plot_traj_multimodal=False)
+                            # with open(img_name+'.pkl', 'wb') as fpkl:
+                            #      pickle.dump(FrankaController.traj_log, fpkl)
+
+                        if len(results) > 1: 
+                            params = {key: [] for key in row}
+                            for result in results:
+                                for key in result:
+                                    params[key].append(result[key])
+                            averages = {key: round(np.mean(values),3) for key, values in params.items()}
+                            averages['note'] = 'average'
+                            for key in params:
+                                q1 = np.percentile(params[key], 25)
+                                q3 = np.percentile(params[key], 75)
+                                iqr = q3 - q1
+                                outlier_range = 1.5 * iqr
+                                params[key] = [value for value in params[key] if (q1 - outlier_range) <= value <= (q3 + outlier_range)]
+
+                            averages_no_outliers = {key: round(np.mean(values),3) if values else 'N/A' for key, values in params.items()}
+                            averages_no_outliers['note'] = 'averages_no_outliers'
+                            writer.writerow(averages) # 均值保存
+                            writer.writerow(averages_no_outliers) # 箱线图数据
+                            f.flush()  # 刷新缓冲
+                            var_writer.writerow(averages_no_outliers)
+                            # Calculate variance and write it to a new file
+                            variances = {key: round(np.var(values), 3) if values != 'N/A' else 'N/A' for key, values in params.items()}
+                            variances['note'] = 'variance'
+                            var_writer.writerow(variances)
+                            var_file.flush()
+
+
 
 
     # bounds = [-0.30, 0.30]
@@ -269,4 +284,6 @@ if __name__ == '__main__':
 
 
     bounds = [-0.40, 0.40]
-    run_experiment(bounds, './SDFcost_Franka/SDFcost_FrankaScatter_bound0.04.csv')
+    run_experiment(bounds, 'SDFcost_FrankaScatter_bound0.04.csv')
+
+    # run_experiment(bounds, 'SDFcost_FrankaScatter_up.csv')

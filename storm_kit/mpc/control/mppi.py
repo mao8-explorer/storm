@@ -218,7 +218,6 @@ class MPPI(OLGaussianMPC):
         self.greedy_mean , self.greedy_Value_w , self.greedy_best_action , greedy_cov_update , greedy_good_idx= self.softMax_cost(greedy_total_costs, judge_total_costs, actions)
         self.sensi_mean , self.sensi_Value_w , self.sensi_best_action , sensi_cov_update , sensi_good_idx = self.softMax_cost(sensi_total_costs, judge_total_costs, actions)
 
-
         # self.greedy_top_trajs = torch.index_select(vis_seq, 0, greedy_good_idx)
         # self.sensi_top_trajs = torch.index_select(vis_seq, 0, sensi_good_idx)
         # self.sensi_sample_trajs  = vis_seq[ 60:110,:,:2]
