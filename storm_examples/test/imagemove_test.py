@@ -6,7 +6,7 @@ import time
 
 class WorldMoveableImageCollision:
     def __init__(self, 
-                 world_image="/home/zm/MotionPolicyNetworks/storm_ws/storm/content/assets/collision_maps/collision_map_cem.png", 
+                 world_image="/home/zy/Motion/storm/content/assets/collision_maps/collision_map_cem.png", 
                  tensor_args={'device':"cpu", 'dtype':torch.float32}):
         self.scene_im = None
         self.tensor_args = tensor_args

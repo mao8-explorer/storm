@@ -6,7 +6,7 @@ import matplotlib.animation as animation
 data = np.random.randn(10, 30, 2)*350
 
 # 加载image图像
-img = plt.imread('/home/zm/MotionPolicyNetworks/storm_ws/storm/content/assets/collision_maps/collision_map_cem.png')
+img = plt.imread('/home/zy/Motion/storm/content/assets/collision_maps/collision_map_cem.png')
 
 # 创建绘图窗口和轨迹图层
 fig = plt.figure()

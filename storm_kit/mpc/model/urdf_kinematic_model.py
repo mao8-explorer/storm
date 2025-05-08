@@ -25,7 +25,7 @@ import torch
 import torch.autograd.profiler as profiler
 
 from ...differentiable_robot_model.differentiable_robot_model import DifferentiableRobotModel
-from urdfpy import URDF
+from urchin import URDF
 from .model_base import DynamicsModelBase
 from .integration_utils import build_int_matrix, build_fd_matrix, build_fd_matrix_sphere, tensor_step_acc, tensor_step_vel, tensor_step_pos, tensor_step_jerk
 

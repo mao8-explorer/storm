@@ -22,7 +22,7 @@
 # DEALINGS IN THE SOFTWARE.#
 from typing import List, Tuple, Dict, Optional, Any
 import torch
-from urdfpy import URDF
+from urchin import URDF
 
 from ...differentiable_robot_model.differentiable_robot_model import DifferentiableRobotModel
 from .model_base import DynamicsModelBase

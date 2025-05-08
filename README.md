@@ -373,6 +373,8 @@ If you use this source code, please cite the below article,
   author={Mohak Bhardwaj and Balakumar Sundaralingam and Arsalan Mousavian and Nathan D. Ratliff and Dieter Fox and Fabio Ramos and Byron Boots},
   booktitle={5th Annual Conference on Robot Learning },
   year={2021},}
+
+@article{zhengmao's Paper}
 ```
 
 ## Contributing to this code

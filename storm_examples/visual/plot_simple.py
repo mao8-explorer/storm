@@ -185,7 +185,7 @@ class Plotter:
 
 
         #prepare trajectory background
-        collision_map_path = "/home/zm/MotionPolicyNetworks/storm_ws/history/storm/content/assets/collision_maps/collision_map_cem.png"
+        collision_map_path = "/home/zy/Motion/storm/content/assets/collision_maps/collision_map_cem.png"
         im = cv2.imread(collision_map_path,0)
         _,im = cv2.threshold(im,10,255,cv2.THRESH_BINARY)
         rows, cols = im.shape
