@@ -21,7 +21,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/base_link_l.STL"/>
+        <mesh filename="meshes/visual/base_link_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
@@ -43,7 +43,7 @@
     <visual>
       <origin rpy="1.5708 -1.5708 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/Link1_l.STL"/>
+        <mesh filename="meshes/visual/Link1_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
@@ -53,7 +53,7 @@
       <geometry>
         <cylinder length="0.1638999544084072" radius="0.05559538401924806"/>
       </geometry>
-      <origin rpy="0.0 -0.0 0.0" xyz="0.002274562215703227 3.725290298461914e-09 0.04194996692240238"/>
+      <origin rpy="1.5708 -1.5708 0" xyz="0 0 0"/>
     </collision>
   </link>
   <link name="Link2_l">
@@ -65,20 +65,20 @@
     <visual>
       <origin rpy="-1.5708 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/Link2_l.STL"/>
+        <mesh filename="meshes/visual/Link2_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 0.0 -0.0" xyz="0.0 -0.03777446600000001 -0.034179688"/>
+      <origin rpy="-1.5708 0.0 -0.0" xyz="0.0 -0.03777446600000001 -0.034179688"/>
       <geometry>
         <box size="0.078125 0.15545113 0.021484375"/>
       </geometry>
     </collision>
     <collision>
-      <origin rpy="-0.0 0.0 -0.0" xyz="0.0 -0.092986956 -0.00048828125"/>
+      <origin rpy="-1.5708 0.0 -0.0" xyz="0.0 -0.092986956 -0.00048828125"/>
       <geometry>
         <box size="0.0703125 0.08602613 0.07128906"/>
       </geometry>
@@ -93,7 +93,7 @@
     <visual>
       <origin rpy="1.5708 3.14 0.0" xyz="0 0 0.0"/>
       <geometry>
-        <mesh filename="meshes/Link3_l.STL"/>
+        <mesh filename="meshes/visual/Link3_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
@@ -115,7 +115,7 @@
     <visual>
       <origin rpy="-1.5708 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/Link4_l.STL"/>
+        <mesh filename="meshes/visual/Link4_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
@@ -143,7 +143,7 @@
     <visual>
       <origin rpy="-1.5708 0 0" xyz="0 0 0.0"/>
       <geometry>
-        <mesh filename="meshes/Link5_l.STL"/>
+        <mesh filename="meshes/visual/Link5_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
@@ -165,7 +165,7 @@
     <visual>
       <origin rpy="-1.5708 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/Link6_l.STL"/>
+        <mesh filename="meshes/visual/Link6_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
@@ -193,7 +193,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0.0"/>
       <geometry>
-        <mesh filename="meshes/Link7_l.STL"/>
+        <mesh filename="meshes/visual/Link7_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
@@ -215,7 +215,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/Link_hand_l.STL"/>
+        <mesh filename="meshes/visual/Link_hand_l.obj"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>

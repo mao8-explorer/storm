@@ -27,7 +27,7 @@ cuda_device_num: 0
 
 
 sim_params:
-  sim_urdf: "urdf/genie_description/genieArmSimple.urdf"
+  sim_urdf: "urdf/genie_description/A2D.urdf"
   # robot_pose: [0, 1.0, 0, 0.0, -0.707107, -0.707107, 0.0]
   robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]
   init_state: [0, 0.0, 0.0, 0.0, 0, 0, 0.0]
@@ -37,7 +37,7 @@ sim_params:
   
   asset_options:
     fix_base_link: True
-    flip_visual_attachments: True
+    flip_visual_attachments: False
     armature: 0.001
     disable_gravity: True
     collapse_fixed_joints: True

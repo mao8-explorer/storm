@@ -65,7 +65,7 @@ class Gym(object):
             #cam_target = gymapi.Vec3(-6, 0.0,6)
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
             plane_handle= gymapi.PlaneParams()
-            # plane_handle.distance = 0.05
+            plane_handle.distance = 0.05
             self.gym.add_ground(self.sim, plane_handle)
 
             self.gym.subscribe_viewer_keyboard_event(
