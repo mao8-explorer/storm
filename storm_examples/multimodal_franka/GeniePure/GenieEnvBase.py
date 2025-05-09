@@ -23,7 +23,7 @@ np.set_printoptions(precision=2)
 class GenieEnvBase(object):
     def __init__(self, gym_instance):
         super().__init__()
-        self.mpc_config = 'franka_reacher.yml'
+        self.mpc_config = 'genie_reacher.yml'
         self.world_description = 'collision_primitives_3d.yml'
         self.gym_instance = gym_instance
         self.device = torch.device('cuda', 0)
@@ -45,7 +45,36 @@ class GenieEnvBase(object):
         # self._initialize_mpc_control() # mpc_control 
         self._initialize_env_objects() # 设置 gym 可操作物 handle
         self._init_point_transform() # use for trans trajs_pos in robotCoordinate to world coordinate
-    
+
+
+    def _genie_initialize_robot_simulation(self):
+        """
+        contains a generic robot class
+            that can load a robot asset into sim and 
+            gives access to robot's state and receive command_of_policy.
+        """
+        # Initialize the robot simulation
+        robot_yml = join_path(get_gym_configs_path(), 'genie.yml')
+        with open(robot_yml) as file:
+            robot_params = yaml.load(file, Loader=yaml.FullLoader)
+        sim_params = robot_params['sim_params']  # get from -->'/home/zm/MotionPolicyNetworks/storm_ws/src/storm/content/configs/gym/franka.yml'
+        sim_params['asset_root'] = get_assets_path()
+        sim_params['collision_model']=None
+        robot_pose = sim_params['robot_pose']  # robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]'
+        # create robot simulation: contains a generic robot class that can load a robot asset into sim and gives access to robot's state and control.
+        self.robot_sim = RobotSim(
+            gym_instance=self.gym_instance.gym, 
+            sim_instance=self.gym_instance.sim,
+            env_instance = self.gym_instance.env_list[0],
+            viewer = self.gym_instance.viewer,
+            **sim_params,
+            device=torch.device('cuda', 0) )
+        # create gym environment: 
+        self.robot_ptr = self.robot_sim.spawn_robot(self.gym_instance.env_list[0], robot_pose, coll_id=2)
+        # ensure world_robot transform
+        self.w_T_r = self.robot_sim.spawn_robot_pose
+
+
     def _initialize_robot_simulation(self):
         """
         contains a generic robot class
@@ -53,7 +82,7 @@ class GenieEnvBase(object):
             gives access to robot's state and receive command_of_policy.
         """
         # Initialize the robot simulation
-        robot_yml = join_path(get_gym_configs_path(), 'franka.yml')
+        robot_yml = join_path(get_gym_configs_path(), 'genie.yml')
         with open(robot_yml) as file:
             robot_params = yaml.load(file, Loader=yaml.FullLoader)
         sim_params = robot_params['sim_params']  # get from -->'/home/zm/MotionPolicyNetworks/storm_ws/src/storm/content/configs/gym/franka.yml'
@@ -217,7 +246,8 @@ class GenieEnvBase(object):
             self.goal_flagi += 1
             self.update_goal_state()
             log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(self.goal_flagi, self.goal_flagi / len(self.goal_list), self.curr_collision)
-            rospy.loginfo(log_message)
+            # rospy.loginfo(log_message)
+            print(log_message)
             self.traj_log['cart_goal_pos'].append(self.g_pos.copy())
             # self.traj_log['thresh_index'].append(self.opt_step_count)
             # if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 

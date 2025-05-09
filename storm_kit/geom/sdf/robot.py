@@ -444,7 +444,7 @@ class RobotSphereCollision:
         b, n, _ = links_pos.shape
         for i in range(n):
             # link_pts = self._batch_link_spheres[i][:,:,:3]
-            self.w_batch_link_spheres[i] = transform_point(self._batch_link_spheres[i], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
+            self.w_batch_link_spheres[i][:,:,:3] = transform_point(self._batch_link_spheres[i][:,:,:3], links_rot[:,i,:,:], links_pos[:,i,:].unsqueeze(-2))
 
     def _vel_update_batch_robot_collision_objs(self, links_pos, links_rot):
         '''update pose of link spheres
@@ -602,7 +602,7 @@ def find_closest_distance(link_idx, links_sphere_list):
     link_dist = torch.max(dist,dim=-1)[0]
     return link_dist
 
-@torch.jit.script
+# @torch.jit.script
 def find_link_distance(links_sphere_list, dist):
     # type: (List[Tensor], Tensor) -> Tensor
     futures : List[torch.jit.Future[torch.Tensor]] = []

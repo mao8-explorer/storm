@@ -79,7 +79,7 @@ def create_dataset(robot_name):
     
     start_state = torch.zeros((rollout_fn.dynamics_model.d_state), **tensor_args)
 
-    state_dict = rollout_fn.dynamics_model.rollout_open_loop(start_state, q_samples)
+    state_dict = rollout_fn.dynamics_model.rollout_open_loop(start_state.unsqueeze(0), q_samples)
     
     link_pos_seq = state_dict['link_pos_seq']
     link_rot_seq = state_dict['link_rot_seq']
@@ -94,16 +94,16 @@ def create_dataset(robot_name):
     x_data  = x.cpu().numpy()
     y = dist.view(num_particles*2,1) #* 100.0
 
-    #torch.save(x, 'x_data.p')
-    #torch.save(y, 'y_data.p')
-    #plt.scatter(x_data[:,1], x_data[:,3], c=y.cpu().numpy(), vmin=-0.1, vmax=0.1,cmap='coolwarm')
-    #plt.show()
-    #print(torch.min(y), torch.max(y))
-    #x = x[y > -0.02]
-    #y[y < -0.02] = -0.02
-    #y[y < -0.1] = 0.1
-    #y[y >= -0.02] = 1.0
-    #y[y < -0.02] = 0.0
+    # torch.save(x, 'x_data.p')
+    # torch.save(y, 'y_data.p')
+    # plt.scatter(x_data[:,1], x_data[:,3], c=y.cpu().numpy(), vmin=-0.1, vmax=0.1,cmap='coolwarm')
+    # plt.show()
+    # print(torch.min(y), torch.max(y))
+    # x = x[y > -0.02]
+    # y[y < -0.02] = -0.02
+    # y[y < -0.1] = 0.1
+    # y[y >= -0.02] = 1.0
+    # y[y < -0.02] = 0.0
     
     print(torch.min(y), torch.max(y))
     
@@ -127,10 +127,16 @@ def create_dataset(robot_name):
     #plt.show()
 
     # scale dataset: 查看数据分布是否合理 对数据进行了缩放，即将输入数据和标签数据归一化到均值为0、标准差为1的分布
-    mean_x = torch.mean(x, dim=0)#* 0.0 #+ 1.0
-    std_x = torch.mean(x, dim=0)* 0.0 + 1.0
-    mean_y = torch.mean(y, dim=0)#* 0.0 #+ 1.0
-    std_y = torch.mean(y, dim=0)#* 0.0 + 1.0
+    # mean_x = torch.mean(x, dim=0)#* 0.0 #+ 1.0
+    # std_x = torch.mean(x, dim=0)* 0.0 + 1.0
+    # mean_y = torch.mean(y, dim=0)#* 0.0 #+ 1.0
+    # std_y = torch.mean(y, dim=0)#* 0.0 + 1.0
+
+    mean_x = torch.mean(x, dim=0)
+    std_x = torch.std(x, dim=0) + 1e-6  # 避免除0
+    mean_y = torch.mean(y, dim=0)
+    std_y = torch.std(y, dim=0) + 1e-6
+
     
     x_train = torch.div((x_train - mean_x),std_x)
     #x_train[x_train!=x_train] = 0.0
@@ -151,6 +157,7 @@ def create_dataset(robot_name):
     x_test = x[int((n_size)*0.9):,:]
     y_test = y[int((n_size)*0.9):]
 
+
     train_dataset = RobotDataset(x_train.detach(), y_train.detach(), y_train_true.detach())
     trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True)
     coll_dataset = RobotDataset(x_coll.detach(), y_coll.detach(), y_coll.detach())
@@ -158,11 +165,17 @@ def create_dataset(robot_name):
 
 
     optimizer = torch.optim.Adam(model.parameters(),lr=1e-3)
-    #optimizer = torch.optim.SGD(model.parameters(),lr=1e-3)#,momentum=0.97)
+    # optimizer = torch.optim.SGD(model.parameters(),lr=1e-3)#,momentum=0.97)
 
     #print(model)
     epochs = 500
     min_loss = 100.0
+
+    train_losses = []
+    val_losses = []
+    coll_losses = []
+
+
     # training:
     for e in range(epochs):
         model.train()
@@ -205,7 +218,7 @@ def create_dataset(robot_name):
         #val_loss = F.binary_cross_entropy_with_logits(y_pred,y_val)
         train_loss = np.mean(loss)
         if(val_loss < min_loss and e>20):
-            print('saving model', val_loss.item())
+            print('saving model ------------- ', val_loss.item())
             torch.save(
                 {
                     'epoch': e,
@@ -218,6 +231,12 @@ def create_dataset(robot_name):
                           robot_name+'_self_sdf.pt'))
             min_loss = val_loss
         print(e, train_loss, val_loss.item())
+
+        coll_loss = F.mse_loss(y_coll_pred, y_coll_batch, reduction='mean')  # 单次取样即可代表该 epoch
+        train_losses.append(train_loss)
+        val_losses.append(val_loss.item())
+        coll_losses.append(coll_loss.item())
+
 
     with torch.no_grad():
         x = x_test#[y_test[:,0] > 0.0]
@@ -233,7 +252,35 @@ def create_dataset(robot_name):
         loss = F.l1_loss(y_pred, y_test, reduction='mean')
         print(torch.median(y_pred), torch.mean(y_pred))
         print(loss.item())
-            
+
+
+    plot_loss_curves(train_losses, val_losses, coll_losses, save_path='loss_curve.png')
+
+
+def plot_loss_curves(train_losses, val_losses, coll_losses=None, save_path=None):
+    epochs = list(range(1, len(train_losses) + 1))
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(epochs, train_losses, label='Train Loss', linewidth=2)
+    plt.plot(epochs, val_losses, label='Validation Loss', linewidth=2)
+
+    if coll_losses is not None:
+        plt.plot(epochs, coll_losses, label='Collision Sample Loss', linestyle='--', linewidth=2)
+
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.title('Training Loss Dynamics', fontsize=14)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+
+    if save_path:
+        plt.savefig(save_path)
+        print(f"[INFO] Loss plot saved to: {save_path}")
+    
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__=='__main__':
     # create_dataset('franka_real_robot_tray')
     create_dataset('franka_real_robot')

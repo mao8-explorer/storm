@@ -6,6 +6,7 @@
 
 """
 from GenieEnvBase import GenieEnvBase
+from storm_examples.multimodal_franka.FilterPointCloud import FilterPointCloud
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import torch
 import numpy as np
@@ -14,7 +15,6 @@ from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml
 from storm_kit.mpc.task.reacher_task import ReacherTask
 import queue
 import time
-import csv
 
 
 class IKSolve:
@@ -39,37 +39,47 @@ class MPCRobotController(GenieEnvBase):
         super().__init__(gym_instance = gym_instance)
         self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args )
         self._environment_init()
-        x,z,y = 0.45 , 0.45 , 0.45
-        self.goal_list = [
-             [x,y, z],
-             [-x,y, z],
-             [-x,y, -z],
-             [x,y, -z],
-             ]
-        # self.goal_list = [
-        #      [0.20,0.30,-0.65],
-        #      [0.20,0.30,0.65],]
+        self.envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
+        self.task_leftright = False
+        if self.task_leftright:
+            self.coll_dt_scale = 0.015 # left and right 0.02测试一次
+            self.coll_movebound_leftright = [-0.40,0.40] # 左右实验的位置边界 [-0.4,0.4]测试一次
+            self.goal_list = [ # 两个目标点位置
+                [0.25,0.40,  0.65],
+                [0.20,0.40, -0.65]]
+        else:
+            self.coll_dt_scale = 0.015 # up and down
+            self.coll_movebound_updown = [0.40,0.80] # 上下实验的位置边界
+            self.goal_list = [ # 两个目标点位置
+                [0.20,0.35,  0.65],
+                [0.20,0.35, -0.65]]
+        self.uporient = -1.0
+        self.init_coll_pos = [5.40,5.60,-0.20]
         self.goal_state = self.goal_list[-1]
         self.update_goal_state()
+        self.update_collision_state(self.init_coll_pos)
         self.rollout_fn = self.mpc_control.controller.rollout_fn
         self.goal_ee_transform = np.eye(4)
         # 暂行多进程方案是通过传参的方式 引导ik_proc句柄 保证ik_proc在主进程启动 避免无法共享内存的问题
         self.ik_mSolve = ik_mSolve
-
-        self.fieldnames = ['whole_time', 'opt_step_count', 'collison_count', 'crash_rate', 
+        #  visual 控件
+        self.gradient_visual_rviz = False
+        self.pointcloud_visual_rviz = False
+        self.fieldnames = ['whole_time', 'opt_step_count', 'collision_count', 'crash_rate', 
                       'ee_path_length', 'joints_path_length', 
-                      'Avg.Speed', 'Max.Speed','Mean_weight',
-                      'oneLoop','oneOpt','Note'] 
-        
-    
+                      'Avg.Speed', 'Max.Speed',
+                      'goal_w', 'collision_w',
+                      'oneLoop','oneOpt'] 
+
         self.sim_dt = self.mpc_control.exp_params['control_dt']
-        self.lap_count = 8
-        self.thresh = 0.02 # goal next thresh in Cart
+        self.lap_count = 10
+        self.thresh = 0.05 # goal next thresh in Cart
 
 
     def run(self):
         self.goal_flagi = -1 # 调控目标点
         t_step = gym_instance.get_sim_time()
+        obs = {}
         self.jnq_des = np.zeros(7)
         last = time.time()
         opt_step_count = 0 
@@ -83,6 +93,14 @@ class MPCRobotController(GenieEnvBase):
                 # 正常循环主体
                 self.gym_instance.step()
                 self.gym_instance.clear_lines()
+                ##----- collision with environment generate pointcloud 6ms -----##
+                    # self.robot_sim.updateCamImage()
+                    # obs.update(self.robot_sim.ImageToPointCloud()) #耗时大！
+                    # self.envpc_filter._update_state(obs) 
+                    # # compute pointcloud to sdf_map 4.5ms
+                    # self.collision_grid = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
+                    #                      _opt_compute_dynamic_voxeltosdf(self.envpc_filter.cur_scene_pc, visual = True)
+                ##----- collision with environment generate pointcloud 6ms -----##
                 # monitor ee_pose_gym and update goal_param_mpc
                 self.monitorMPCGoalupdate()
                 # seed goal to MPC_Policy _ get Command
@@ -106,10 +124,25 @@ class MPCRobotController(GenieEnvBase):
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 
+
+                # curr_coll max
+                # curr_coll = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_state_collision
+                # if (curr_coll > 0.90).any() : 
+                #     self.curr_collision += 1
+                #     self.collision_hanppend = True
+                #     collision_info = "Collision Count: {}, Collisions: {}".format(self.curr_collision, torch.nonzero(curr_coll > 0.90).flatten().cpu().numpy())
+                #     print(collision_info)
+
+                if self.task_leftright:
+                    self._dynamic_object_moveDesign_leftright()
+                else :
+                    self._dynamic_object_moveDesign_updown()
+
                 if self.goal_flagi > -1 :
                     self.traj_append()
                     opt_step_count += 1
-                    self.traj_log['collision'].append(0.0)
+                    # self.traj_log['collision'].append(curr_coll.cpu().max())
+
                 # 逆解获取查询 output_queue
                 try :
                     output = self.ik_mSolve.output_queue.get()
@@ -147,12 +180,7 @@ class MPCRobotController(GenieEnvBase):
         print("[INFO]", log_message)
 
         # self.mpc_control.close()
-        with open('./SDFcost_Franka/SDFcost_CompareForFranka.csv', 'a', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=self.fieldnames)
-            if not f.tell():
-                writer.writeheader()
-            writer.writerow(row)
-        self.plot_traj(root_path = './SDFcost_Franka/' , img_name = 'PPV.png')
+        # self.plot_traj(root_path = './SDFcost_Franka/' , img_name = 'PPV.png')
         print("mpc_close...")
 
 
