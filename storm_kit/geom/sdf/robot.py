@@ -485,6 +485,7 @@ class RobotSphereCollision:
             [type]: [description]
         """        
         dist = self.robot_nn.compute_signed_distance(q)
+        # print(f'Self-collision distance: max = {dist.max().item():.4f}, min = {dist.min().item():.4f}')
         return dist
 
 
@@ -602,7 +603,7 @@ def find_closest_distance(link_idx, links_sphere_list):
     link_dist = torch.max(dist,dim=-1)[0]
     return link_dist
 
-# @torch.jit.script
+@torch.jit.script
 def find_link_distance(links_sphere_list, dist):
     # type: (List[Tensor], Tensor) -> Tensor
     futures : List[torch.jit.Future[torch.Tensor]] = []

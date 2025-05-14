@@ -34,6 +34,9 @@ class IKProc(mp.Process):
         self,
         output_queue,
         input_queue_maxsize = 5,
+        urdf_path = "content/assets/urdf/franka_description/franka_panda_no_gripper.urdf",
+        base_link = "panda_link0",
+        end_link = "ee_link"
     ):
         """
         Args:
@@ -45,9 +48,9 @@ class IKProc(mp.Process):
         self.output_queue = output_queue
         self.input_queue = LimitedQueue(input_queue_maxsize)
         self.ik_solver = TracIKSolver(
-            "content/assets/urdf/franka_description/franka_panda_no_gripper.urdf",
-            "panda_link0",
-            "ee_link",
+            urdf_path,
+            base_link,
+            end_link,
             timeout=0.05,
             solve_type= self.solve_types[1],
         )

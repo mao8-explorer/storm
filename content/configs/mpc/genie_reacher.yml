@@ -34,10 +34,10 @@ cmd_filter_coeff: {'position':1.0, 'velocity':1.0, 'acceleration':0.0}
 
 model:
   # any link that is not specified as learnable will be initialized from urdf
-  urdf_path: "urdf/franka_description/franka_panda_no_gripper.urdf"
+  urdf_path: "urdf/genie_description/A2DWithFixBase.urdf"
   learnable_rigid_body_config:
     learnable_links: []
-  name: "franka_panda"
+  name: "genie"
   max_acc: 0.50
   dt: 0.07
   dt_traj_params:
@@ -48,27 +48,27 @@ model:
   #sim_freq: 100
   ee_link_name: "ee_link"
   init_state: [0.0, -0.36, -0.2, -2.0, 0.0, 1.64, 0.68]
-  link_names: ['panda_link2','panda_link3','panda_link4','panda_link5', 'panda_link6','panda_link7','panda_hand'] # robot_represent (env or self collison)
+  link_names: ['Link2_l','Link3_l','Link4_l','Link5_l', 'Link6_l','Link7_l','Link_hand_l'] # robot_represent (env or self collison)
   #link_names: ['panda_link6']
   vel_scale: 1.0
-  collision_spheres: '../robot/franka_represent.yml'
+  collision_spheres: '../robot/genie_represent.yml'
   
   robot_collision_params:
-    urdf: "urdf/franka_description/franka_panda_no_gripper.urdf"
+    urdf: "urdf/genie_description/A2DWithFixBase.urdf"
     sample_points: 100
-    link_objs: ['panda_link2', 'panda_link3','panda_link4','panda_link5', 'panda_link6','panda_link7','panda_hand']
+    link_objs: ['Link2_l','Link3_l','Link4_l','Link5_l', 'Link6_l','Link7_l','Link_hand_l']
     #link_objs: ['panda_link6']
     threshold: 0.35
     bounds: [[-0.8, -0.8, -0.23],[0.8,0.8,1.5]]
-    collision_spheres: '../robot/franka_represent.yml'
-    self_collision_weights: 'robot_self/franka_real_robot_self_sdf.pt'
+    collision_spheres: '../robot/genie_represent.yml'
+    self_collision_weights: 'robot_self/genie_self_sdf.pt'
     dof: 7
     horizon: 30
     num_link_objs: 7
-    num_particles: 580
+    num_particles: 500
 
   world_collision_params:
-    model_path: '/home/zm/MotionPolicyNetworks/SceneCollisionNet/weights/scene_coll_nn'
+    model_path: ''
 #    model_path: 'scene_coll_nn/'
     label_map: {'robot':2, 'ground':0} # "env" : 1 
     bounds: [[-0.8, -0.8, -0.23],[0.8,0.8,1.5]]
@@ -88,13 +88,13 @@ cost:
     sigma : 0.05
 
   PoseCost_Reward:
-    pose_weight: 10.0
+    pose_weight: 30.0
     reward_weight: 100.0
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     sigma : 0.05
     
   primitive_collision:
-    weight: 0.0
+    weight: 100.0
     vec_weight: [1.0, 1.0, 1.0, 5.0, 1.0, 1.0, 5.0] # panda_link: 2 3 4 5 6 7 panda_hand
     pv_weight: [1.0, 8.0]
     distance_threshold: 0.05
@@ -121,9 +121,9 @@ cost:
     hinge_val: -1
     convergence_val: [0.0, 0.0] # orientation, position
 
-  Cart_sparse_reward:
-    weight: 100.0
-    sigma : 0.046
+  # Cart_sparse_reward:
+  #   weight: 0.0
+  #   sigma : 0.046
 
   stop_cost_acc:
     weight: 0.0
@@ -140,7 +140,7 @@ cost:
     gaussian_params: {'n':0, 'c':0.5, 's':0, 'r':5.0}
     
   robot_self_collision:
-    weight: 1250.0
+    weight: 1000.0
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
@@ -222,7 +222,7 @@ mppi:
   step_size_cov     : 0.7
   beta              : 1.0  # 越小 探索性越弱 max entropy exp(-1/beta * x)
   alpha             : 1
-  num_particles     : 580 #10000
+  num_particles     : 500 #10000
   update_cov        : True
   cov_type          : 'diag_AxA' # 
   kappa             : 0.005

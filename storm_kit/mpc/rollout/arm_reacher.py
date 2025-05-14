@@ -64,8 +64,8 @@ Todo:
         self.jnq_sparse_reward = JnqSparseReward(**exp_params['cost']['Jnq_sparse_reward'], # 目标限制
                                   tensor_args=self.tensor_args)
         
-        self.cart_sparse_reward = CartSparseReward(**exp_params['cost']['Cart_sparse_reward'], # 目标限制
-                                  tensor_args=self.tensor_args)
+        # self.cart_sparse_reward = CartSparseReward(**exp_params['cost']['Cart_sparse_reward'], # 目标限制
+        #                           tensor_args=self.tensor_args)
         
         # self.terminal_cost = terminalCost(**exp_params['cost']['terminal_pos'],
         #                           tensor_args=self.tensor_args)

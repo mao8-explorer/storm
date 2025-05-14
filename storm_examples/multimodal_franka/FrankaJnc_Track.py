@@ -77,7 +77,7 @@ class MPCRobotController(FrankaEnvBase):
                 self.monitorMPCGoalupdate()
                 # seed goal to MPC_Policy _ get Command
                 t_step += sim_dt
-                self.current_robot_state = self.robot_sim.get_state(self.env_ptr, self.robot_ptr) # "dict: pos | vel | acc"
+                self._dynamic_goal_trackcurrent_robot_state = self.robot_sim.get_state(self.env_ptr, self.robot_ptr) # "dict: pos | vel | acc"
 
                 qinit = self.current_robot_state['position'] # shape is (7,)
                 self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()

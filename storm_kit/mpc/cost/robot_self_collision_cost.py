@@ -85,11 +85,11 @@ class RobotSelfCollisionCost(nn.Module):
         horizon = q.shape[1]
         q = q.view(batch_size * horizon, q.shape[2])
         res = self.coll.check_self_collisions_nn(q)
-        res = res.view(batch_size, horizon)
-        res += self.distance_threshold
+        res = res.view(batch_size, horizon) # res 是缩放后的 true value （偏向认为是有物理意义的 ：m）
+        # res += self.distance_threshold 这个在self-collision net下 是无意义的
         # 自碰撞是有问题的 这样设置 这种是连续的吗？ 1. 阈值是怎么确定的 2. 连续性的碰撞值是否合理 需要验证 怎么验证
         res[res <= 0.0] = 0.0
-        res[res >= 0.5] = 0.5  # 貌似无意义 
+        res[res >= 0.003] = 0.5  # 貌似无意义 
 
         cost = self.weight * self.proj_gaussian(res)
         return cost

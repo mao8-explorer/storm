@@ -27,9 +27,10 @@ cuda_device_num: 0
 
 
 sim_params:
-  sim_urdf: "urdf/genie_description/A2D.urdf"
+  # sim_urdf: "urdf/genie_description/A2D.urdf"
+  sim_urdf: 'urdf/genie_description/A2DWithFixBase.urdf'
   # robot_pose: [0, 1.0, 0, 0.0, -0.707107, -0.707107, 0.0]
-  robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]
+  robot_pose: [0, 0., 0, -0.707107, 0.0, 0.0, 0.707107]
   init_state: [0, 0.0, 0.0, 0.0, 0, 0, 0.0]
   # init_state: [1.1, 0.02, 0.1, -1.57, -0.15, 2.02, 0.83]
 

@@ -100,6 +100,7 @@ def MLP(channels, dropout_ratio=0.0, batch_norm=False,act_fn=ReLU,layer_norm=Fal
 
     return layers
 
+    
 class MLPRegression(nn.Module):
     def __init__(self, input_dims, output_dims, mlp_layers=[256, 128, 128], dropout_ratio=0.0, batch_norm=False, scale_mlp_units=1.0, act_fn=ELU,layer_norm=False, nerf=False):
         """Create an instance of mlp nn model

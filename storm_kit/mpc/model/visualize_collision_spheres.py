@@ -1,132 +1,256 @@
-from isaacgym import gymapi
-from isaacgym import gymutil
-
-import torch
 import numpy as np
+np.int = int
+np.float = float
+
+import open3d as o3d
+import open3d.visualization.gui as gui
+import open3d.visualization.rendering as rendering
+
 import yaml
+import torch
 import copy
 
-from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path
-from storm_kit.gym.helpers import load_struct_from_dict
-
-from storm_kit.util_file import get_mpc_configs_path as mpc_configs_path
-
-from storm_kit.differentiable_robot_model.coordinate_transform import quaternion_to_matrix, CoordinateTransform
+from urdfpy import URDF
+from storm_kit.util_file import (
+    join_path, get_assets_path, get_mpc_configs_path,
+    get_gym_configs_path, load_yaml
+)
 from storm_kit.mpc.task.reacher_task import ReacherTask
 
-from pytransform3d.urdf import UrdfTransformManager
-from pytransform3d.plot_utils import *
-import matplotlib.pyplot as plt
 
 
-def view_sdf(get_sdf_grid):
+# === 配置文件路径 ===
+ROBOT_FILE = 'genie.yml'
+TASK_FILE = 'genie_reacher.yml'
+WORLD_FILE = 'collision_primitives_3d.yml'
 
-    from mayavi import mlab
-    # 将CUDA tensor转换为NumPy数组并移回到CPU上
-    sdf_grid_data = get_sdf_grid.cpu().numpy()
 
-    # 设置可视化界面
-    mlab.figure(bgcolor=(1, 1, 1), size=(800, 800))
-
-    # 创建3D grid数据
-    x, y, z = np.mgrid[:32, :32, :32]
-
-    # 定义自定义颜色映射：在-1.4594到0.0997之间线性插值
-    min_value = -1.4594
-    max_value = 0.0997
-    color_map = 'coolwarm'
-    sdf_grid_data_normalized = (sdf_grid_data - min_value) / (max_value - min_value)
-    mlab.contour3d(x, y, z, sdf_grid_data_normalized, colormap=color_map, opacity=0.7)
-    volume = mlab.volume_slice(x, y, z, sdf_grid_data_normalized, colormap='coolwarm', plane_orientation='z_axes', opacity=0.7)
-    # 添加颜色条
-    mlab.colorbar()
-
-    # 显示网格线
-    mlab.outline()
-
-    # 显示可视化界面
-    mlab.show()
-robot_file = 'franka.yml'
-task_file = 'franka_reacher.yml'
-world_file = 'collision_primitives_3d.yml'
-
-world_yml = join_path(get_gym_configs_path(), world_file)
-
-with open(world_yml) as file:
-    world_params = yaml.load(file, Loader=yaml.FullLoader)
-
-robot_yml = join_path(get_gym_configs_path(), robot_file)
-with open(robot_yml) as file:
-    robot_params = yaml.load(file, Loader=yaml.FullLoader)
-
+# === Tensor 类型设定 ===
 tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
-mpc_control = ReacherTask(task_file, robot_file, world_file, tensor_args)
 
-#set a dummy start state and goal
-g_pos = np.array([0.1, 0.1, 0.1])
-g_q = np.array([1.0, 0.0, 0.0, 0.0])
-mpc_control.update_params(goal_ee_pos=g_pos,
-                            goal_ee_quat=g_q)
-current_robot_state = {
-    'position': np.array([0.0, -0.7853, 0.0, -2.3561, 0.0, 1.5707, 0.7853]),
-    'velocity': np.zeros(7),
-    'acceleration': np.zeros(7)
-}
+# === 加载 YAML 配置 ===
+robot_params = load_yaml(join_path(get_gym_configs_path(), ROBOT_FILE))
+world_params = load_yaml(join_path(get_gym_configs_path(), WORLD_FILE))
+task_params = load_yaml(join_path(get_mpc_configs_path(), TASK_FILE))
 
-# command = mpc_control.get_command(0.0, current_robot_state, control_dt=0.02, WAIT=True)
-current_robot_state_arr = np.hstack((current_robot_state['position'], current_robot_state['velocity'], current_robot_state['acceleration']))
-current_robot_state_arr = torch.as_tensor(current_robot_state_arr, **tensor_args).unsqueeze(0)
-current_cost = mpc_control.controller.rollout_fn.current_cost(current_robot_state_arr)
+# === 加载模型并渲染 ===
+urdf_path = join_path(get_assets_path(), task_params['model']['urdf_path'])
+mesh_dir = join_path(get_assets_path(), 'urdf/genie_description/')
 
-link_pos_seq = copy.deepcopy(mpc_control.controller.rollout_fn.link_pos_seq)
-link_rot_seq = copy.deepcopy(mpc_control.controller.rollout_fn.link_rot_seq)
-batch_size = link_pos_seq.shape[0]
-horizon = link_pos_seq.shape[1]
-n_links = link_pos_seq.shape[2]
-link_pos = link_pos_seq.view(batch_size * horizon, n_links, 3)
-link_rot = link_rot_seq.view(batch_size * horizon, n_links, 3, 3)
+# === 初始化 MPC 控制器 ===
+mpc = ReacherTask(TASK_FILE, WORLD_FILE, tensor_args)
 
-mpc_control.controller.rollout_fn.robot_self_collision_cost.coll.update_batch_robot_collision_objs(link_pos, link_rot)
-
-spheres = mpc_control.controller.rollout_fn.robot_self_collision_cost.coll.w_batch_link_spheres
-spheres = [s.numpy() for s in spheres] 
-
-# view sdf grid
-get_sdf_grid = mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll.scene_sdf_matrix
-# mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll.view_sdf_grid(get_sdf_grid)
+# === 设置目标状态与当前状态 ===
+goal_pos = np.array([0.1, 0.1, 0.1])
+goal_quat = np.array([1.0, 0.0, 0.0, 0.0])
+mpc.update_params(goal_ee_pos=goal_pos, goal_ee_quat=goal_quat)
 
 
-#visualize robot urdf with spheres
-tm = UrdfTransformManager()
-task_file = join_path(mpc_configs_path(), task_file)
-with open(task_file) as file:
-    task_params = yaml.load(file, Loader=yaml.FullLoader)
-urdf = task_params['model']['urdf_path']
-mesh = 'urdf/franka_description/'
-urdf = join_path(get_assets_path(), urdf)
-mesh = join_path(get_assets_path(), mesh)
-print(urdf, mesh)
-with open(urdf, "r") as f:
-    tm.load_urdf(f.read(), mesh_path=mesh)
-joint_names = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7']
-for i,j in enumerate(joint_names):
-    tm.set_joint(j, current_robot_state['position'][i])
-ax = tm.plot_frames_in(
-    "base_link", s=0.1,
-    show_name=False)
-# ax = tm.plot_connections_in("lower_cone", ax=ax)
-tm.plot_visuals("base_link", ax=ax, convex_hull_of_mesh=True)
 
-for sphere in spheres:
-# sphere = spheres[-1]
-    # print(sphere)
-    # exit()
-    link_spheres = sphere[0]
-    for sp in link_spheres:
-        x, y, z, r = sp
-        plot_sphere(ax, r, [x,y,z], wireframe=False, alpha=0.3, color='g')
+# === 渲染函数 ===
+def get_robot_meshes(urdf_path, mesh_dir, q):
+    robot = URDF.load(urdf_path)
+    joint_names = [j.name for j in robot.actuated_joints]
+    joint_dict = dict(zip(joint_names, q))
+    meshes = []
+    fk = robot.link_fk(cfg=joint_dict)
+    for link in robot.links:
+        for visual in link.visuals:
+            if visual.geometry.mesh is None:
+                continue
+            mesh_path = join_path(mesh_dir, visual.geometry.mesh.filename)
+            try:
+                m = o3d.io.read_triangle_mesh(mesh_path)
+                m.compute_vertex_normals()
+                m.transform(fk[link])
+                m.paint_uniform_color([0.6, 0.6, 0.6])
+                meshes.append(m)
+            except:
+                pass
+    return meshes
 
 
-plt.show()
+def get_collision_spheres(q):
+    state = {
+        'position': q,
+        'velocity': np.zeros(7),
+        'acceleration': np.zeros(7)
+    }
+    state_arr = np.hstack((state['position'], state['velocity'], state['acceleration']))
+    state_tensor = torch.as_tensor(state_arr, **tensor_args).unsqueeze(0)
+    mpc.controller.rollout_fn.current_cost(state_tensor)
 
-view_sdf(get_sdf_grid)
+    pos_seq = copy.deepcopy(mpc.controller.rollout_fn.link_pos_seq)
+    rot_seq = copy.deepcopy(mpc.controller.rollout_fn.link_rot_seq)
+
+    distcheck_spheres = mpc.controller.rollout_fn.robot_self_collision_cost.distance
+    dist_spheres = distcheck_spheres(pos_seq, rot_seq)[0].cpu().numpy() # shape : (1,)
+
+
+    distcheck_nn = mpc.controller.rollout_fn.robot_self_collision_cost.coll.check_self_collisions_nn
+    dist_nn = distcheck_nn(torch.tensor(q, device='cpu', dtype=torch.float32)).cpu().numpy()
+
+    error = abs(dist_spheres.item() - dist_nn.item())
+    print(f"Ground truth: {dist_spheres.item():.4f}, Prediction: {dist_nn.item():.4f}, Absolute error: {error:.4f}")
+
+    b, h, n = pos_seq.shape[:3]
+    pos = pos_seq.view(b * h, n, 3)
+    rot = rot_seq.view(b * h, n, 3, 3)
+
+    mpc.controller.rollout_fn.robot_self_collision_cost.coll.update_batch_robot_collision_objs(pos, rot)
+    spheres = [s.numpy() for s in mpc.controller.rollout_fn.robot_self_collision_cost.coll.w_batch_link_spheres]
+
+    meshes = []
+    for sphere in spheres:
+        for x, y, z, r in sphere[0]:
+            m = o3d.geometry.TriangleMesh.create_sphere(radius=r)
+            m.translate([x, y, z])
+            m.paint_uniform_color([1, 0, 0])
+            m.compute_vertex_normals()
+            meshes.append(m)
+    return meshes, dist_spheres, dist_nn
+
+
+
+# === Open3D GUI 应用 ===
+class RobotGUI:
+    def __init__(self, q_init):
+        self.q_init = q_init.copy()
+        self.q = q_init.copy()
+        self.window = gui.Application.instance.create_window("Interactive Robot Viewer", 1280, 720)
+        self.scene = gui.SceneWidget()
+        self.scene.scene = rendering.Open3DScene(self.window.renderer)
+        self.scene.scene.set_background([1, 1, 1, 1])
+        self.scene.scene.show_axes(True)
+        self.window.add_child(self.scene)
+
+        em = self.window.theme.font_size
+        margin = 0.5 * em
+        self.panel = gui.Vert(0.25 * em, gui.Margins(margin))
+        # === Checkbox 控制显示与否 ===
+        self.show_robot = True
+        self.show_spheres = True
+
+
+        self.dist_label = gui.Label("Self-collision dist: 0.000")
+        self.panel.add_child(self.dist_label)
+
+        self.dist_nn_label = gui.Label("NN-predicted dist: 0.000")
+        self.panel.add_child(self.dist_nn_label)
+
+
+        self.checkbox_robot = gui.Checkbox("Show Robot")
+        self.checkbox_robot.checked = True
+        self.checkbox_robot.set_on_checked(lambda val: self._toggle_visibility("robot", val))
+        self.panel.add_child(self.checkbox_robot)
+
+        self.checkbox_spheres = gui.Checkbox("Show Spheres")
+        self.checkbox_spheres.checked = True
+        self.checkbox_spheres.set_on_checked(lambda val: self._toggle_visibility("spheres", val))
+        self.panel.add_child(self.checkbox_spheres)
+
+
+        self.sliders = []
+
+        for i in range(7):
+            s = gui.Slider(gui.Slider.DOUBLE)
+            s.set_limits(-3.14, 3.14)
+            s.double_value = self.q[i]
+            s.set_on_value_changed(self.make_slider_callback(i))
+            self.sliders.append(s)
+            self.panel.add_child(gui.Label(f"Joint {i+1}"))
+            self.panel.add_child(s)
+
+        self.window.add_child(self.panel)
+
+        random_button = gui.Button("Random Angle")
+        random_button.set_on_clicked(self.set_random_joint_angles)
+        self.panel.add_child(random_button)
+
+
+
+        # === 重置按钮 ===
+        reset_button = gui.Button("Reset")
+        reset_button.set_on_clicked(self.reset_view_and_joints)
+        self.panel.add_child(reset_button)
+
+
+    
+        self.window.set_on_layout(self._on_layout)
+        self.camera_initialized = False
+        self.update_scene()
+
+    def _on_layout(self, layout_context):
+        content_rect = self.window.content_rect
+        panel_width = 300  # 滑块面板宽度
+        self.scene.frame = gui.Rect(content_rect.x, content_rect.y,
+                                    content_rect.width - panel_width,
+                                    content_rect.height)
+        self.panel.frame = gui.Rect(content_rect.get_right() - panel_width,
+                                    content_rect.y,
+                                    panel_width,
+                                    content_rect.height)
+
+    def _toggle_visibility(self, obj_type, visible):
+        if obj_type == "robot":
+            self.show_robot = visible
+        elif obj_type == "spheres":
+            self.show_spheres = visible
+        self.update_scene()
+
+
+    def reset_view_and_joints(self):
+        # 恢复关节姿态
+        self.q = self.q_init.copy()
+        for i in range(len(self.sliders)):
+            self.sliders[i].double_value = self.q[i]
+        # 刷新场景
+        self.camera_initialized = False
+        self.update_scene()
+
+    def set_random_joint_angles(self):
+        self.q = np.random.uniform(low=-np.pi, high=np.pi, size=7)
+        for i in range(len(self.sliders)):
+            self.sliders[i].double_value = self.q[i]
+        self.update_scene()
+
+
+    def make_slider_callback(self, idx):
+        def callback(val):
+            self.q[idx] = val
+            self.update_scene()
+        return callback
+
+    def update_scene(self):      
+        self.scene.scene.clear_geometry()
+        robot = get_robot_meshes(urdf_path, mesh_dir, self.q)
+        spheres, dist_spheres, dist_nn = get_collision_spheres(self.q)
+        self.dist_label.text = f"Self-collision dist (GT): {dist_spheres.item():.8f}"
+        self.dist_nn_label.text = f"Self-collision dist (NN): {dist_nn.item():.8f}"
+
+        if self.show_robot:
+            for i, m in enumerate(robot):
+                self.scene.scene.add_geometry(f"robot_{i}", m, self._material())
+
+        if self.show_spheres:
+            for i, m in enumerate(spheres):
+                self.scene.scene.add_geometry(f"sphere_{i}", m, self._material([1, 0, 0]))
+
+        if not hasattr(self, "camera_initialized") or not self.camera_initialized:
+            bounds = self.scene.scene.bounding_box
+            self.scene.setup_camera(60, bounds, bounds.get_center())
+            self.camera_initialized = True
+
+    def _material(self, color=[0.6, 0.6, 0.6]):
+        mat = rendering.MaterialRecord()
+        mat.shader = "defaultLit"
+        mat.base_color = color + [1.0]
+        return mat
+    
+
+# === 主入口 ===
+if __name__ == '__main__':
+    gui.Application.instance.initialize()
+    RobotGUI(np.array([0.0, 0.57, 0.0, 0.0, 0.57, 0.0, 0.0]))
+    gui.Application.instance.run()
+

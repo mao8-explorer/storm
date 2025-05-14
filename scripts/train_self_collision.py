@@ -22,17 +22,101 @@
 # DEALINGS IN THE SOFTWARE.#
 from isaacgym import gymapi
 from isaacgym import gymutil
+import numpy as np
+np.int = int
+np.float = float
+np.bool = bool
+
 
 import torch
 import torch.nn.functional as F
-import numpy as np
+import math
+
 from storm_kit.mpc.rollout.arm_base import ArmBase
 from storm_kit.util_file import get_configs_path, get_gym_configs_path, join_path, load_yaml, get_assets_path, get_mpc_configs_path, get_weights_path
 import yaml
 from storm_kit.mpc.control.control_utils import generate_halton_samples
 from storm_kit.geom.nn_model.robot_self_collision import RobotSelfCollisionNet
 import os
+
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('TkAgg')  # 确保交互式绘图有效
+import math
+
+
+def init_live_plot():
+    plt.ion()
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    train_line, = ax.plot([], [], label='Train RMSE (m)', color='blue', linewidth=2)
+    val_line, = ax.plot([], [], label='Validation RMSE (m)', color='orange', linewidth=2)
+    coll_line, = ax.plot([], [], label='Collision RMSE (m)', color='green', linestyle='--', linewidth=2)
+
+    ax.set_xlabel('Epoch', fontsize=12)
+    ax.set_ylabel('RMSE (meters)', fontsize=12)
+    ax.set_title('Live Training Loss Curve', fontsize=14)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.legend()
+    fig.tight_layout()
+
+    return fig, ax, train_line, val_line, coll_line
+
+
+def update_live_plot(fig, ax, train_line, val_line, coll_line,
+                      train_losses, val_losses, coll_losses, window=100):
+    total_epochs = len(train_losses)
+    start_idx = max(0, total_epochs - window)
+
+    epochs_x = list(range(start_idx, total_epochs))
+
+    train_y = train_losses[start_idx:]
+    val_y = val_losses[start_idx:]
+    coll_y = coll_losses[start_idx:]
+
+    train_line.set_data(epochs_x, train_y)
+    val_line.set_data(epochs_x, val_y)
+    coll_line.set_data(epochs_x, coll_y)
+
+    ax.relim()
+    ax.autoscale_view()
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+
+
+def plot_loss_curves(train_losses, val_losses, coll_losses=None, save_path=None):
+    epochs = list(range(1, len(train_losses) + 1))
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(epochs, train_losses, label='Train RMSE (m)', linewidth=2)
+    plt.plot(epochs, val_losses, label='Validation RMSE (m)', linewidth=2)
+
+    if coll_losses is not None:
+        plt.plot(epochs, coll_losses, label='Collision Sample RMSE (m)', linestyle='--', linewidth=2)
+
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('RMSE (meters)', fontsize=12)
+    plt.title('Training Loss Curve in Physical Units (m)', fontsize=14)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+
+    if save_path:
+        plt.savefig(save_path)
+        print(f"[INFO] Loss plot saved to: {save_path}")
+
+    plt.tight_layout()
+    # 不调用 show()，用于非交互保存
+
+
+def print_epoch_rmse(e, train_loss, val_loss, coll_loss, std_y):
+    train_rmse = math.sqrt(train_loss) * std_y # 反归一化
+    val_rmse = math.sqrt(val_loss) * std_y
+    coll_rmse = math.sqrt(coll_loss) * std_y
+    print(f"Epoch {e:03d} | Train RMSE: {train_rmse:.5f} m | Val RMSE: {val_rmse:.5f} m | Coll RMSE: {coll_rmse:.5f} m")
+
+    return train_rmse, val_rmse, coll_rmse
+
+
 class RobotDataset(torch.utils.data.Dataset):
     def __init__(self, x,y,y_gt):
         self.x = x
@@ -43,8 +127,9 @@ class RobotDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         sample = {'x': self.x[idx,:], 'y': self.y[idx,:], 'y_gt': self.y_gt[idx,:]}
         return sample
+    
 def create_dataset(robot_name):
-    checkpoints_dir = get_weights_path()+'/robot_self'
+    checkpoints_dir = get_weights_path()+'/robot_self/test'
     num_particles = 10000
     task_file = robot_name+'_reacher.yml'
 
@@ -60,6 +145,7 @@ def create_dataset(robot_name):
     exp_params['control_space'] = 'pos'
     exp_params['mppi']['horizon'] = 2
     exp_params['mppi']['num_particles'] = num_particles
+    # 默认尝试加载 robot_name+'_self_sdf.pt'
     rollout_fn = ArmBase(exp_params, tensor_args, world_params=None)
     
     # sample joint angles
@@ -71,6 +157,10 @@ def create_dataset(robot_name):
     # scale samples by joint range:
     up_bounds = rollout_fn.dynamics_model.state_upper_bounds[:dof]
     low_bounds = rollout_fn.dynamics_model.state_lower_bounds[:dof]
+
+    # 故意放大bounds， 目的： 增加碰撞样本，不然数据差异很少，可以通过print(torch.min(y), torch.max(y))判断
+    up_bounds = torch.full_like(up_bounds, math.pi)
+    low_bounds = torch.full_like(low_bounds, -math.pi)
 
     range_b = up_bounds - low_bounds
     q_samples = q_samples * range_b + low_bounds
@@ -91,9 +181,10 @@ def create_dataset(robot_name):
     # dataset:
     x = q_samples.view(num_particles*2, dof)
 
-    x_data  = x.cpu().numpy()
+
     y = dist.view(num_particles*2,1) #* 100.0
 
+    # x_data  = x.cpu().numpy()
     # torch.save(x, 'x_data.p')
     # torch.save(y, 'y_data.p')
     # plt.scatter(x_data[:,1], x_data[:,3], c=y.cpu().numpy(), vmin=-0.1, vmax=0.1,cmap='coolwarm')
@@ -105,20 +196,28 @@ def create_dataset(robot_name):
     # y[y >= -0.02] = 1.0
     # y[y < -0.02] = 0.0
     
-    print(torch.min(y), torch.max(y))
+    print(torch.min(y), torch.max(y)) 
     
     n_size = x.shape[0]
     #print(n_size)
     # 
+    # 新建的new model
     nn_model = RobotSelfCollisionNet(n_joints=dof)
     nn_model.model.to(**tensor_args)
     model = nn_model.model
 
+    # rollout_fn 初始化并加载weight后的 | 如果没有weight，就不在加载，仍正常运行
+    # enhance_model = rollout_fn.robot_self_collision_cost.coll.robot_nn
+    # model = enhance_model.model  # ✨ 绑定你要训练的 model
+    # model.to(**tensor_args)      # ⚠️ 确保模型迁移到正确设备
+
+
     # load training set:
     x_train = x[:int((n_size)*0.7),:]
     y_train = y[:int((n_size)*0.7)]
-    x_coll = x_train[y_train[:,0]>-0.02]#.cpu().numpy()
-    y_coll = y_train[y_train[:,0]>-0.02]#.cpu().numpy()
+    coll_thresh = 0.01
+    x_coll = x_train[y_train[:,0]> coll_thresh]#.cpu().numpy()
+    y_coll = y_train[y_train[:,0]> coll_thresh]#.cpu().numpy()
 
     #x_data = x_train[y_train[:,0]>-0.01].cpu().numpy()
     #y_data = y_train[y_train[:,0]>-0.01].cpu().numpy()
@@ -167,14 +266,18 @@ def create_dataset(robot_name):
     optimizer = torch.optim.Adam(model.parameters(),lr=1e-3)
     # optimizer = torch.optim.SGD(model.parameters(),lr=1e-3)#,momentum=0.97)
 
-    #print(model)
-    epochs = 500
+    # model参数配置
+    epochs = 300
     min_loss = 100.0
+    alpha = 1.0 # collision数据的偏置
 
+    # === 动态 Loss 曲线绘图初始化 ===
+    # 初始化绘图对象
+    fig, ax, train_line, val_line, coll_line = init_live_plot()
     train_losses = []
     val_losses = []
     coll_losses = []
-
+    windows = 120 # 窗口大小的控件
 
     # training:
     for e in range(epochs):
@@ -182,6 +285,9 @@ def create_dataset(robot_name):
         loss = []
         i = 0
         x_train = x_train[torch.randperm(x_train.size()[0])]
+
+        # 初始化每轮 epoch 的碰撞迭代器
+        coll_iter = iter(collloader)
         for i, data in enumerate(trainloader):
             
             optimizer.zero_grad()
@@ -190,7 +296,15 @@ def create_dataset(robot_name):
             y_gt = data['y_gt'].to(device)
             x = data['x'].to(device)
 
-            coll_data = next(iter(collloader))
+            # --- 获取下一个碰撞样本 batch（循环使用） ---
+            if coll_iter is None:
+                coll_iter = iter(collloader)
+
+            try:
+                coll_data = next(coll_iter)
+            except StopIteration:
+                coll_iter = iter(collloader)
+                coll_data = next(coll_iter)
 
             x_coll_batch = coll_data['x'].to(device)
             y_coll_batch = coll_data['y'].to(device)
@@ -198,9 +312,14 @@ def create_dataset(robot_name):
             y_pred = (model.forward(x))
             y_coll_pred = (model.forward(x_coll_batch))
             #print(y_coll_pred)#, y_coll_batch, x_coll_batch)
-            alpha = 1.0 #torch.where(y_gt > -0.1, 100.0, 1.0)
+             #torch.where(y_gt > -0.1, 100.0, 1.0)
             #train_loss = F.binary_cross_entropy_with_logits(y_pred,y) + F.binary_cross_entropy_with_logits(y_coll_pred, y_coll_batch)
-            train_loss = F.mse_loss(y_pred, y, reduction='mean') + 1.0*F.mse_loss(y_coll_pred, y_coll_batch, reduction='mean')
+            train_loss = F.mse_loss(y_pred, y, reduction='mean') + alpha*F.mse_loss(y_coll_pred, y_coll_batch, reduction='mean')
+            # train_loss = F.smooth_l1_loss(y_pred, y) + alpha * F.smooth_l1_loss(y_coll_pred, y_coll_batch)
+            # === 损失函数计算 ===
+            # main_loss = F.smooth_l1_loss(y_pred, y)
+            # coll_loss = boundary_weighted_mse(y_coll_pred, y_coll_batch, beta=50.0)
+            # train_loss = main_loss + alpha * coll_loss
             #train_loss = torch.nn.BCEWithLogitsLoss(
             train_loss.backward()
             optimizer.step()
@@ -217,7 +336,7 @@ def create_dataset(robot_name):
         val_loss = F.mse_loss(y_pred, y_val, reduction='mean')
         #val_loss = F.binary_cross_entropy_with_logits(y_pred,y_val)
         train_loss = np.mean(loss)
-        if(val_loss < min_loss and e>20):
+        if(val_loss < min_loss and e>100):
             print('saving model ------------- ', val_loss.item())
             torch.save(
                 {
@@ -230,12 +349,30 @@ def create_dataset(robot_name):
                 join_path(checkpoints_dir,
                           robot_name+'_self_sdf.pt'))
             min_loss = val_loss
-        print(e, train_loss, val_loss.item())
 
         coll_loss = F.mse_loss(y_coll_pred, y_coll_batch, reduction='mean')  # 单次取样即可代表该 epoch
-        train_losses.append(train_loss)
-        val_losses.append(val_loss.item())
-        coll_losses.append(coll_loss.item())
+
+
+        # === 打印 & 存储物理单位下的 RMSE ===
+        train_rmse, val_rmse, coll_rmse = print_epoch_rmse(
+            e, train_loss, val_loss.item(), coll_loss.item(), std_y.item())
+        
+        # 改为 RMSE
+        train_losses.append(train_rmse)
+        val_losses.append(val_rmse)
+        coll_losses.append(coll_rmse)
+
+        # === 更新动态图 ===
+        update_live_plot(fig, ax, train_line, val_line, coll_line,
+                        train_losses, val_losses, coll_losses, window=windows)  # 默认 window=100
+
+
+
+    # === 保存最终 loss 曲线图 ===
+    plt.ioff()
+    fig.savefig('loss_curve_final.png')
+    print("[INFO] Final loss curve saved as 'loss_curve_final.png'")
+    plt.show()
 
 
     with torch.no_grad():
@@ -256,31 +393,7 @@ def create_dataset(robot_name):
 
     plot_loss_curves(train_losses, val_losses, coll_losses, save_path='loss_curve.png')
 
-
-def plot_loss_curves(train_losses, val_losses, coll_losses=None, save_path=None):
-    epochs = list(range(1, len(train_losses) + 1))
-    plt.figure(figsize=(10, 6))
-
-    plt.plot(epochs, train_losses, label='Train Loss', linewidth=2)
-    plt.plot(epochs, val_losses, label='Validation Loss', linewidth=2)
-
-    if coll_losses is not None:
-        plt.plot(epochs, coll_losses, label='Collision Sample Loss', linestyle='--', linewidth=2)
-
-    plt.xlabel('Epoch', fontsize=12)
-    plt.ylabel('Loss', fontsize=12)
-    plt.title('Training Loss Dynamics', fontsize=14)
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.legend()
-
-    if save_path:
-        plt.savefig(save_path)
-        print(f"[INFO] Loss plot saved to: {save_path}")
-    
-    plt.tight_layout()
-    plt.show()
-
-
 if __name__=='__main__':
     # create_dataset('franka_real_robot_tray')
-    create_dataset('franka_real_robot')
+    # create_dataset('franka_real_robot')
+    create_dataset('genie')

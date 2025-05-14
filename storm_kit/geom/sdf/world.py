@@ -282,7 +282,7 @@ class WorldGridCollision(WorldCollision):
         # step 5: flatten scene_sdf to 3d voxel grid
         self.scene_sdf_matrix = self.scene_sdf.view(int(self.num_voxels[0].item()), int(self.num_voxels[1].item()), int(self.num_voxels[2].item()))
         self.scene_sdf_matrix[:,:,0] = torch.tensor(0, **self.tensor_args) # safe ground 3*0.05 = 0.15m | real meachine
-        # step 6: 计算内部点到外部点的距离变换 EDT 2Hz
+        # step 6: 计算内部点到外部点的距离变换 EDT 
         distances_inside = distance_transform_edt((self.scene_sdf_matrix).cpu())
         # version 1. direactly compute gradient
         self.scene_voxels  = torch.tensor(distances_inside, **self.tensor_args) * self.grid_resolution

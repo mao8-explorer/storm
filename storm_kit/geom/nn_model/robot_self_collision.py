@@ -28,34 +28,64 @@ from .network_macros import MLPRegression, scale_to_base, scale_to_net
 from ...util_file import get_weights_path, join_path
 
 
-class RobotSelfCollisionNet():
-    """This class loads a network to predict the signed distance given a robot joint config."""
-    
-    def __init__(self, n_joints=0):
-        """initialize class
-
-        Args:
-            n_joints (int, optional): Number of joints, same as number of channels for nn input. Defaults to 0.
-        """        
-        
+class ResidualBlock(nn.Module):
+    def __init__(self, dim, act_fn=nn.SiLU, use_norm=True):
         super().__init__()
-        act_fn = ReLU6
-        in_channels = n_joints
-        
-        out_channels = 1
-        dropout_ratio = 0.1
-        mlp_layers = [256, 256, 256]
-        self.model = MLPRegression(in_channels, out_channels, mlp_layers,
-                                   dropout_ratio, batch_norm=False, act_fn=act_fn,
-                                   layer_norm=False, nerf=True)
+        self.fc1 = nn.Linear(dim, dim)
+        self.norm1 = nn.LayerNorm(dim) if use_norm else nn.Identity()
+        self.act1 = act_fn()
+        self.fc2 = nn.Linear(dim, dim)
+        self.norm2 = nn.LayerNorm(dim) if use_norm else nn.Identity()
+        self.act2 = act_fn()
+
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.act1(self.norm1(out))
+        out = self.fc2(out)
+        out = self.act2(self.norm2(out))
+        return x + out
+
+class ResidualMLP(nn.Module):
+    def __init__(self, input_dims, output_dims, hidden_dim=256, num_blocks=3, use_nerf=True, dropout=0.1):
+        super().__init__()
+        self.use_nerf = use_nerf
+        in_dim = input_dims * 2 if use_nerf else input_dims
+
+        self.input_layer = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.SiLU()
+        )
+
+        self.res_blocks = nn.Sequential(*[ResidualBlock(hidden_dim) for _ in range(num_blocks)])
+
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.output_layer = nn.Linear(hidden_dim, output_dims)
+
+    def forward(self, x):
+        if self.use_nerf:
+            x = torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
+        x = self.input_layer(x)
+        x = self.res_blocks(x)
+        x = self.dropout(x)
+        return self.output_layer(x)
+
+
+class RobotSelfCollisionNet(nn.Module):
+    def __init__(self, n_joints=7, hidden_dim=256, num_blocks=3, dropout=0.1, use_nerf=True):
+        super().__init__()
+        self.model = ResidualMLP(
+            input_dims=n_joints,
+            output_dims=1,
+            hidden_dim=hidden_dim,
+            num_blocks=num_blocks,
+            use_nerf=use_nerf,
+            dropout=dropout
+        )
+        self.norm_dict = {}
 
     def load_weights(self, f_name, tensor_args):
-        """Loads pretrained network weights if available.
-
-        Args:
-            f_name (str): file name, this is relative to weights folder in this repo.
-            tensor_args (Dict): device and dtype for pytorch tensors
-        """        
+        from storm_kit.util_file import join_path, get_weights_path
         try:
             chk = torch.load(join_path(get_weights_path(), f_name))
             self.model.load_state_dict(chk["model_state_dict"])
@@ -63,38 +93,20 @@ class RobotSelfCollisionNet():
             for k in self.norm_dict.keys():
                 self.norm_dict[k]['mean'] = self.norm_dict[k]['mean'].to(**tensor_args)
                 self.norm_dict[k]['std'] = self.norm_dict[k]['std'].to(**tensor_args)
-        except Exception:
-            print('WARNING: Weights not loaded')
+        except Exception as e:
+            print(f'WARNING: Weights not loaded: {e}')
         self.model = self.model.to(**tensor_args)
-        self.tensor_args = tensor_args
         self.model.eval()
-        
-            
+        self.tensor_args = tensor_args
+
     def compute_signed_distance(self, q):
-        """Compute the signed distance given the joint config.
-
-        Args:
-            q (tensor): input batch of joint configs [b, n_joints]
-
-        Returns:
-            [tensor]: largest signed distance between any two non-consecutive links of the robot.
-        """        
         with torch.no_grad():
-            q_scale = scale_to_net(q, self.norm_dict,'x')
-            dist = self.model.forward(q_scale)
-            dist_scale = scale_to_base(dist, self.norm_dict, 'y')
-        return dist_scale
+            q_scaled = self.scale_to_net(q, 'x')
+            pred = self.model(q_scaled)
+            return self.scale_to_base(pred, 'y')
 
-    def check_collision(self, q):
-        """Check collision given joint config. Requires classifier like training.
+    def scale_to_net(self, x, key):
+        return (x - self.norm_dict[key]['mean']) / (self.norm_dict[key]['std'] + 1e-6)
 
-        Args:
-            q (tensor): input batch of joint configs [b, n_joints]
-
-        Returns:
-            [tensor]: probability of collision of links, from sigmoid value.
-        """        
-        with torch.no_grad():
-            q_scale = scale_to_net(q, self.norm_dict,'x')
-            dist = torch.sigmoid(self.model.forward(q_scale))
-        return dist
+    def scale_to_base(self, x, key):
+        return x * (self.norm_dict[key]['std'] + 1e-6) + self.norm_dict[key]['mean']

@@ -47,34 +47,6 @@ class GenieEnvBase(object):
         self._init_point_transform() # use for trans trajs_pos in robotCoordinate to world coordinate
 
 
-    def _genie_initialize_robot_simulation(self):
-        """
-        contains a generic robot class
-            that can load a robot asset into sim and 
-            gives access to robot's state and receive command_of_policy.
-        """
-        # Initialize the robot simulation
-        robot_yml = join_path(get_gym_configs_path(), 'genie.yml')
-        with open(robot_yml) as file:
-            robot_params = yaml.load(file, Loader=yaml.FullLoader)
-        sim_params = robot_params['sim_params']  # get from -->'/home/zm/MotionPolicyNetworks/storm_ws/src/storm/content/configs/gym/franka.yml'
-        sim_params['asset_root'] = get_assets_path()
-        sim_params['collision_model']=None
-        robot_pose = sim_params['robot_pose']  # robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]'
-        # create robot simulation: contains a generic robot class that can load a robot asset into sim and gives access to robot's state and control.
-        self.robot_sim = RobotSim(
-            gym_instance=self.gym_instance.gym, 
-            sim_instance=self.gym_instance.sim,
-            env_instance = self.gym_instance.env_list[0],
-            viewer = self.gym_instance.viewer,
-            **sim_params,
-            device=torch.device('cuda', 0) )
-        # create gym environment: 
-        self.robot_ptr = self.robot_sim.spawn_robot(self.gym_instance.env_list[0], robot_pose, coll_id=2)
-        # ensure world_robot transform
-        self.w_T_r = self.robot_sim.spawn_robot_pose
-
-
     def _initialize_robot_simulation(self):
         """
         contains a generic robot class
@@ -140,7 +112,8 @@ class GenieEnvBase(object):
              
         object_pose = gymapi.Transform()
         object_pose.p = gymapi.Vec3(1.0, 0.0, 0.0)
-        object_pose.r = gymapi.Quat(0.801, 0.598, 0.0, 0)
+        # object_pose.r = gymapi.Quat(0.801, 0.598, 0.0, 0)
+        object_pose.r = gymapi.Quat(-0.80, 0.0, 0.0, -0.6)
         obj_asset_root = get_assets_path()
 
         target_asset_file = "urdf/mug/movable_mug.urdf"
@@ -173,7 +146,7 @@ class GenieEnvBase(object):
 
         # reset initial_position of target_object and collision_move_object
         object_pose.p = gymapi.Vec3(0.280,0.469,0.118)
-        object_pose.r = gymapi.Quat(0.392,0.608,-0.535,0.436)
+        object_pose.r = gymapi.Quat(-0.733, 0.135, -0.65, -0.142)
         self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, object_pose)
 
         object_pose.p = gymapi.Vec3(0.700 , 0.16,  0.704)

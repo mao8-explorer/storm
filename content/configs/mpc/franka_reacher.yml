@@ -94,7 +94,7 @@ cost:
     sigma : 0.05
     
   primitive_collision:
-    weight: 0.0
+    weight: 100.0
     vec_weight: [1.0, 1.0, 1.0, 5.0, 1.0, 1.0, 5.0] # panda_link: 2 3 4 5 6 7 panda_hand
     pv_weight: [1.0, 8.0]
     distance_threshold: 0.05

@@ -1,15 +1,15 @@
 """ Example spawning a robot in gym 
-只关心 运动规划问题 mpc with TrackIK_Guild
-无碰撞
-无SDF参与
-无MultiModal
-
 """
 from GenieEnvBase import GenieEnvBase
 from storm_examples.multimodal_franka.FilterPointCloud import FilterPointCloud
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
 import torch
 import numpy as np
+np.int = int
+np.float = float
+np.bool = bool
+
+
 from storm_kit.gym.core import Gym
 from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml
 from storm_kit.mpc.task.reacher_task import ReacherTask
@@ -19,7 +19,7 @@ import time
 
 class IKSolve:
     def __init__(self):
-        self.num_proc = 1
+        self.num_proc = 3
         self.maxsize = 5
         self.output_queue = LimitedQueue(self.maxsize)
         self.ik_procs = []
@@ -28,6 +28,9 @@ class IKSolve:
                 IKProc(
                     self.output_queue,
                     input_queue_maxsize=self.maxsize,
+                    urdf_path='content/assets/urdf/genie_description/A2DWithFixBase.urdf',
+                    base_link='base_link',
+                    end_link='ee_link'
                 )
             )
             self.ik_procs[-1].daemon = True #守护进程 主进程结束 IKProc进程随之结束
@@ -40,21 +43,29 @@ class MPCRobotController(GenieEnvBase):
         self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args )
         self._environment_init()
         self.envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
+        # 实验一: 半椭圆跟踪 （验证动态性能）
+        self.trac_target_velscale = 0.6
+        self.base_height_y =0.18
+        self.z_radius = 0.50
+        self.y_radius = 0.18
+        self.x = 0.40
+        z = self.z_radius * np.cos(0.0)
+        y = self.y_radius * np.sin(0.0) + self.base_height_y
+    
+        self.goal_state =  [self.x,y,z]
+
+        # 实验二：动态障碍物往复运动
         self.task_leftright = False
-        if self.task_leftright:
-            self.coll_dt_scale = 0.015 # left and right 0.02测试一次
-            self.coll_movebound_leftright = [-0.40,0.40] # 左右实验的位置边界 [-0.4,0.4]测试一次
-            self.goal_list = [ # 两个目标点位置
-                [0.25,0.40,  0.65],
-                [0.20,0.40, -0.65]]
-        else:
-            self.coll_dt_scale = 0.015 # up and down
-            self.coll_movebound_updown = [0.40,0.80] # 上下实验的位置边界
-            self.goal_list = [ # 两个目标点位置
-                [0.20,0.35,  0.65],
-                [0.20,0.35, -0.65]]
+        self.coll_dt_scale = 0.01 # up and down
+        self.goal_list = [ # 两个目标点位置
+            [0.45, 0.190,  0.42],
+            [0.45, 0.190,  -0.42]]
+
+        self.coll_movebound_leftright = [-0.40,0.40] # 左右实验的位置边界 [-0.4,0.4]测试一次
+        self.coll_movebound_updown = [0.10,0.40] # 上下实验的位置边界
+
         self.uporient = -1.0
-        self.init_coll_pos = [5.40,5.60,-0.20]
+        self.init_coll_pos = [-6.30,0.25,0.0]
         self.goal_state = self.goal_list[-1]
         self.update_goal_state()
         self.update_collision_state(self.init_coll_pos)
@@ -72,7 +83,7 @@ class MPCRobotController(GenieEnvBase):
                       'oneLoop','oneOpt'] 
 
         self.sim_dt = self.mpc_control.exp_params['control_dt']
-        self.lap_count = 10
+        self.lap_count = 20
         self.thresh = 0.05 # goal next thresh in Cart
 
 
@@ -82,9 +93,12 @@ class MPCRobotController(GenieEnvBase):
         obs = {}
         self.jnq_des = np.zeros(7)
         last = time.time()
+        env_time_sum = 0
         opt_step_count = 0 
+        simVisual_time_sum = 0
         self.curr_collision = 0
         opt_time_sum = 0
+
         self.crash_rate = 0.0
         self.collision_hanppend = False
 
@@ -93,14 +107,22 @@ class MPCRobotController(GenieEnvBase):
                 # 正常循环主体
                 self.gym_instance.step()
                 self.gym_instance.clear_lines()
+
+                ### ---  感知模块  ---###
                 ##----- collision with environment generate pointcloud 6ms -----##
-                    # self.robot_sim.updateCamImage()
-                    # obs.update(self.robot_sim.ImageToPointCloud()) #耗时大！
-                    # self.envpc_filter._update_state(obs) 
-                    # # compute pointcloud to sdf_map 4.5ms
-                    # self.collision_grid = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
-                    #                      _opt_compute_dynamic_voxeltosdf(self.envpc_filter.cur_scene_pc, visual = True)
-                ##----- collision with environment generate pointcloud 6ms -----##
+                # step 1. 仿真中获取当前时刻深度图 -（带有 environment & robot 语义的深度图）| numpy cpu
+                env_time_last = time.time()
+                self.robot_sim.updateCamImage()
+                # step 2. 基于深度图 ->仿射变换 -> 点云数据 | numpy cpu
+                obs.update(self.robot_sim.ImageToPointCloud())
+                # step 3. 滤除robot点云（语义label） | numpy cpu --> tensor cuda 
+                self.envpc_filter._update_state(obs) 
+                # step 4. compute pointcloud to sdf_map 
+                self.collision_grid = self.mpc_control.controller.rollout_fn.primitive_collision_cost.robot_world_coll.world_coll. \
+                                        _opt_compute_dynamic_voxeltosdf(self.envpc_filter.cur_scene_pc, visual = False)
+                env_time_sum += time.time() - env_time_last
+
+                ### --- 规划模块 ---###
                 # monitor ee_pose_gym and update goal_param_mpc
                 self.monitorMPCGoalupdate()
                 # seed goal to MPC_Policy _ get Command
@@ -112,26 +134,33 @@ class MPCRobotController(GenieEnvBase):
                 # 逆解获取请求发布 input_queue
                 self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
                 opt_time_last = time.time()
+                opt_step_count += 1
                 command = self.mpc_control.get_command(self.current_robot_state)
                 opt_time_sum += time.time() - opt_time_last
                 # get position command:
                 self.command = command
+
+                ### 仿真可视化处理模块 ###
+                # command = self.current_robot_state
+                simVisual_time_last = time.time()
                 q_des ,qd_des ,qdd_des = command['position'] ,command['velocity'] , command['acceleration']
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
                 self.updateGymVisual_GymGoalUpdate()
+                self._dynamic_goal_track(t_step)
+
                 self.visual_top_trajs_ingym()
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(q_des, qd_des, self.env_ptr, self.robot_ptr)
                 if not successed : break 
 
                 # curr_coll max
-                # curr_coll = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_state_collision
-                # if (curr_coll > 0.90).any() : 
-                #     self.curr_collision += 1
-                #     self.collision_hanppend = True
-                #     collision_info = "Collision Count: {}, Collisions: {}".format(self.curr_collision, torch.nonzero(curr_coll > 0.90).flatten().cpu().numpy())
-                #     print(collision_info)
+                curr_coll = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_state_collision
+                if (curr_coll > 0.90).any() : 
+                    self.curr_collision += 1
+                    self.collision_hanppend = True
+                    collision_info = "Collision Count: {}, Collisions: {}".format(self.curr_collision, torch.nonzero(curr_coll > 0.90).flatten().cpu().numpy())
+                    print(collision_info)
 
                 if self.task_leftright:
                     self._dynamic_object_moveDesign_leftright()
@@ -140,8 +169,9 @@ class MPCRobotController(GenieEnvBase):
 
                 if self.goal_flagi > -1 :
                     self.traj_append()
-                    opt_step_count += 1
                     # self.traj_log['collision'].append(curr_coll.cpu().max())
+                simVisual_time_sum += time.time() - simVisual_time_last
+
 
                 # 逆解获取查询 output_queue
                 try :
@@ -161,19 +191,20 @@ class MPCRobotController(GenieEnvBase):
             print("KeyboardInterrupt detected. Exiting cleanly...")
 
 
-        avgvel, maxvel, ee_traj_length, joints_path_length = self.ee_vel_evaluate()
+        # avgvel, maxvel, ee_traj_length, joints_path_length = self.ee_vel_evaluate()
 
         row = {
-            'whole_time': round(time.time() - last, 3),
             'opt_step_count': opt_step_count, 
-            'collison_count':self.curr_collision, 
-            'crash_rate': round(self.crash_rate / (self.lap_count*len(self.goal_list)) * 100, 3),  
-            'ee_path_length': round(ee_traj_length, 3), 
-            'joints_path_length': round(joints_path_length, 3), 
-            'Avg.Speed': round(avgvel, 3), 
-            'Max.Speed': round(maxvel, 3),
+            # 'collison_count':self.curr_collision, 
+            # 'crash_rate': round(self.crash_rate / (self.lap_count*len(self.goal_list)) * 100, 3),  
+            # 'ee_path_length': round(ee_traj_length, 3), 
+            # 'joints_path_length': round(joints_path_length, 3), 
+            # 'Avg.Speed': round(avgvel, 3), 
+            # 'Max.Speed': round(maxvel, 3),
             'oneLoop':(time.time() - last) / opt_step_count * 1000, 
-            'oneOpt':opt_time_sum / opt_step_count * 1000,
+            'OptimizeTime':opt_time_sum / opt_step_count * 1000,
+            'EnvTime':env_time_sum / opt_step_count * 1000,
+            'SimVisualTime':simVisual_time_sum / opt_step_count * 1000,
                }
         # 将字典的内容转换为字符串并打印到终端
         log_message = "\n".join(["{}: {}".format(key, value) for key, value in row.items()])
