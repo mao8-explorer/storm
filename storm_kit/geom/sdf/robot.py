@@ -34,7 +34,8 @@ from ...geom.geom_types import tensor_capsule, tensor_sphere
 from ...util_file import join_path, get_mpc_configs_path
 from ...geom.nn_model.robot_self_collision import RobotSelfCollisionNet
 from ...mpc.model.integration_utils import sphere_pos_sphere_vel
-from typing import List
+from typing import List, Tuple
+
 
 class RobotCapsuleCollision:
     """ This class holds a batched collision model where the robot is represented as capsules [one per link]
@@ -266,7 +267,7 @@ class RobotSphereCollision:
         All points are stored in the world reference frame, obtained by using update_pose calls.
     """
     
-    def __init__(self, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32},
+    def __init__(self, ndofs, robot_collision_params, batch_size=1, tensor_args={'device':"cpu", 'dtype':torch.float32},
                  traj_dt=None,_fd_matrix_sphere=None):
         """ Initialize with robot collision parameters, look at franka_reacher.py for an example.
 
@@ -312,9 +313,7 @@ class RobotSphereCollision:
         self.dist = None
 
         # load nn collision model:
-        dof = robot_collision_params['dof']
-        
-        self.robot_nn = RobotSelfCollisionNet(n_joints=dof)
+        self.robot_nn = RobotSelfCollisionNet(n_joints=ndofs)
         self.robot_nn.load_weights(robot_collision_params['self_collision_weights'], tensor_args)
     
     def load_robot_collision_model(self, robot_collision_params):
@@ -323,8 +322,9 @@ class RobotSphereCollision:
         Args:
             robot_collision_params (Dict): loaded from yml file
         """        
-        robot_links = robot_collision_params['link_objs']
-
+        self.robot_links = robot_collision_params['link_objs']
+        self.body_links = robot_collision_params['body_objs']
+        self.all_links = self.robot_links + self.body_links
         # load collision file:
         # print(robot_collision_params)
         coll_yml = join_path(get_mpc_configs_path(), robot_collision_params['collision_spheres'])
@@ -337,10 +337,10 @@ class RobotSphereCollision:
 
         
         # we store as [n_link, 7]
-        self._link_collision_trans = torch.empty((len(robot_links), 3), **self.tensor_args)
-        self._link_collision_rot = torch.empty((len(robot_links), 3, 3), **self.tensor_args)
+        self._link_collision_trans = torch.empty((len(self.all_links), 3), **self.tensor_args)
+        self._link_collision_rot = torch.empty((len(self.all_links), 3, 3), **self.tensor_args)
 
-        for j_idx, j in enumerate(robot_links):
+        for j_idx, j in enumerate(self.all_links):
             
             n_spheres = len(coll_params[j])
             link_spheres = torch.zeros((n_spheres, 4), **self.tensor_args)
@@ -365,7 +365,51 @@ class RobotSphereCollision:
             self._batch_link_spheres = []
             for i in range(len(self._link_spheres)):
                 self._batch_link_spheres.append(self._link_spheres[i].unsqueeze(0).repeat(self.batch_size, 1, 1).clone())
-        self.w_batch_link_spheres = copy.deepcopy(self._batch_link_spheres)
+        self.w_batch_link_spheres = copy.deepcopy(self._batch_link_spheres) # 这里使用深拷贝，_batch_link_spheres存的是 initial状态下的对应link下的局部坐标； 至于w_batch_link_spheres是借此申请了一块相同大小的新内存，数据可任意更改
+
+        self.arm_count = len(self.robot_links)
+        self.body_count = len(self.body_links)
+
+        # 如果没有 body，就直接把 group_spheres 设为所有手臂 spheres
+        if self.body_count == 0:
+            self.group_spheres = self.w_batch_link_spheres
+        else:
+            # 记录每个 body link 上 sphere 数量，用于后面切片
+            self.body_ns = [self._batch_link_spheres[i].shape[1]
+                            for i in range(self.arm_count,
+                                        self.arm_count + self.body_count)]
+            self.body_total = sum(self.body_ns)     
+
+            # 预分配一个整体腰身张量 (batch_size, body_total, 4)
+            self.body_group_spheres = torch.empty(
+                (self.batch_size, self.body_total, 4),
+                **self.tensor_args
+            )
+
+            # offsets 同前
+            offset = 0
+            for idx, n in zip(
+                range(self.arm_count, self.arm_count + self.body_count),
+                self.body_ns
+            ):
+                self.body_group_spheres[:, offset:offset+n, :] = \
+                    self.w_batch_link_spheres[idx][:, :, :]
+                offset += n
+
+            # 构造一个不变的 group_spheres 列表：前面 arm_count 个是各 link Tensor，
+            # 最后一个永远是 body_group_spheres
+            # 注意：self.w_batch_link_spheres 会在 update 时被原位更新
+            self.group_spheres = (
+                self.w_batch_link_spheres[:self.arm_count]
+                + [self.body_group_spheres]
+            )
+
+        # 预分配距离矩阵，group 数量也要对应
+        n_groups = self.arm_count + (1 if self.body_count>0 else 0)
+        self.dist = torch.zeros(
+            (self.batch_size, n_groups, n_groups), **self.tensor_args
+        ) - 100.0
+
         
     def _env_build_batch_features(self, clone_objs=False, clone_pose=True, batch_size=None):
         """clones poses/object instances for computing across batch. Use this once per batch size change to avoid re-initialization over repeated calls.
@@ -498,16 +542,50 @@ class RobotSphereCollision:
 
         Returns:
             [tensor]: signed distance [b,1]
+
+        自碰撞的数据集准备 该函数被用到 很多次；
         """        
         n_links = len(self.w_batch_link_spheres)
         b, _, _ = link_trans.shape
-        if self.dist is None or b != self.dist.shape[0]:
-            self.update_batch_robot_collision_objs(link_trans, link_rot)
-            self.dist = torch.zeros((b,n_links,n_links), **self.tensor_args) - 100.0
-        dist = self.dist
-        dist = find_link_distance(self.w_batch_link_spheres, dist)
+        # if self.dist is None or b != self.dist.shape[0]:
+        #     self.dist = torch.zeros((b,n_links,n_links), **self.tensor_args) - 100.0
+        # 1) 更新所有 link 的球体位置（in-place）
+        self.update_batch_robot_collision_objs(link_trans, link_rot)
+        # dist = self.dist
+
+        # 2) 把各 body 链杆的 spheres 原位写入到 body_group_spheres
+        if self.body_count > 0:
+            offset = 0
+            for idx, n_spheres in zip(
+                range(self.arm_count, self.arm_count + self.body_count),
+                self.body_ns
+            ):
+                # 拷贝 xyz
+                self.body_group_spheres[:, offset:offset+n_spheres, :3] = \
+                    self.w_batch_link_spheres[idx][:, :, :3]
+                # # 拷贝 radius
+                # self.body_group_spheres[:, offset:offset+n_spheres, 3:] = \
+                #     self.w_batch_link_spheres[idx][:, :, 3:].clone()
+                offset += n_spheres
+
+        # 3) 直接用预先构造好的 list 调用
+        link_dist = find_link_distance(self.group_spheres, self.dist, self.arm_count)
+        return link_dist
+    
+        # self.w_batch_group_spheres = self.w_batch_link_spheres
+        # # 对 self.w_batch_link_spheres 做文章 ： 包括 link-objs + body-objs, 后者看成一个整体，内部不做distance计算， 只是通过link-pos/rot 更新spheres的位置，给到every link计算distance
+        # body_count = len(self.body_links)
+        # if body_count > 0: 
+        #     # 取出这几个 body 对应的 batch_spheres
+        #     body_spheres_list = self.w_batch_link_spheres[-body_count:]
+        #     # 在通用维度（第 1 维）上拼接
+        #     self.w_batch_body_spheres = torch.cat(body_spheres_list, dim=1)
+        #     self.w_batch_group_spheres = self.w_batch_link_spheres[:-body_count] + [self.w_batch_body_spheres]
+
+
+        # dist = find_link_distance(self.w_batch_group_spheres, dist)
         
-        return dist
+        # return dist
     def get_robot_link_objs(self):
         raise NotImplementedError
 
@@ -604,36 +682,70 @@ def find_closest_distance(link_idx, links_sphere_list):
     return link_dist
 
 @torch.jit.script
-def find_link_distance(links_sphere_list, dist):
-    # type: (List[Tensor], Tensor) -> Tensor
-    futures : List[torch.jit.Future[torch.Tensor]] = []
-
+def find_link_distance(links_sphere_list, dist, arm_count: int = 7):
+    # type: (List[Tensor], Tensor, int) -> Tensor
+    futures: List[Tuple[int,int,torch.jit.Future[torch.Tensor]]] = []
+    # futures : List[torch.jit.Future[torch.Tensor]] = []
     b, n, _ = links_sphere_list[0].shape
-    spheres = links_sphere_list[0]
+    # spheres = links_sphere_list[0]
     n_links = len(links_sphere_list)
-    dist *= 0.0
-    dist -= 100.0
+    dist.mul_(0.0).sub_(100.0)
     #dist = torch.zeros((b,n_links,n_links), device=spheres.device,
     #                   dtype=spheres.dtype) - 100.0
 
-    for i in range(n_links):
-        # for every link, compute the distance to the other links:
-        current_spheres = links_sphere_list[i]
-        for j in range(i + 2, n_links): # i+2 保证不是计算相邻link
-            compute_spheres = links_sphere_list[j]
 
-            # find the distance between the two links:
-            d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
-            futures.append(d)
+    # 1) 先收集所有需要计算的 (i,j) 对
+    pairs: List[Tuple[int,int]] = []
+
+    # —— 手臂内部：跳过相邻，只要 j>=i+2 —— 
+    for i in range(arm_count):
+        for j in range(i+2, arm_count):
+            pairs.append((i, j))
+
+    # —— 手臂 ↔ 腰身 group —— 
+    if n_links > arm_count:
+        body_idx = arm_count
+        for i in range(arm_count):
+            pairs.append((i, body_idx))
 
 
-    k = 0
-    for i in range(n_links):
-        # for every link, compute the distance to the other links:
-        for j in range(i + 2, n_links):
-            d = torch.jit.wait(futures[k])
-            dist[:,i,j] = d
-            dist[:,j,i] = d
-            k += 1
-    link_dist = torch.max(dist,dim=-1)[0]
-    return link_dist
+    # （如果未来有多个 body group，就把它们全都加进来）
+
+    # 2) 并行 fork
+    for i, j in pairs:
+        f = torch.jit.fork(compute_spheres_distance,
+                           links_sphere_list[i],
+                           links_sphere_list[j])
+        futures.append((i, j, f))
+
+
+    # 3) wait + 写回
+    for i, j, f in futures:
+        d = torch.jit.wait(f)
+        dist[:, i, j] = d
+        dist[:, j, i] = d
+
+    # 4) 归约
+    return torch.max(dist, dim=-1)[0]
+        
+
+    # for i in range(n_links):
+    #     # for every link, compute the distance to the other links:
+    #     current_spheres = links_sphere_list[i]
+    #     for j in range(i + 2, n_links): # i+2 保证不是计算相邻link
+    #         compute_spheres = links_sphere_list[j]
+
+    #         # find the distance between the two links:
+    #         d = torch.jit.fork(compute_spheres_distance, current_spheres, compute_spheres)
+    #         futures.append(d)
+
+    # k = 0
+    # for i in range(n_links):
+    #     # for every link, compute the distance to the other links:
+    #     for j in range(i + 2, n_links):
+    #         d = torch.jit.wait(futures[k])
+    #         dist[:,i,j] = d
+    #         dist[:,j,i] = d
+    #         k += 1
+    # link_dist = torch.max(dist,dim=-1)[0]
+    # return link_dist

@@ -34,7 +34,7 @@ world_params = load_yaml(join_path(get_gym_configs_path(), WORLD_FILE))
 task_params = load_yaml(join_path(get_mpc_configs_path(), TASK_FILE))
 
 # === 加载模型并渲染 ===
-urdf_path = join_path(get_assets_path(), task_params['model']['urdf_path'])
+urdf_path = join_path(get_assets_path(), task_params['model']['robot_collision_params']['urdf'])
 mesh_dir = join_path(get_assets_path(), 'urdf/genie_description/')
 
 # === 初始化 MPC 控制器 ===
@@ -44,7 +44,7 @@ mpc = ReacherTask(TASK_FILE, WORLD_FILE, tensor_args)
 goal_pos = np.array([0.1, 0.1, 0.1])
 goal_quat = np.array([1.0, 0.0, 0.0, 0.0])
 mpc.update_params(goal_ee_pos=goal_pos, goal_ee_quat=goal_quat)
-
+ndof = mpc.controller.rollout_fn.dynamics_model.n_dofs
 
 
 # === 渲染函数 ===
@@ -73,8 +73,8 @@ def get_robot_meshes(urdf_path, mesh_dir, q):
 def get_collision_spheres(q):
     state = {
         'position': q,
-        'velocity': np.zeros(7),
-        'acceleration': np.zeros(7)
+        'velocity': np.zeros(ndof),
+        'acceleration': np.zeros(ndof)
     }
     state_arr = np.hstack((state['position'], state['velocity'], state['acceleration']))
     state_tensor = torch.as_tensor(state_arr, **tensor_args).unsqueeze(0)
@@ -86,19 +86,15 @@ def get_collision_spheres(q):
     distcheck_spheres = mpc.controller.rollout_fn.robot_self_collision_cost.distance
     dist_spheres = distcheck_spheres(pos_seq, rot_seq)[0].cpu().numpy() # shape : (1,)
 
-
-    distcheck_nn = mpc.controller.rollout_fn.robot_self_collision_cost.coll.check_self_collisions_nn
-    dist_nn = distcheck_nn(torch.tensor(q, device='cpu', dtype=torch.float32)).cpu().numpy()
-
-    error = abs(dist_spheres.item() - dist_nn.item())
-    print(f"Ground truth: {dist_spheres.item():.4f}, Prediction: {dist_nn.item():.4f}, Absolute error: {error:.4f}")
-
-    b, h, n = pos_seq.shape[:3]
-    pos = pos_seq.view(b * h, n, 3)
-    rot = rot_seq.view(b * h, n, 3, 3)
-
-    mpc.controller.rollout_fn.robot_self_collision_cost.coll.update_batch_robot_collision_objs(pos, rot)
     spheres = [s.numpy() for s in mpc.controller.rollout_fn.robot_self_collision_cost.coll.w_batch_link_spheres]
+
+    # distcheck_nn = mpc.controller.rollout_fn.robot_self_collision_cost.coll.check_self_collisions_nn
+    # dist_nn = distcheck_nn(torch.tensor(q, device='cpu', dtype=torch.float32)).cpu().numpy()
+    dist_nn = np.array([0])
+    error = abs(dist_spheres.item() - dist_nn.item())
+    # print(f"Ground truth: {dist_spheres.item():.4f}, Prediction: {dist_nn.item():.4f}, Absolute error: {error:.4f}")
+
+
 
     meshes = []
     for sphere in spheres:
@@ -151,10 +147,12 @@ class RobotGUI:
 
 
         self.sliders = []
-
-        for i in range(7):
+        up_bounds = mpc.controller.rollout_fn.dynamics_model.state_upper_bounds[:ndof]
+        low_bounds = mpc.controller.rollout_fn.dynamics_model.state_lower_bounds[:ndof]
+        
+        for i in range(ndof):
             s = gui.Slider(gui.Slider.DOUBLE)
-            s.set_limits(-3.14, 3.14)
+            s.set_limits(low_bounds[i],up_bounds[i]) # 滑块的limit
             s.double_value = self.q[i]
             s.set_on_value_changed(self.make_slider_callback(i))
             self.sliders.append(s)
@@ -209,7 +207,9 @@ class RobotGUI:
         self.update_scene()
 
     def set_random_joint_angles(self):
-        self.q = np.random.uniform(low=-np.pi, high=np.pi, size=7)
+        low_bounds = mpc.controller.rollout_fn.dynamics_model.state_lower_bounds[:ndof].cpu().numpy()
+        up_bounds = mpc.controller.rollout_fn.dynamics_model.state_upper_bounds[:ndof].cpu().numpy()
+        self.q = np.random.uniform(low=low_bounds, high=up_bounds)
         for i in range(len(self.sliders)):
             self.sliders[i].double_value = self.q[i]
         self.update_scene()
@@ -251,6 +251,6 @@ class RobotGUI:
 # === 主入口 ===
 if __name__ == '__main__':
     gui.Application.instance.initialize()
-    RobotGUI(np.array([0.0, 0.57, 0.0, 0.0, 0.57, 0.0, 0.0]))
+    RobotGUI(np.zeros(ndof))
     gui.Application.instance.run()
 

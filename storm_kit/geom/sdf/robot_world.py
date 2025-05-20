@@ -79,7 +79,7 @@ class RobotWorldCollisionPrimitive(RobotWorldCollision):
                  traj_dt=None,_fd_matrix_sphere=None):
 
         self.horizon = robot_collision_params['horizon']
-        self.n_links = robot_collision_params['num_link_objs']
+        self.n_links = len(robot_collision_params['link_objs'])
         self.num_particles = robot_collision_params['num_particles']
         self.robot_batch_size = self.num_particles * self.horizon #  rollout_num * horizon
         

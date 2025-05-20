@@ -129,7 +129,7 @@ class RobotDataset(torch.utils.data.Dataset):
         return sample
     
 def create_dataset(robot_name):
-    checkpoints_dir = get_weights_path()+'/robot_self/test'
+    checkpoints_dir = get_weights_path()+'/robot_self'
     num_particles = 10000
     task_file = robot_name+'_reacher.yml'
 
@@ -150,7 +150,7 @@ def create_dataset(robot_name):
     
     # sample joint angles
     dof = rollout_fn.dynamics_model.d_action
-    q_samples = generate_halton_samples(num_particles*2, dof, use_ghalton=True,
+    q_samples = generate_halton_samples(num_particles*2, dof, use_ghalton=True, seed_val=120,
                                         device=tensor_args['device'],
                                         float_dtype=tensor_args['dtype'])
 
@@ -158,9 +158,16 @@ def create_dataset(robot_name):
     up_bounds = rollout_fn.dynamics_model.state_upper_bounds[:dof]
     low_bounds = rollout_fn.dynamics_model.state_lower_bounds[:dof]
 
-    # 故意放大bounds， 目的： 增加碰撞样本，不然数据差异很少，可以通过print(torch.min(y), torch.max(y))判断
-    up_bounds = torch.full_like(up_bounds, math.pi)
-    low_bounds = torch.full_like(low_bounds, -math.pi)
+    # 假设 up_bounds 和 low_bounds 都是形如 (dof,) 的 1D Tensor
+
+    for idx, (low, up) in enumerate(zip(low_bounds, up_bounds), start=1):
+        span = up - low
+        print(f"Joint {idx:2d} range: [{low:.3f}, {up:.3f}], span = {span:.3f}")
+
+
+    # # 故意放大bounds， 目的： 增加碰撞样本，不然数据差异很少，可以通过print(torch.min(y), torch.max(y))判断
+    # up_bounds = torch.full_like(up_bounds, math.pi)
+    # low_bounds = torch.full_like(low_bounds, -math.pi)
 
     range_b = up_bounds - low_bounds
     q_samples = q_samples * range_b + low_bounds
@@ -202,22 +209,27 @@ def create_dataset(robot_name):
     #print(n_size)
     # 
     # 新建的new model
-    nn_model = RobotSelfCollisionNet(n_joints=dof)
-    nn_model.model.to(**tensor_args)
-    model = nn_model.model
+    # nn_model = RobotSelfCollisionNet(n_joints=dof)
+    # nn_model.model.to(**tensor_args)
+    # model = nn_model.model
 
     # rollout_fn 初始化并加载weight后的 | 如果没有weight，就不在加载，仍正常运行
-    # enhance_model = rollout_fn.robot_self_collision_cost.coll.robot_nn
-    # model = enhance_model.model  # ✨ 绑定你要训练的 model
-    # model.to(**tensor_args)      # ⚠️ 确保模型迁移到正确设备
+    enhance_model = rollout_fn.robot_self_collision_cost.coll.robot_nn
+    model = enhance_model.model  # ✨ 绑定你要训练的 model
+    model.to(**tensor_args)      # ⚠️ 确保模型迁移到正确设备
 
 
     # load training set:
     x_train = x[:int((n_size)*0.7),:]
     y_train = y[:int((n_size)*0.7)]
-    coll_thresh = 0.01
+    coll_thresh = 0.003
     x_coll = x_train[y_train[:,0]> coll_thresh]#.cpu().numpy()
     y_coll = y_train[y_train[:,0]> coll_thresh]#.cpu().numpy()
+    # 计算碰撞比例（float 标量）
+    collision_ratio = (y_train[:, 0] > coll_thresh).float().mean().item()
+
+    # 以百分比格式打印，保留两位小数
+    print(f"Collision ratio: {collision_ratio:.2%}")
 
     #x_data = x_train[y_train[:,0]>-0.01].cpu().numpy()
     #y_data = y_train[y_train[:,0]>-0.01].cpu().numpy()
@@ -267,7 +279,7 @@ def create_dataset(robot_name):
     # optimizer = torch.optim.SGD(model.parameters(),lr=1e-3)#,momentum=0.97)
 
     # model参数配置
-    epochs = 300
+    epochs = 500
     min_loss = 100.0
     alpha = 1.0 # collision数据的偏置
 
@@ -278,6 +290,44 @@ def create_dataset(robot_name):
     val_losses = []
     coll_losses = []
     windows = 120 # 窗口大小的控件
+
+
+    # boundary_weighted_mse 参数
+    beta         = 50.0
+    boundary_val = 0.10
+
+    def boundary_weighted_mse(pred: torch.Tensor,
+                            target: torch.Tensor,
+                            beta: float = 50.0,
+                            boundary: float = 0.0,
+                            eps: float = 1e-6) -> torch.Tensor:
+        """
+        带边界值的加权 MSE 损失：
+        - 边界定义为 target == boundary
+        - 权重 = exp(-beta * |target - boundary|)
+        - loss = sum_i weight_i * (pred_i - target_i)^2 / (sum_i weight_i + eps)
+
+        Args:
+            pred:     预测张量，任意形状
+            target:   真实张量，形状同 pred
+            beta:     控制权重衰减程度的超参
+            boundary: 边界值 b，使得当 target 越接近 b 时，权重越大
+            eps:      防止除零的小量
+
+        Returns:
+            标量：加权 MSE 损失
+        """
+        # 计算离边界的距离
+        dist_to_boundary = (target - boundary).abs()
+        # 计算权重
+        weights = torch.exp(-beta * dist_to_boundary)
+        # 加权平方误差
+        sq_err = (pred - target).pow(2)
+        weighted_sq_err = weights * sq_err
+
+        # 归一化
+        loss = weighted_sq_err.sum() / (weights.sum() + eps)
+        return loss
 
     # training:
     for e in range(epochs):
@@ -313,14 +363,13 @@ def create_dataset(robot_name):
             y_coll_pred = (model.forward(x_coll_batch))
             #print(y_coll_pred)#, y_coll_batch, x_coll_batch)
              #torch.where(y_gt > -0.1, 100.0, 1.0)
-            #train_loss = F.binary_cross_entropy_with_logits(y_pred,y) + F.binary_cross_entropy_with_logits(y_coll_pred, y_coll_batch)
+            # train_loss = F.binary_cross_entropy_with_logits(y_pred,y) + F.binary_cross_entropy_with_logits(y_coll_pred, y_coll_batch)
             train_loss = F.mse_loss(y_pred, y, reduction='mean') + alpha*F.mse_loss(y_coll_pred, y_coll_batch, reduction='mean')
             # train_loss = F.smooth_l1_loss(y_pred, y) + alpha * F.smooth_l1_loss(y_coll_pred, y_coll_batch)
             # === 损失函数计算 ===
             # main_loss = F.smooth_l1_loss(y_pred, y)
-            # coll_loss = boundary_weighted_mse(y_coll_pred, y_coll_batch, beta=50.0)
+            # coll_loss = boundary_weighted_mse(y_coll_pred, y_coll_batch, beta=beta, boundary=boundary_val)
             # train_loss = main_loss + alpha * coll_loss
-            #train_loss = torch.nn.BCEWithLogitsLoss(
             train_loss.backward()
             optimizer.step()
             loss.append(train_loss.item())

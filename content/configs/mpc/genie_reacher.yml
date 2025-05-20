@@ -34,10 +34,8 @@ cmd_filter_coeff: {'position':1.0, 'velocity':1.0, 'acceleration':0.0}
 
 model:
   # any link that is not specified as learnable will be initialized from urdf
-  urdf_path: "urdf/genie_description/A2DWithFixBase.urdf"
   learnable_rigid_body_config:
     learnable_links: []
-  name: "genie"
   max_acc: 0.50
   dt: 0.07
   dt_traj_params:
@@ -47,16 +45,15 @@ model:
   #control_freq: 10
   #sim_freq: 100
   ee_link_name: "ee_link"
-  init_state: [0.0, -0.36, -0.2, -2.0, 0.0, 1.64, 0.68]
-  link_names: ['Link2_l','Link3_l','Link4_l','Link5_l', 'Link6_l','Link7_l','Link_hand_l'] # robot_represent (env or self collison)
-  #link_names: ['panda_link6']
+  # init_state: [0.0, -0.36, -0.2, -2.0, 0.0, 1.64, 0.68]
   vel_scale: 1.0
-  collision_spheres: '../robot/genie_represent.yml'
   
   robot_collision_params:
     urdf: "urdf/genie_description/A2DWithFixBase.urdf"
     sample_points: 100
-    link_objs: ['Link2_l','Link3_l','Link4_l','Link5_l', 'Link6_l','Link7_l','Link_hand_l']
+    link_objs: ['Link4_l','Link5_l', 'Link6_l','Link7_l','Link_hand_l']
+    body_objs: ['link-pitch_head', 'link-up-down_body', 'base_link', 'link-pitch_body'] # 看成一体，相互间不做距离计算
+    # body_objs: [] # for single-arm group
     #link_objs: ['panda_link6']
     threshold: 0.35
     bounds: [[-0.8, -0.8, -0.23],[0.8,0.8,1.5]]
@@ -64,7 +61,6 @@ model:
     self_collision_weights: 'robot_self/genie_self_sdf.pt'
     dof: 7
     horizon: 30
-    num_link_objs: 7
     num_particles: 500
 
   world_collision_params:
@@ -94,7 +90,7 @@ cost:
     sigma : 0.05
     
   primitive_collision:
-    weight: 100.0
+    weight: 0.0
     vec_weight: [1.0, 1.0, 1.0, 5.0, 1.0, 1.0, 5.0] # panda_link: 2 3 4 5 6 7 panda_hand
     pv_weight: [1.0, 8.0]
     distance_threshold: 0.05
@@ -114,7 +110,7 @@ cost:
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     # weight: [10.0, 30.0]
-    weight: 30 # weight[0] = 0 : CartGoal constraint None rot | pos
+    weight: 5 # weight[0] = 0 : CartGoal constraint None rot | pos
     rotposweight: [1.0, 1.0]
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
@@ -140,7 +136,7 @@ cost:
     gaussian_params: {'n':0, 'c':0.5, 's':0, 'r':5.0}
     
   robot_self_collision:
-    weight: 1000.0
+    weight: 2000.0
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 

@@ -85,7 +85,7 @@ def build_int_matrix(horizon, diagonal=0, device='cpu', dtype=torch.float32, ord
     return integrate_matrix
 
 
-#@torch.jit.script
+@torch.jit.script
 def tensor_step_jerk(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix=None):
     #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Optional[Tensor]) -> Tensor
     
@@ -149,7 +149,7 @@ def tensor_step_acc(state, act, state_seq, dt_h, n_dofs: int, integrate_matrix, 
     return state_seq
 
 
-#@torch.jit.script
+@torch.jit.script
 def tensor_step_vel(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix):
     #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
     
@@ -168,7 +168,7 @@ def tensor_step_vel(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_ma
     
     return state_seq
 
-#@torch.jit.script 
+@torch.jit.script 
 def tensor_step_pos(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix):
     #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
     

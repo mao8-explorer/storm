@@ -56,8 +56,9 @@ Todo:
         # self.goal_cost = PoseCost(**exp_params['cost']['goal_pose'],
         #                           tensor_args=self.tensor_args)
         #
-        # self.goal_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
-        #                           tensor_args=self.tensor_args)
+        self.goal_pq_cost = PoseCostQuaternion(**exp_params['cost']['goal_pose'],
+                                  tensor_args=self.tensor_args)
+        
         self.goal_cost_reward = PoseCost_Reward(**exp_params['cost']['PoseCost_Reward'], # Cartesian space target
                                   tensor_args=self.tensor_args)
         
@@ -74,18 +75,19 @@ Todo:
 
         cost = super(ArmReacher, self).cost_fn(state_dict, action_batch, no_coll, horizon_cost)
         ee_pos_batch = state_dict['ee_pos_seq']
+        ee_rot_batch = state_dict['ee_rot_seq']
         self.curr_ee_pos = ee_pos_batch[-1,0,:]
         
         state_batch = state_dict['state_seq']
         goal_ee_pos = self.goal_ee_pos
+        goal_ee_rot = self.goal_ee_rot
 
         # 为什么要存在 因为逆解不存在时，也就是全局规划无解时，可以使用该方式引导
-        # goal_cost = self.goal_cost.forward(ee_pos_batch, ee_rot_batch,
-        #                                     goal_ee_pos, goal_ee_rot)
+        goal_pq_cost = self.goal_pq_cost.forward(ee_rot_batch, goal_ee_rot)
 
         #  pose sparse_reward design 加快末端位置收敛 
-        self.cart_goal_cost, self.cart_sparse_reward = self.goal_cost_reward.forward(ee_pos_batch, goal_ee_pos)
-        cost +=  self.cart_sparse_reward  + self.cart_goal_cost
+        cart_goal_cost, cart_sparse_reward = self.goal_cost_reward.forward(ee_pos_batch, goal_ee_pos)
+        cost +=  cart_sparse_reward  + cart_goal_cost + goal_pq_cost
 
         if self.goal_jnq is not None:
             disp_vec = state_batch[:,:,0:self.n_dofs] - self.goal_jnq[:,0:self.n_dofs]

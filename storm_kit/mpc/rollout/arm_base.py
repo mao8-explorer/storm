@@ -58,13 +58,16 @@ class ArmBase(RolloutBase):
         # initialize dynamics model:
         dynamics_horizon = mppi_params['horizon'] * model_params['dt']
         #Create the dynamical system used for rollouts
-        self.dynamics_model = URDFKinematicModel(join_path(assets_path,exp_params['model']['urdf_path']),
+        arm_links  = exp_params['model']['robot_collision_params']['link_objs']
+        body_links = exp_params['model']['robot_collision_params']['body_objs']
+        all_links  = arm_links + body_links
+        self.dynamics_model = URDFKinematicModel(join_path(assets_path,exp_params['model']['robot_collision_params']['urdf']),
                                                  dt=exp_params['model']['dt'],
                                                  batch_size=mppi_params['num_particles'],
                                                  horizon=dynamics_horizon,
                                                  tensor_args=self.tensor_args,
                                                  ee_link_name=exp_params['model']['ee_link_name'],
-                                                 link_names=exp_params['model']['link_names'],
+                                                 link_names=all_links,
                                                  dt_traj_params=exp_params['model']['dt_traj_params'],
                                                  control_space=exp_params['control_space'],
                                                  vel_scale=exp_params['model']['vel_scale'])
@@ -131,7 +134,7 @@ class ArmBase(RolloutBase):
 
 
         if(exp_params['cost']['robot_self_collision']['weight'] > 0.0):
-            self.robot_self_collision_cost = RobotSelfCollisionCost(robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['robot_self_collision'])
+            self.robot_self_collision_cost = RobotSelfCollisionCost(ndofs=self.n_dofs, robot_params=robot_params, tensor_args=self.tensor_args, **self.exp_params['cost']['robot_self_collision'])
 
 
         self.ee_vel_cost = EEVelCost(ndofs=self.n_dofs,device=device, float_dtype=float_dtype,**exp_params['cost']['ee_vel'])

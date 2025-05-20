@@ -11,7 +11,7 @@
     <parent link="base"/>
     <child link="base1"/>
     <axis xyz="1 0 0"/>
-    <limit effort="1" lower="-2" upper="2.0" velocity="1"/>
+    <limit effort="1" lower="-20.0" upper="20.0" velocity="1"/>
   </joint>
 
   <joint name="y_joint" type="prismatic">
@@ -19,7 +19,7 @@
     <parent link="base1"/>
     <child link="base2"/>
     <axis xyz="0 1 0"/>
-    <limit effort="1" lower="-2.0" upper="2.0" velocity="1"/>
+    <limit effort="1" lower="-20.0" upper="20.0" velocity="1"/>
   </joint>
 
   <joint name="z_joint" type="prismatic">
@@ -27,7 +27,7 @@
     <parent link="base2"/>
     <child link="base3"/>
     <axis xyz="0 0 1"/>
-    <limit effort="12" lower="-2.8973" upper="2.8973" velocity="2.6100"/>
+    <limit effort="1" lower="-20.0" upper="20.0" velocity="1"/>
   </joint>
   <joint name="rx_joint" type="revolute">
     <origin xyz="0 0 0" rpy="0 0 0"/>

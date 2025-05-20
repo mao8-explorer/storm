@@ -66,7 +66,8 @@ class ArmTask(BaseTask):
         mppi_params['d_action'] = dynamics_model.d_action
         mppi_params['action_lows'] = -exp_params['model']['max_acc'] * torch.ones(dynamics_model.d_action, **self.tensor_args)
         mppi_params['action_highs'] = exp_params['model']['max_acc'] * torch.ones(dynamics_model.d_action, **self.tensor_args)
-        init_q = torch.tensor(exp_params['model']['init_state'], **self.tensor_args)
+        # init_q = torch.tensor(exp_params['model']['init_state'], **self.tensor_args)
+        init_q = torch.zeros(dynamics_model.d_action, **self.tensor_args)
         init_action = torch.zeros((mppi_params['horizon'], dynamics_model.d_action), **self.tensor_args)
         init_action[:,:] += init_q
         if(exp_params['control_space'] == 'acc'):

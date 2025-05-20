@@ -89,8 +89,8 @@ class DifferentiableRigidBody(torch.nn.Module):
         # kinematics parameters
         self.trans = rigid_body_params["trans"]
         self.rot_angles = rigid_body_params["rot_angles"].unsqueeze(0)
+        self.joint_type = rigid_body_params.get("joint_type", "revolute")
 
-        
         roll = self.rot_angles[:,0]
         pitch = self.rot_angles[:,1]
         yaw = self.rot_angles[:,2]
@@ -164,13 +164,23 @@ class DifferentiableRigidBody(torch.nn.Module):
             self._batch_rot = self.fixed_rotation.repeat(self._batch_size, 1, 1)
             
         # when we update the joint angle, we also need to update the transformation
+
+        if self.joint_type == "revolute":
+            rot = self.axis_rot_fn(q.squeeze(1))
+            self.joint_pose.set_rotation(self._batch_rot @ rot)
+            self.joint_pose.set_translation(self._batch_trans)
+        elif self.joint_type == "prismatic":
+            delta_trans = q * self.joint_axis    # shape: [B, 3]
+            self.joint_pose.set_translation(self._batch_trans + delta_trans)
+            self.joint_pose.set_rotation(self._batch_rot)
+
+
+        # self.joint_pose.set_translation(self._batch_trans)#
+        # #self.joint_pose.set_translation(torch.reshape(self.trans, (1, 3)))
+        # #print(q.shape)
+        # rot = self.axis_rot_fn(q.squeeze(1))
         
-        self.joint_pose.set_translation(self._batch_trans)#
-        #self.joint_pose.set_translation(torch.reshape(self.trans, (1, 3)))
-        #print(q.shape)
-        rot = self.axis_rot_fn(q.squeeze(1))
-        
-        self.joint_pose.set_rotation(self._batch_rot @ rot)
+        # self.joint_pose.set_rotation(self._batch_rot @ rot)
         return
 
     def update_joint_acc(self, qdd):

@@ -31,7 +31,7 @@ from ...geom.sdf.robot import RobotSphereCollision
 from .gaussian_projection import GaussianProjection
 
 class RobotSelfCollisionCost(nn.Module):
-    def __init__(self, weight=None, robot_params=None,
+    def __init__(self, ndofs=7, weight=None, robot_params=None,
                  gaussian_params={}, distance_threshold=-0.01, 
                  batch_size=2, tensor_args={'device':torch.device('cpu'), 'dtype':torch.float32}):
         super(RobotSelfCollisionCost, self).__init__()
@@ -51,9 +51,10 @@ class RobotSelfCollisionCost(nn.Module):
         # load nn params:
         self.distance_threshold = distance_threshold
         self.batch_size = batch_size
-        
+
+        self.robot_links_name = robot_collision_params['link_objs']
         # initialize NN model:
-        self.coll = RobotSphereCollision(robot_collision_params, self.batch_size,
+        self.coll = RobotSphereCollision(ndofs, robot_collision_params, self.batch_size,
                                          tensor_args=self.tensor_args)
 
 
@@ -76,9 +77,12 @@ class RobotSelfCollisionCost(nn.Module):
         res = self.coll.check_self_collisions(link_pos, link_rot)
         
         self.res = res
-        res = res.view(batch_size, horizon, n_links)
-        res = torch.max(res, dim=-1)[0]
-        return res
+        res = res.view(batch_size, horizon, -1)
+        # res = torch.max(res, dim=-1)[0]
+        values, idxs = torch.max(res, dim=-1)
+        # 如果你只有一个 batch、一个时刻
+        # print(f"Most severe collision: {self.robot_links_name[idxs.item()]}, distance = {values.item():.4f}")
+        return values
 
     def forward(self, q):
         batch_size = q.shape[0]
@@ -89,7 +93,7 @@ class RobotSelfCollisionCost(nn.Module):
         # res += self.distance_threshold 这个在self-collision net下 是无意义的
         # 自碰撞是有问题的 这样设置 这种是连续的吗？ 1. 阈值是怎么确定的 2. 连续性的碰撞值是否合理 需要验证 怎么验证
         res[res <= 0.0] = 0.0
-        res[res >= 0.003] = 0.5  # 貌似无意义 
+        # res[res >= 0.003] = 0.5  # 貌似无意义 
 
         cost = self.weight * self.proj_gaussian(res)
         return cost

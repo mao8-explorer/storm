@@ -58,7 +58,6 @@ import os
 
 import torch
 
-
 from .utils import cross_product
 from .differentiable_rigid_body import (
     DifferentiableRigidBody,
@@ -66,6 +65,7 @@ from .differentiable_rigid_body import (
 )
 from .urdf_utils import URDFRobotModel
 import torch.autograd.profiler as profiler
+from typing import Tuple
 #import diff_robot_data
 #robot_description_folder = diff_robot_data.__path__[0]
 
@@ -166,6 +166,8 @@ class DifferentiableRobotModel(torch.nn.Module):
 
         # we assume a non-moving base
         parent_body = self._bodies[0]
+        # print(f"Parent body name: {parent_body.name}")
+
         parent_body.lin_vel = self._base_lin_vel
 
         parent_body.ang_vel = self._base_ang_vel
@@ -236,10 +238,54 @@ class DifferentiableRobotModel(torch.nn.Module):
         qd = qd.to(**self.tensor_args)
         self.update_kinematic_state(q, qd)
 
+        # 获取末端link的pose看着很简单，就是查表呀；看来获得任意link的pose都是等价的咯
         pose = self._bodies[self._name_to_idx_map[link_name]].pose
         pos = pose.translation().to(inp_device)
         rot = pose.rotation().to(inp_device)#get_quaternion()
         return pos, rot
+
+
+    def compute_dualarm_forward_kinematics(
+        self,
+        q: torch.Tensor,
+        qd: torch.Tensor,
+        l_link_name: str,
+        r_link_name: str
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        计算双臂机器人指定末端连杆的正向运动学位姿（位置与旋转）。
+
+        Args:
+            q (torch.Tensor): 关节角度张量，形状为 [batch_size, n_dofs]。
+            qd (torch.Tensor): 关节角速度张量，形状为 [batch_size, n_dofs]。
+            l_link_name (str): 左臂末端连杆的名称。
+            r_link_name (str): 右臂末端连杆的名称。
+
+    Returns:
+        Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
+            返回值包含两个二元组，分别对应左臂和右臂末端的：
+                - 平移向量 pos (torch.Tensor): 形状为 [batch_size, 3]。
+                - 旋转矩阵 rot (torch.Tensor): 形状为 [batch_size, 3, 3]。
+        """
+        # 保持输入设备一致性
+        device = q.device
+        q = q.to(**self.tensor_args)
+        qd = qd.to(**self.tensor_args)
+
+        # 更新当前运动学状态
+        self.update_kinematic_state(q, qd)
+
+        # 获取左右臂末端的姿态对象
+        l_pose = self._bodies[self._name_to_idx_map[l_link_name]].pose
+        r_pose = self._bodies[self._name_to_idx_map[r_link_name]].pose
+
+        # 提取并转换为输入设备格式
+        l_pos = l_pose.translation().to(device)
+        l_rot = l_pose.rotation().to(device)
+        r_pos = r_pose.translation().to(device)
+        r_rot = r_pose.rotation().to(device)
+
+        return (l_pos, l_rot), (r_pos, r_rot)
 
 
     def get_link_pose(self, link_name: str):

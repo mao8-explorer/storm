@@ -76,7 +76,7 @@
   </link>
 
   <!-- 升降关节：控制机器人整体高度，可上升30cm -->
-  <joint name="joint_lift_body" type="fixed">
+  <joint name="joint_lift_body" type="prismatic">
     <origin xyz="0 0 0.3485" rpy="0 0 0"/>  <!-- 从底盘上方34.85cm处开始 -->
     <parent link="base_link"/>
     <child link="link-up-down_body"/>
@@ -119,12 +119,12 @@
   </link>
 
   <!-- 身体俯仰关节：控制机器人俯仰，可俯仰90度 -->
-  <joint name="joint_body_pitch" type="fixed">
+  <joint name="joint_body_pitch" type="revolute">
     <origin xyz="0.131 0 0" rpy="1.5708 -1.5708 0"/>  <!-- 从升降机构前方13.1cm处 -->
     <parent link="link-up-down_body"/>
     <child link="link-pitch_body"/>
-    <axis xyz="0 0 -1"/>                              <!-- 绕Z轴负方向旋转 -->
-    <limit lower="0" upper="1.5708" effort="100" velocity="0.5"/>  <!-- 0-90度俯仰 -->
+    <axis xyz="0 0 1"/>                              <!-- 绕Z轴负方向旋转 -->
+    <limit lower="-1.5708" upper="0" effort="100" velocity="0.5"/>  <!-- 0-90度俯仰 -->
   </joint>
 
   <!-- 头部偏航link：可左右转动的头部 -->
@@ -155,7 +155,7 @@
   </link>
 
   <!-- 头部偏航关节：控制头部左右转动，每边90度 -->
-  <joint name="joint_head_yaw" type="fixed">
+  <joint name="joint_head_yaw" type="revolute">
     <origin xyz="0.441 0 0" rpy="1.5708 0 1.5708"/>  <!-- 从躯干前方44.1cm处 -->
     <parent link="link-pitch_body"/>
     <child link="link-yaw_head"/>
@@ -192,7 +192,7 @@
   </link>
 
   <!-- 头部俯仰关节：控制头部上下点头，每边45度 -->
-  <joint name="joint_head_pitch" type="fixed">
+  <joint name="joint_head_pitch" type="revolute">
     <origin xyz="-0.050238 0 0.060065" rpy="1.5708 0 0"/>
     <parent link="link-yaw_head"/>
     <child link="link-pitch_head"/>

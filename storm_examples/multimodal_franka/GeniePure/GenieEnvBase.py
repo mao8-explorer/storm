@@ -339,10 +339,12 @@ class GenieEnvBase(object):
         ee_pose.r = gymapi.Quat(cur_e_quat[1], cur_e_quat[2], cur_e_quat[3], cur_e_quat[0])
         ee_pose = self.w_T_r * ee_pose
         self.gym.set_rigid_transform(self.env_ptr, self.ee_base_handle, ee_pose)
+
+
         t_step = t_step * self.trac_target_velscale
-        z = self.z_radius * np.cos(t_step)
-        y = self.y_radius * np.abs(np.sin(t_step)) + self.base_height_y
-        self.goal_state =  [self.x,y,z]
+        z = self.z_radius * np.cos(t_step) + self.base_height_z
+        y = self.y_radius * np.sin(t_step) + self.base_height_y
+        self.goal_state =  [self.x,z,y]
         self.update_goal_state()
         # self.visual_top_trajs_ingym()
         

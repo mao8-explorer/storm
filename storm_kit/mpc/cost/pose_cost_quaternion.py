@@ -68,16 +68,12 @@ class PoseCostQuaternion(nn.Module):
         self.device = self.tensor_args['device']
     
 
-    def forward(self, ee_pos_batch, ee_rot_batch, ee_goal_pos, ee_goal_rot):
+    def forward(self, ee_rot_batch, ee_goal_rot):
 
         
-        inp_device = ee_pos_batch.device
-        ee_pos_batch = ee_pos_batch.to(device=self.device,
-                                       dtype=self.dtype)
+        inp_device = ee_rot_batch.device
         ee_rot_batch = ee_rot_batch.to(device=self.device,
                                        dtype=self.dtype)
-        ee_goal_pos = ee_goal_pos.to(device=self.device,
-                                     dtype=self.dtype)
         ee_goal_rot = ee_goal_rot.to(device=self.device,
                                      dtype=self.dtype)
     
@@ -99,9 +95,9 @@ class PoseCostQuaternion(nn.Module):
         # term1 = (R_g_t @ ee_pos_batch.transpose(-2,-1)).transpose(-2,-1) # g_R_w * w_d_ee -> g_d_ee
         # d_g_ee = term1 + R_g_t_d # g_d_g + g_d_ee
         # goal_dist = torch.norm(self.pos_weight * d_g_ee, p=2, dim=-1, keepdim=True)
-        goal_disp = ee_pos_batch - ee_goal_pos
+        # goal_disp = ee_pos_batch - ee_goal_pos
         # goal_dist = torch.norm(self.pos_weight * goal_disp)
-        position_err = torch.sqrt((torch.sum(torch.square(self.pos_weight * goal_disp),dim=-1)))
+        # position_err = torch.sqrt((torch.sum(torch.square(self.pos_weight * goal_disp),dim=-1)))
 
 
         #compute projection error
@@ -137,11 +133,12 @@ class PoseCostQuaternion(nn.Module):
 
 
         rot_err[rot_err < self.convergence_val[0]] = 0.0
-        position_err[position_err < self.convergence_val[1]] = 0.0
+        # position_err[position_err < self.convergence_val[1]] = 0.0
         # cost = self.weight[0] * self.orientation_gaussian(torch.sqrt(rot_err)) + self.weight[1] * self.position_gaussian(torch.sqrt(position_err))
         # cost = self.weight[0] * self.orientation_gaussian(rot_err) + self.weight[1] * self.position_gaussian(position_err)
         
-        cost = (self.weight*self.rotposweight[0]) * self.orientation_gaussian(rot_err) + (self.weight*self.rotposweight[1]) * self.position_gaussian(position_err)
+        # cost = (self.weight*self.rotposweight[0]) * self.orientation_gaussian(rot_err) + (self.weight*self.rotposweight[1]) * self.position_gaussian(position_err)
+        cost = (self.weight*self.rotposweight[0]) * self.orientation_gaussian(rot_err)
         # dimension should be bacth * traj_length
         return cost.to(inp_device)
 

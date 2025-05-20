@@ -191,7 +191,7 @@ class URDFKinematicModel(DynamicsModelBase):
         state_seq = self.tensor_step(start_state, act_seq, state_seq)
 
         shape_tup = (curr_batch_size * num_traj_points, self.n_dofs)
-        ee_pos_seq, _  = self.robot_model.compute_fk(state_seq[:,:,:self.n_dofs].view(shape_tup),
+        ee_pos_seq, ee_rot_seq  = self.robot_model.compute_fk(state_seq[:,:,:self.n_dofs].view(shape_tup),
                                                              state_seq[:,:,self.n_dofs:2 * self.n_dofs].view(shape_tup),
                                                              link_name=self.ee_link_name)
 
@@ -202,8 +202,10 @@ class URDFKinematicModel(DynamicsModelBase):
             link_rot_seq[:,:,ki,:,:] = link_rot.view((curr_batch_size, num_traj_points,3,3))
             
         ee_pos_seq = ee_pos_seq.view((curr_batch_size, num_traj_points, 3))
+        ee_rot_seq = ee_rot_seq.view((curr_batch_size, num_traj_points, 3, 3))
         state_dict = {'state_seq':state_seq.to(inp_device),
                       'ee_pos_seq': ee_pos_seq.to(inp_device),
+                      'ee_rot_seq': ee_rot_seq.to(inp_device),
                       'link_pos_seq':link_pos_seq.to(inp_device),
                       'link_rot_seq':link_rot_seq.to(inp_device)}
         return state_dict

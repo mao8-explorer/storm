@@ -29,7 +29,7 @@ class ArmReacherThread(RolloutBase):
         # initialize dynamics model:
         dynamics_horizon = mppi_params['horizon'] * model_params['dt']
         #Create the dynamical system used for rollouts
-        self.dynamics_model = URDFKinematicModel(join_path(assets_path,exp_params['model']['urdf_path']),
+        self.dynamics_model = URDFKinematicModel(join_path(assets_path,exp_params['model']['robot_collision_params']['urdf']),
                                                  dt=exp_params['model']['dt'],
                                                  batch_size=mppi_params['num_particles'],
                                                  horizon=dynamics_horizon,
