@@ -45,16 +45,15 @@ class URDFKinematicModel(DynamicsModelBase):
         self.link_names = link_names
 
         self.robot_model = DifferentiableRobotModel(urdf_path, None, tensor_args=tensor_args)
-
         #self.robot_model.half()
         self.n_dofs = self.robot_model._n_dofs
-        self.urdfpy_robot = URDF.load(urdf_path) #only for visualization
+        # self.urdfpy_robot = URDF.load(urdf_path) #only for visualization
         
         self.d_state = 3 * self.n_dofs + 1
         self.d_action = self.n_dofs
 
         #Variables for enforcing joint limits
-        self.joint_names = self.urdfpy_robot.actuated_joint_names
+        # self.joint_names = self.urdfpy_robot.actuated_joint_names
         self.joint_lim_dicts = self.robot_model.get_joint_limits()
         self.state_upper_bounds = torch.zeros(self.d_state, device=self.device, dtype=self.float_dtype)
         self.state_lower_bounds = torch.zeros(self.d_state, device=self.device, dtype=self.float_dtype)
@@ -116,6 +115,35 @@ class URDFKinematicModel(DynamicsModelBase):
         self.action_order = 0
         self._integrate_matrix_nth = build_int_matrix(self.num_traj_points, order=self.action_order, device=self.device, dtype=self.float_dtype, traj_dt=self.traj_dt)
         self._nth_traj_dt = torch.pow(self.traj_dt, self.action_order)
+
+        self.debug_print_joints()
+        # self.internal_joint_names = [name for name, idx in self.robot_model._joint_name_to_idx_map.items()]
+            
+    def debug_print_joints(self):
+        self.internal_joint_names = []
+        print("========== URDF Kinematic Model: Debug Print Joints ==========")
+        # Construct reverse mapping: link_idx → name
+        idx_to_name = {idx: name for name, idx in self.robot_model._joint_name_to_idx_map.items()}
+        controlled = self.robot_model._controlled_joints
+        up = self.state_upper_bounds[:self.n_dofs]
+        low = self.state_lower_bounds[:self.n_dofs]
+
+        # 1) Print name → idx mapping (with * marking controlled joints)
+        print("── All Link Names → Index Mapping (* indicates controlled joints) ──")
+        for name, idx in self.robot_model._joint_name_to_idx_map.items():
+            mark = "*" if idx in controlled else " "
+            print(f"  {mark} {name!r:25s} → {idx}")
+
+        # 2) Print q[:, k] mapping + limits (structured output)
+        print("\n── Mapping of q[:, k] (and qd) to Controlled Joints with Position Limits ──")
+        print(f"{'q_idx':>6} | {'link_idx':>8} | {'link_name':<25} | {'limit_low':>10} | {'limit_up':>9}")
+        print("-" * 70)
+        for k, link_idx in enumerate(controlled):
+            name = idx_to_name[link_idx]
+            self.internal_joint_names.append(name)
+            print(f"{k:6d} | {link_idx:8d} | {name:<25s} | {low[k]:10.3f} | {up[k]:9.3f}")
+        print("=============================================================")
+
 
     def get_next_state(self, curr_state: torch.Tensor, act:torch.Tensor, dt):
         """ Does a single step from the current state
@@ -251,22 +279,22 @@ class URDFKinematicModel(DynamicsModelBase):
         return act
 
     #Rendering
-    def render(self, state):
-        q = state[:, 0:self.n_dofs]
-        state_dict = {}
-        for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
-            state_dict[joint.name] = q[:,i].item()
-        self.urdfpy_robot.show(cfg=state_dict,use_collision=True) 
+    # def render(self, state):
+    #     q = state[:, 0:self.n_dofs]
+    #     state_dict = {}
+    #     for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
+    #         state_dict[joint.name] = q[:,i].item()
+    #     self.urdfpy_robot.show(cfg=state_dict,use_collision=True) 
 
 
-    def render_trajectory(self, state_list):
-        state_dict = {}
-        q = state_list[0][:, 0:self.n_dofs]
-        for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
-            state_dict[joint.name] = [q[:,i].item()]
-        for state in state_list[1:]:
-            q = state[:, 0:self.n_dofs]
-            for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
-                state_dict[joint.name].append(q[:,i].item())
-        self.urdfpy_robot.animate(cfg_trajectory=state_dict,use_collision=True) 
+    # def render_trajectory(self, state_list):
+    #     state_dict = {}
+    #     q = state_list[0][:, 0:self.n_dofs]
+    #     for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
+    #         state_dict[joint.name] = [q[:,i].item()]
+    #     for state in state_list[1:]:
+    #         q = state[:, 0:self.n_dofs]
+    #         for (i,joint) in enumerate(self.urdfpy_robot.actuated_joints):
+    #             state_dict[joint.name].append(q[:,i].item())
+    #     self.urdfpy_robot.animate(cfg_trajectory=state_dict,use_collision=True) 
 

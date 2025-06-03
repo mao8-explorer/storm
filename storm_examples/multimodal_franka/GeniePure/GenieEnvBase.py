@@ -61,7 +61,7 @@ class GenieEnvBase(object):
         sim_params['asset_root'] = get_assets_path()
         sim_params['collision_model']=None
         robot_pose = sim_params['robot_pose']  # robot_pose: [0, 0.0, 0, -0.707107, 0.0, 0.0, 0.707107]'
-        init_joint_state = sim_params['init_state']
+        # init_joint_state = sim_params['init_state']
         # create robot simulation: contains a generic robot class that can load a robot asset into sim and gives access to robot's state and control.
         self.robot_sim = RobotSim(
             gym_instance=self.gym_instance.gym, 
@@ -75,11 +75,6 @@ class GenieEnvBase(object):
         # ensure world_robot transform
         self.w_T_r = self.robot_sim.spawn_robot_pose
 
-        # update goal_joint_space:
-        franka_bl_state = np.concatenate((init_joint_state,np.zeros(7)))
-        self.mpc_control.update_params(goal_state=franka_bl_state)
-        self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
-        self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
 
     def _initialize_world_and_camera(self):
         """
@@ -120,34 +115,51 @@ class GenieEnvBase(object):
         collision_move_asset_file = "urdf/mug/movable_collision_test.urdf"
         current_asset_file = "urdf/mug/mug.urdf"
   
-        target_object = self.world_instance.spawn_object(target_asset_file, obj_asset_root, object_pose,
-                                                    name='ee_target_object')
+        l_target_object = self.world_instance.spawn_object(target_asset_file, obj_asset_root, object_pose,
+                                                    name='l_ee_target_object')
+        r_target_object = self.world_instance.spawn_object(target_asset_file, obj_asset_root, object_pose,
+                                                    name='r_ee_target_object')
+        
         collision_obj = self.world_instance.spawn_collision_obj(collision_move_asset_file, obj_asset_root, object_pose,
                                                     name='collision_move_test')    
-        current_ee_obj = self.world_instance.spawn_object(current_asset_file, obj_asset_root, object_pose, 
-                                                name='ee_current_as_mug')    
+        l_current_ee_obj = self.world_instance.spawn_object(current_asset_file, obj_asset_root, object_pose, 
+                                                name='l_ee_current_as_mug')    
 
+        r_current_ee_obj = self.world_instance.spawn_object(current_asset_file, obj_asset_root, object_pose, 
+                                                name='r_ee_current_as_mug')   
+        
         self.collision_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, collision_obj, 0)
         self.collision_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, collision_obj, 6)
 
-        self.target_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, target_object, 0)
-        self.target_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, target_object, 6)
+        self.l_target_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, l_target_object, 0)
+        self.l_target_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, l_target_object, 6)
+        self.r_target_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, r_target_object, 0)
+        self.r_target_body_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, r_target_object, 6)
 
-        self.ee_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, current_ee_obj, 0)
-      
+
+
+        self.l_ee_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, l_current_ee_obj, 0)
+        self.r_ee_base_handle = self.gym.get_actor_rigid_body_handle(self.env_ptr, r_current_ee_obj, 0)
+   
         # set different color for three type objects RGB       
-        self.gym.set_rigid_body_color(self.env_ptr, target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.8, 0.1, 0.1))
-        self.gym.set_rigid_body_color(self.env_ptr, target_object, 6, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.8, 0.1, 0.1))
+        self.gym.set_rigid_body_color(self.env_ptr, l_target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.8, 0.1, 0.1))
+        self.gym.set_rigid_body_color(self.env_ptr, l_target_object, 6, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.8, 0.1, 0.1))
+
+        self.gym.set_rigid_body_color(self.env_ptr, r_target_object, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.8, 0.1, 0.1))
+        self.gym.set_rigid_body_color(self.env_ptr, r_target_object, 6, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.8, 0.1, 0.1))
+
 
         self.gym.set_rigid_body_color(self.env_ptr, collision_obj, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.80, 0.42, 0.13))
         self.gym.set_rigid_body_color(self.env_ptr, collision_obj, 6, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.80, 0.42, 0.13))
                 
-        self.gym.set_rigid_body_color(self.env_ptr, current_ee_obj, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.0, 0.8, 0.0))
+        self.gym.set_rigid_body_color(self.env_ptr, l_current_ee_obj, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.0, 0.8, 0.0))
+        self.gym.set_rigid_body_color(self.env_ptr, r_current_ee_obj, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0.0, 0.8, 0.0))
 
         # reset initial_position of target_object and collision_move_object
         object_pose.p = gymapi.Vec3(0.280,0.469,0.118)
         object_pose.r = gymapi.Quat(-0.733, 0.135, -0.65, -0.142)
-        self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, object_pose)
+        self.gym.set_rigid_transform(self.env_ptr, self.l_target_base_handle, object_pose)
+        self.gym.set_rigid_transform(self.env_ptr, self.r_target_base_handle, object_pose)
 
         object_pose.p = gymapi.Vec3(0.700 , 0.16,  0.704)
         object_pose.r = gymapi.Quat(0.278,0.668,-0.604,0.334)
@@ -172,7 +184,7 @@ class GenieEnvBase(object):
         谁控制了target_body_handle 谁控制了MPC_Policy_Goal 不管是通过Gym还是通过代码的方式 都可以
         检测 gym目标变化情况, 一旦变化， 更新MPC 目标
         """
-        pose_w = copy.deepcopy(self.world_instance.get_pose(self.target_body_handle))
+        pose_w = copy.deepcopy(self.world_instance.get_pose(self.l_target_body_handle))
         # self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, pose_w)
         pose = self.w_T_r.inverse() * pose_w #将world坐标系下的目标点转到robot坐标系下
         if (np.linalg.norm(self.g_pos - np.ravel([pose.p.x, pose.p.y, pose.p.z])) > 0.00001 or (
@@ -190,12 +202,63 @@ class GenieEnvBase(object):
     def update_goal_state(self):
         # target_base 与 body的讨论见草稿 10.07
         goal_state = self.goal_state
-        world_T_body_des = copy.deepcopy(self.world_instance.get_pose(self.target_body_handle))
+        world_T_body_des = copy.deepcopy(self.world_instance.get_pose(self.l_target_body_handle))
         body_T_world = copy.deepcopy(world_T_body_des).inverse()
-        world_T_base = copy.deepcopy(self.world_instance.get_pose(self.target_base_handle))
+        world_T_base = copy.deepcopy(self.world_instance.get_pose(self.l_target_base_handle))
         world_T_body_des.p = gymapi.Vec3(goal_state[0],goal_state[1],goal_state[2])
         set_world_T_base = world_T_body_des * body_T_world * world_T_base
-        self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, set_world_T_base)
+        self.gym.set_rigid_transform(self.env_ptr, self.l_target_base_handle, set_world_T_base)
+
+    def dual_update_goal_state(self):
+        """
+        将左臂和右臂各自的 goal_state_l/goal_state_r 
+        转换到world frame，再更新各自目标基座的Transform。
+        """
+        # ---------- 左臂目标更新 ----------
+        # 1. 读取当前 world -> body_des（左臂目标体）的 Pose
+        world_T_body_des_l = copy.deepcopy(
+            self.world_instance.get_pose(self.l_target_body_handle)
+        )
+        # 2. 计算 body_des -> world 的逆变换
+        body_des_T_world_l = world_T_body_des_l.inverse()
+        # 3. 读取当前 world -> base (左臂目标基座) 的 Pose
+        world_T_base_l = copy.deepcopy(
+            self.world_instance.get_pose(self.l_target_base_handle)
+        )
+        # 4. 把左臂期望位置写入 world_T_body_des_l 的平移分量
+        #    假设 self.goal_state_l = [x_l, y_l, z_l]
+        x_l, y_l, z_l = self.goal_state_l
+        world_T_body_des_l.p = gymapi.Vec3(x_l, y_l, z_l)
+        # 5. 组合变换：先从 body_des_l 跳回世界，再到 base_l
+        #    (world_T_body_des_l) * (body_des_T_world_l) * (world_T_base_l)
+        set_world_T_base_l = world_T_body_des_l * body_des_T_world_l * world_T_base_l
+        # 6. 给左臂的 target_base_handle_l 设置新的 Transform
+        self.gym.set_rigid_transform(
+            self.env_ptr, self.l_target_base_handle, set_world_T_base_l
+        )
+
+        # ---------- 右臂目标更新 ----------
+        # 1. world -> body_des（右臂目标体）
+        world_T_body_des_r = copy.deepcopy(
+            self.world_instance.get_pose(self.r_target_body_handle)
+        )
+        # 2. body_des -> world 的逆
+        body_des_T_world_r = world_T_body_des_r.inverse()
+        # 3. world -> base（右臂目标基座）
+        world_T_base_r = copy.deepcopy(
+            self.world_instance.get_pose(self.r_target_base_handle)
+        )
+        # 4. 把右臂期望位置写入 world_T_body_des_r =
+        #    self.goal_state_r = [x_r, y_r, z_r]
+        x_r, y_r, z_r = self.goal_state_r
+        world_T_body_des_r.p = gymapi.Vec3(x_r, y_r, z_r)
+        # 5. 组合变换
+        set_world_T_base_r = world_T_body_des_r * body_des_T_world_r * world_T_base_r
+        # 6. 更新右臂 target_base_handle_r
+        self.gym.set_rigid_transform(
+            self.env_ptr, self.r_target_base_handle, set_world_T_base_r
+        )
+
 
     def updateGymVisual_GymGoalUpdate(self):
                
@@ -207,7 +270,8 @@ class GenieEnvBase(object):
         ee_pose.p = gymapi.Vec3(cur_e_pos[0], cur_e_pos[1], cur_e_pos[2])
         ee_pose.r = gymapi.Quat(cur_e_quat[1], cur_e_quat[2], cur_e_quat[3], cur_e_quat[0])
         ee_pose = self.w_T_r * ee_pose
-        self.gym.set_rigid_transform(self.env_ptr, self.ee_base_handle, ee_pose)
+        self.gym.set_rigid_transform(self.env_ptr, self.l_ee_base_handle, ee_pose)
+        self.gym.set_rigid_transform(self.env_ptr, self.r_ee_base_handle, ee_pose)
         if self.goal_flagi > -1 : self.traj_log['ee_pos'].append(cur_e_pos)
 
         # if current_ee_pose in goal_pose thresh ,update to next goal_pose
@@ -226,6 +290,76 @@ class GenieEnvBase(object):
             # if self.goal_flagi %  ( 2*len(self.goal_list) )== 1 : 
             #     self.traj_log = {'position':[], 'velocity':[], 'acc':[] , 'des':[] , 'weights':[]}
             #     print("置零")
+
+    def dual_updateGymVisual_GymGoalUpdate(self):
+        """
+        Update the Gym visualization by fetching both left and right end-effector poses
+        via get_dual_ee_pose, transforming them into world coordinates, and applying them
+        to their respective gym handles. Also updates trajectory log and goal‐checking logic.
+        """
+        # 1. Fetch dual end-effector poses (position + quaternion) in the robot frame
+        ee_states = self.mpc_control.controller.rollout_fn.get_dual_ee_pose(self.curr_state_tensor)
+
+        # 2. Extract left EE pose
+        l_pos = ee_states['l_ee_pos_seq'].cpu().numpy().ravel()   # shape (3,)
+        l_quat = ee_states['l_ee_quat_seq'].cpu().numpy().ravel() # shape (4, in [w, x, y, z] order)
+
+        l_transform = gymapi.Transform()
+        l_transform.p = gymapi.Vec3(l_pos[0], l_pos[1], l_pos[2])
+        # gymapi.Quat expects (x, y, z, w)
+        l_transform.r = gymapi.Quat(l_quat[1], l_quat[2], l_quat[3], l_quat[0])
+        # Transform from robot frame to world frame
+        l_transform = self.w_T_r * l_transform
+
+        # 3. Extract right EE pose
+        r_pos = ee_states['r_ee_pos_seq'].cpu().numpy().ravel()   # shape (3,)
+        r_quat = ee_states['r_ee_quat_seq'].cpu().numpy().ravel() # shape (4, in [w, x, y, z] order)
+
+        r_transform = gymapi.Transform()
+        r_transform.p = gymapi.Vec3(r_pos[0], r_pos[1], r_pos[2])
+        # gymapi.Quat expects (x, y, z, w)
+        r_transform.r = gymapi.Quat(r_quat[1], r_quat[2], r_quat[3], r_quat[0])
+        # Transform from robot frame to world frame
+        r_transform = self.w_T_r * r_transform
+
+        # 4. Apply transforms to each EE's gym handle
+        self.gym.set_rigid_transform(self.env_ptr, self.l_ee_base_handle, l_transform)
+        self.gym.set_rigid_transform(self.env_ptr, self.r_ee_base_handle, r_transform)
+
+        # 5. Log current EE positions (optional: adapt keys to existing traj_log structure)
+        if self.goal_flagi > -1:
+            # Record both left and right positions
+            self.traj_log.setdefault('l_ee_pos', []).append(l_pos.copy())
+            self.traj_log.setdefault('r_ee_pos', []).append(r_pos.copy())
+
+        # 6. Check goal condition (example uses left EE; adjust if you want to use right or both)
+        #    Here, `self.g_pos` is assumed to be a 3D goal position for (say) the left EE.
+        cur_l_pos = l_pos  # choose which end-effector to compare against the goal
+        if np.linalg.norm(cur_l_pos - np.array(self.g_pos)) < self.thresh:
+            if self.collision_hanppend:
+                self.crash_rate += 1
+            self.collision_hanppend = False
+
+            # Cycle to the next goal in the list
+            self.goal_flagi += 1
+            self.goal_state = self.goal_list[self.goal_flagi % len(self.goal_list)]
+            self.dual_update_goal_state()
+
+            log_message = "next goal: {}, lap_count: {}, collision_count: {}".format(
+                self.goal_flagi,
+                self.goal_flagi / len(self.goal_list),
+                self.curr_collision
+            )
+            print(log_message)
+
+            # Log the previous goal position (for plotting, etc.)
+            self.traj_log.setdefault('cart_goal_pos', []).append(self.g_pos.copy())
+
+            # (Optional) Reset or clear logs at certain checkpoints—uncomment if needed
+            # if self.goal_flagi % (2 * len(self.goal_list)) == 1:
+            #     self.traj_log = {'position': [], 'velocity': [], 'acc': [], 'des': [], 'weights': []}
+            #     print("Traj log reset.")
+
 
         
     def visual_top_trajs_ingym(self):
@@ -338,7 +472,7 @@ class GenieEnvBase(object):
         ee_pose.p = gymapi.Vec3(cur_e_pos[0], cur_e_pos[1], cur_e_pos[2])
         ee_pose.r = gymapi.Quat(cur_e_quat[1], cur_e_quat[2], cur_e_quat[3], cur_e_quat[0])
         ee_pose = self.w_T_r * ee_pose
-        self.gym.set_rigid_transform(self.env_ptr, self.ee_base_handle, ee_pose)
+        self.gym.set_rigid_transform(self.env_ptr, self.l_ee_base_handle, ee_pose)
 
 
         t_step = t_step * self.trac_target_velscale
@@ -348,6 +482,51 @@ class GenieEnvBase(object):
         self.update_goal_state()
         # self.visual_top_trajs_ingym()
         
+    def dual_dynamic_goal_track(self, t_step):
+        """
+        轨迹跟踪任务 定制化的函数
+        功能 : 目标点做半圆周运动，同时将双臂末端可视化更新到 Gym 中
+        """
+        # 1. 获取双臂末端在机器人坐标系下的位置和四元数
+        ee_states = self.mpc_control.controller.rollout_fn.get_dual_ee_pose(self.curr_state_tensor)
+
+        # 2. 提取左臂末端
+        l_pos = ee_states['l_ee_pos_seq'].cpu().numpy().ravel()   # shape (3,)
+        l_quat = ee_states['l_ee_quat_seq'].cpu().numpy().ravel() # shape (4,), [w, x, y, z]
+
+        l_transform = gymapi.Transform()
+        l_transform.p = gymapi.Vec3(l_pos[0], l_pos[1], l_pos[2])
+        # gymapi.Quat 顺序是 (x, y, z, w)
+        l_transform.r = gymapi.Quat(l_quat[1], l_quat[2], l_quat[3], l_quat[0])
+        # 从机器人坐标系转换到世界坐标系
+        l_transform = self.w_T_r * l_transform
+
+        # 3. 提取右臂末端
+        r_pos = ee_states['r_ee_pos_seq'].cpu().numpy().ravel()   # shape (3,)
+        r_quat = ee_states['r_ee_quat_seq'].cpu().numpy().ravel() # shape (4,), [w, x, y, z]
+
+        r_transform = gymapi.Transform()
+        r_transform.p = gymapi.Vec3(r_pos[0], r_pos[1], r_pos[2])
+        # gymapi.Quat 顺序是 (x, y, z, w)
+        r_transform.r = gymapi.Quat(r_quat[1], r_quat[2], r_quat[3], r_quat[0])
+        r_transform = self.w_T_r * r_transform
+
+        # 4. 将左右臂末端可视化更新到 Gym 环境
+        self.gym.set_rigid_transform(self.env_ptr, self.l_ee_base_handle, l_transform)
+        self.gym.set_rigid_transform(self.env_ptr, self.r_ee_base_handle, r_transform)
+
+        # 5. 生成半圆轨迹上的目标点（与单臂逻辑一致）
+        t_scaled = t_step * self.trac_target_velscale
+        z = self.z_radius * np.cos(t_scaled) + self.base_height_z
+        y = self.y_radius * np.sin(t_scaled) + self.base_height_y
+        # x 保持不变
+        self.goal_state = [self.x, z, y]
+        self.update_goal_state()
+        # 如果需要在此可视化轨迹，可调用对应函数
+        # self.visual_top_trajs_ingym()
+
+
+  
     def _dynamic_object_moveDesign_leftright_track(self):
         # Update velocity vector based on move bounds and current pose
         collision_T = copy.deepcopy(self.world_instance.get_pose(self.collision_body_handle))

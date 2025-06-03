@@ -38,11 +38,11 @@ import yaml
 from storm_kit.mpc.control.control_utils import generate_halton_samples
 from storm_kit.geom.nn_model.robot_self_collision import RobotSelfCollisionNet
 import os
+from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('TkAgg')  # 确保交互式绘图有效
-import math
 
 
 def init_live_plot():
@@ -129,7 +129,7 @@ class RobotDataset(torch.utils.data.Dataset):
         return sample
     
 def create_dataset(robot_name):
-    checkpoints_dir = get_weights_path()+'/robot_self'
+    checkpoints_dir = get_weights_path()+'/robot_self/test'
     num_particles = 10000
     task_file = robot_name+'_reacher.yml'
 
@@ -150,19 +150,32 @@ def create_dataset(robot_name):
     
     # sample joint angles
     dof = rollout_fn.dynamics_model.d_action
-    q_samples = generate_halton_samples(num_particles*2, dof, use_ghalton=True, seed_val=120,
+    q_samples = generate_halton_samples(num_particles*2, dof, use_ghalton=True, seed_val=123,
                                         device=tensor_args['device'],
                                         float_dtype=tensor_args['dtype'])
 
-    # scale samples by joint range:
+
+    # rollout_fn, ndof 已定义
+    robot_model = rollout_fn.dynamics_model.robot_model
+    name_to_idx = robot_model._name_to_idx_map
+    idx_to_name = {idx: name for name, idx in name_to_idx.items()}
+
+    controlled = robot_model._controlled_joints                   # list of link 索引
     up_bounds = rollout_fn.dynamics_model.state_upper_bounds[:dof]
     low_bounds = rollout_fn.dynamics_model.state_lower_bounds[:dof]
 
-    # 假设 up_bounds 和 low_bounds 都是形如 (dof,) 的 1D Tensor
+    # 偏置量
+    offset = 0.0 #math.pi / 10
+    # 放大上下限
+    low_bounds = low_bounds - offset
+    up_bounds  = up_bounds  + offset
 
-    for idx, (low, up) in enumerate(zip(low_bounds, up_bounds), start=1):
-        span = up - low
-        print(f"Joint {idx:2d} range: [{low:.3f}, {up:.3f}], span = {span:.3f}")
+    print("受控关节及其取值范围：")
+    for dof_idx, link_idx in enumerate(controlled):
+        name = idx_to_name[link_idx]
+        low, up = low_bounds[dof_idx], up_bounds[dof_idx]
+        print(f"  Joint {dof_idx+1:2d} | {name:<20s} | [{low: .3f}, {up: .3f}]")
+
 
 
     # # 故意放大bounds， 目的： 增加碰撞样本，不然数据差异很少，可以通过print(torch.min(y), torch.max(y))判断
@@ -222,7 +235,7 @@ def create_dataset(robot_name):
     # load training set:
     x_train = x[:int((n_size)*0.7),:]
     y_train = y[:int((n_size)*0.7)]
-    coll_thresh = 0.003
+    coll_thresh = 0.005
     x_coll = x_train[y_train[:,0]> coll_thresh]#.cpu().numpy()
     y_coll = y_train[y_train[:,0]> coll_thresh]#.cpu().numpy()
     # 计算碰撞比例（float 标量）
@@ -263,25 +276,55 @@ def create_dataset(robot_name):
     x[x!=x] = 0.0
     y = torch.div(y - mean_y,std_y)
     y[y!=y] = 0.0
-    x_val = x[int((n_size)*0.7):int((n_size)*0.9),:]
-    y_val = y[int((n_size)*0.7):int((n_size)*0.9)]
-    x_test = x[int((n_size)*0.9):,:]
-    y_test = y[int((n_size)*0.9):]
+    # x_val = x[int((n_size)*0.7):int((n_size)*0.9),:]
+    # y_val = y[int((n_size)*0.7):int((n_size)*0.9)]
 
+    # 将碰撞/非碰撞样本分别抽一部分给 val
+    mask_coll = (y[:,0] > coll_thresh).squeeze()
+    mask_free = ~mask_coll
+
+    x_coll_val = x[mask_coll][:int(0.1 * mask_coll.sum())]
+    y_coll_val = y[mask_coll][:int(0.1 * mask_coll.sum())]
+
+    x_free_val = x[mask_free][:int(0.2 * mask_free.sum())]
+    y_free_val = y[mask_free][:int(0.2 * mask_free.sum())]
+
+    x_val = torch.cat([x_coll_val, x_free_val], dim=0)
+    y_val = torch.cat([y_coll_val, y_free_val], dim=0)
 
     train_dataset = RobotDataset(x_train.detach(), y_train.detach(), y_train_true.detach())
     trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True)
     coll_dataset = RobotDataset(x_coll.detach(), y_coll.detach(), y_coll.detach())
-    collloader = torch.utils.data.DataLoader(coll_dataset, batch_size=32, shuffle=True)
+    collloader = torch.utils.data.DataLoader(coll_dataset, batch_size=64, shuffle=True)
 
 
-    optimizer = torch.optim.Adam(model.parameters(),lr=1e-3)
-    # optimizer = torch.optim.SGD(model.parameters(),lr=1e-3)#,momentum=0.97)
+    optimizer = torch.optim.Adam(model.parameters(),lr=1e-3,weight_decay=1e-5)
+        # optimizer = torch.optim.SGD(model.parameters(),lr=1e-3)#,momentum=0.97)
+    # 学习率调度器：val_loss 停滞时降低 lr
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=10, verbose=True, min_lr=1e-5
+    )
+
+    # EMA 模型参数缓存（指数滑动平均）
+    ema_model = deepcopy(model)
+    ema_decay = 0.995  # 越接近 1，变化越慢
+
+    def update_ema(model, ema_model, decay):
+        with torch.no_grad():
+            for ema_p, p in zip(ema_model.parameters(), model.parameters()):
+                ema_p.data.mul_(decay).add_(p.data, alpha=1 - decay)
+
 
     # model参数配置
     epochs = 500
     min_loss = 100.0
-    alpha = 1.0 # collision数据的偏置
+    alpha = 2.0 # collision数据的偏置
+
+    best_val_loss = float('inf')
+    patience = 20
+    patience_counter = 0
+    best_model_state = deepcopy(model.state_dict())
+
 
     # === 动态 Loss 曲线绘图初始化 ===
     # 初始化绘图对象
@@ -290,44 +333,6 @@ def create_dataset(robot_name):
     val_losses = []
     coll_losses = []
     windows = 120 # 窗口大小的控件
-
-
-    # boundary_weighted_mse 参数
-    beta         = 50.0
-    boundary_val = 0.10
-
-    def boundary_weighted_mse(pred: torch.Tensor,
-                            target: torch.Tensor,
-                            beta: float = 50.0,
-                            boundary: float = 0.0,
-                            eps: float = 1e-6) -> torch.Tensor:
-        """
-        带边界值的加权 MSE 损失：
-        - 边界定义为 target == boundary
-        - 权重 = exp(-beta * |target - boundary|)
-        - loss = sum_i weight_i * (pred_i - target_i)^2 / (sum_i weight_i + eps)
-
-        Args:
-            pred:     预测张量，任意形状
-            target:   真实张量，形状同 pred
-            beta:     控制权重衰减程度的超参
-            boundary: 边界值 b，使得当 target 越接近 b 时，权重越大
-            eps:      防止除零的小量
-
-        Returns:
-            标量：加权 MSE 损失
-        """
-        # 计算离边界的距离
-        dist_to_boundary = (target - boundary).abs()
-        # 计算权重
-        weights = torch.exp(-beta * dist_to_boundary)
-        # 加权平方误差
-        sq_err = (pred - target).pow(2)
-        weighted_sq_err = weights * sq_err
-
-        # 归一化
-        loss = weighted_sq_err.sum() / (weights.sum() + eps)
-        return loss
 
     # training:
     for e in range(epochs):
@@ -371,10 +376,14 @@ def create_dataset(robot_name):
             # coll_loss = boundary_weighted_mse(y_coll_pred, y_coll_batch, beta=beta, boundary=boundary_val)
             # train_loss = main_loss + alpha * coll_loss
             train_loss.backward()
+            
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimizer.step()
             loss.append(train_loss.item())
             #print(train_loss.item())
             #i += batch_size
+
 
         model.eval()
         
@@ -411,6 +420,26 @@ def create_dataset(robot_name):
         val_losses.append(val_rmse)
         coll_losses.append(coll_rmse)
 
+        # === 更新 EMA 模型 ===
+        update_ema(model, ema_model, ema_decay)
+
+        # === 调整学习率 ===
+        scheduler.step(val_loss)
+
+        # === Early Stopping 检查 ===
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+            best_model_state = deepcopy(model.state_dict())
+            print(f"[✓] New best val loss: {val_loss.item():.6f}")
+        else:
+            patience_counter += 1
+            # print(f"[•] Patience {patience_counter}/{patience}")
+            if patience_counter >= patience and e > 100:
+                print("[⏹️] Early stopping triggered.")
+                break
+
+
         # === 更新动态图 ===
         update_live_plot(fig, ax, train_line, val_line, coll_line,
                         train_losses, val_losses, coll_losses, window=windows)  # 默认 window=100
@@ -423,21 +452,28 @@ def create_dataset(robot_name):
     print("[INFO] Final loss curve saved as 'loss_curve_final.png'")
     plt.show()
 
-
+    model.load_state_dict(best_model_state)  # 恢复 best 模型
+    ema_model.eval()  # 可用于部署推理
+    # 手动保存 ema 模型权重
+    torch.save(
+        {
+            'model_state_dict': ema_model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'norm':{'x':{'mean':mean_x, 'std':std_x},
+                    'y':{'mean':mean_y, 'std':std_y}}
+        },
+        join_path(checkpoints_dir,
+                    robot_name+'_self_ema.pt'))
+    
     with torch.no_grad():
-        x = x_test#[y_test[:,0] > 0.0]
-        y = y_test#[y_test[:,0] > 0.0]
-        
-        #print(x.shape)
-        y_pred = model.forward(x)
-        y_pred = torch.mul(y_pred, std_y) + mean_y
-        y_test = torch.mul(y, std_y) + mean_y
-        print(y_test[y_test>0.0])
-        print(y_pred[y_test>0.0])
-        #print(y_pred.shape, y_test.shape)
-        loss = F.l1_loss(y_pred, y_test, reduction='mean')
-        print(torch.median(y_pred), torch.mean(y_pred))
-        print(loss.item())
+        # compare model vs ema_model
+        pred_model = model(x_val)
+        pred_ema = ema_model(x_val)
+        loss_model = F.mse_loss(pred_model, y_val)
+        loss_ema = F.mse_loss(pred_ema, y_val)
+        rmse_model = torch.sqrt(loss_model) * std_y
+        rmse_ema = torch.sqrt(loss_ema) * std_y
+        print(f"[Compare RMSE] model: {rmse_model:.5f} m | ema: {rmse_ema:.5f} m")
 
 
     plot_loss_curves(train_losses, val_losses, coll_losses, save_path='loss_curve.png')

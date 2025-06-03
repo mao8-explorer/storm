@@ -103,14 +103,14 @@ class CameraObservation:
 
 class RobotSim():
     def __init__(self, device='cpu', gym_instance=None, sim_instance=None, env_instance=None, viewer = None,
-                 asset_root='', sim_urdf='', asset_options='', init_state=None, collision_model=None, **kwargs):
+                 asset_root='', sim_urdf='', asset_options='', collision_model=None, **kwargs):
         self.gym = gym_instance
         self.sim = sim_instance
         self.env = env_instance 
         self.viewer = viewer
         self.device = device
         self.dof = None
-        self.init_state = init_state
+        self.init_state = None
         self.joint_names = []
         robot_asset_options = gymapi.AssetOptions()
         robot_asset_options = load_struct_from_dict(robot_asset_options, asset_options)
@@ -170,12 +170,15 @@ class RobotSim():
 
         robot_lower_limits = robot_dof_props['lower']
         robot_upper_limits = robot_dof_props['upper']
-        # print(
-        #     "robot_joint_names_:",robot_joint_names,
-        #     "\nrobot_lower_limits_:",robot_lower_limits,
-        #     "\nrobot_upper_limits_:",robot_upper_limits,
-        #     "\ndof_:",self.dof
-        #     ) # 好的 我知道了
+        # Print joint limits in a formatted table with a distinguishing header
+        print("=== RobotSim: Robot Joint Limits ===")
+        header = f"{'Index':>5s} | {'Joint Name':<25s} | {'Lower Limit':>12s} | {'Upper Limit':>12s}"
+        print(header)
+        print("-" * len(header))
+        for i, (name, low, high) in enumerate(zip(robot_joint_names, robot_lower_limits, robot_upper_limits)):
+            print(f"{i:5d} | {name:<25s} | {low:12.3f} | {high:12.3f}")
+        print("====================================")
+
         if(init_state is None):
             if(self.init_state is None):
                 init_state = (robot_lower_limits + robot_upper_limits) / 2 

@@ -45,20 +45,22 @@ model:
   #control_freq: 10
   #sim_freq: 100
   ee_link_name: "ee_link"
+  left_ee_link_name: "ee_link_l"
+  right_ee_link_name: "ee_link_r"
   # init_state: [0.0, -0.36, -0.2, -2.0, 0.0, 1.64, 0.68]
   vel_scale: 1.0
   
   robot_collision_params:
     urdf: "urdf/genie_description/A2DWithFixBase.urdf"
     sample_points: 100
-    link_objs: ['Link4_l','Link5_l', 'Link6_l','Link7_l','Link_hand_l']
+    link_objs: ['Link4_l','Link5_l', 'Link6_l','Link7_l','Link_hand_l', 'Link4_r','Link5_r', 'Link6_r','Link7_r','Link_hand_r']
     body_objs: ['link-pitch_head', 'link-up-down_body', 'base_link', 'link-pitch_body'] # 看成一体，相互间不做距离计算
     # body_objs: [] # for single-arm group
     #link_objs: ['panda_link6']
     threshold: 0.35
     bounds: [[-0.8, -0.8, -0.23],[0.8,0.8,1.5]]
     collision_spheres: '../robot/genie_represent.yml'
-    self_collision_weights: 'robot_self/genie_self_sdf.pt'
+    self_collision_weights: 'robot_self/test/genie_self_sdf.pt'
     dof: 7
     horizon: 30
     num_particles: 500
@@ -74,12 +76,12 @@ model:
 
 cost:
   joint_l2:
-    vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
+    # vec_weight: 
     weight: 40.0
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
 
   Jnq_sparse_reward:
-    vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
+    # vec_weight:
     weight: 100.0
     sigma : 0.05
 
@@ -136,7 +138,7 @@ cost:
     gaussian_params: {'n':0, 'c':0.5, 's':0, 'r':5.0}
     
   robot_self_collision:
-    weight: 2000.0
+    weight: 0.0
     distance_threshold: 0.05
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 

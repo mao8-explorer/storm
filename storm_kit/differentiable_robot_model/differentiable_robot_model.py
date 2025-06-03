@@ -106,6 +106,7 @@ class DifferentiableRobotModel(torch.nn.Module):
         # while urdfs model joints and rigid bodies separately
         # joint is at the beginning of a link
         self._name_to_idx_map = dict()
+        self._joint_name_to_idx_map = dict()
 
         for (i, link) in enumerate(self._urdf_model.robot.links):
 
@@ -128,6 +129,7 @@ class DifferentiableRobotModel(torch.nn.Module):
 
             self._bodies.append(body)
             self._name_to_idx_map[body.name] = i
+            self._joint_name_to_idx_map[body.joint_name] = i
     def delete_lxml_objects(self):
         self._urdf_model = None
     def load_lxml_objects(self):
@@ -245,7 +247,7 @@ class DifferentiableRobotModel(torch.nn.Module):
         return pos, rot
 
 
-    def compute_dualarm_forward_kinematics(
+    def compute_dual_forward_kinematics(
         self,
         q: torch.Tensor,
         qd: torch.Tensor,
@@ -617,7 +619,32 @@ class DifferentiableRobotModel(torch.nn.Module):
         ee_pos, ee_rot= self.compute_forward_kinematics(q, qd, link_name)
         # return ee_pos.to(inp_device), ee_rot.to(inp_device)
         return ee_pos.to(inp_device), ee_rot.to(inp_device)
-    
+
+    def compute_dual_fk_PosRot(
+                self, q: torch.Tensor, qd: torch.Tensor, l_link_name: str, r_link_name: str
+        ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Compute the forward kinematics (position and rotation) for two specified links.
+
+        Args:
+            q (torch.Tensor): Joint angles [batch_size x n_dofs].
+            qd (torch.Tensor): Joint velocities [batch_size x n_dofs].
+            l_link_name (str): Name of the left link.
+            r_link_name (str): Name of the right link.
+
+        Returns:
+            Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
+                - Left link position and rotation as (l_pos, l_rot).
+                - Right link position and rotation as (r_pos, r_rot).
+        """
+        inp_device = q.device
+        q = q.to(**self.tensor_args)
+        qd = qd.to(**self.tensor_args)
+
+        (l_pos, l_rot), (r_pos, r_rot) = self.compute_dual_forward_kinematics(q, qd, l_link_name, r_link_name)
+
+        return (l_pos.to(inp_device), l_rot.to(inp_device)), (r_pos.to(inp_device), r_rot.to(inp_device))
+
     
     def compute_fk_and_jacobian(
                 self, q: torch.Tensor, qd:torch.Tensor, link_name: str

@@ -265,6 +265,34 @@ class ArmBase(RolloutBase):
                 #  'lin_jac_seq': lin_jac_batch, 'ang_jac_seq': ang_jac_batch,
                  'ee_quat_seq':ee_quat}
         return state
+
+    def get_dual_ee_pose(self, current_state):
+        current_state = current_state.to(**self.tensor_args)
+         
+        # Compute forward kinematics for both left and right end-effectors
+        (l_ee_pos_batch, l_ee_rot_batch), (r_ee_pos_batch, r_ee_rot_batch) = self.dynamics_model.robot_model.compute_dual_fk_PosRot(
+            current_state[:, :self.dynamics_model.n_dofs],
+            current_state[:, self.dynamics_model.n_dofs: self.dynamics_model.n_dofs * 2],
+            l_link_name=self.exp_params['model']['left_ee_link_name'],  # Left end-effector link name
+            r_link_name=self.exp_params['model']['right_ee_link_name']  # Right end-effector link name
+        )
+        
+        # Convert rotation matrices to quaternions
+        l_ee_quat = matrix_to_quaternion(l_ee_rot_batch)
+        r_ee_quat = matrix_to_quaternion(r_ee_rot_batch)
+        
+        # Construct the state dictionary
+        state = {
+            'l_ee_pos_seq': l_ee_pos_batch,  # Left end-effector position
+            'l_ee_rot_seq': l_ee_rot_batch,  # Left end-effector rotation matrix
+            'l_ee_quat_seq': l_ee_quat,      # Left end-effector quaternion
+            'r_ee_pos_seq': r_ee_pos_batch,  # Right end-effector position
+            'r_ee_rot_seq': r_ee_rot_batch,  # Right end-effector rotation matrix
+            'r_ee_quat_seq': r_ee_quat       # Right end-effector quaternion
+        }
+        
+        return state
+
     def current_cost(self, current_state, no_coll=True):
         current_state = current_state.to(**self.tensor_args)
         

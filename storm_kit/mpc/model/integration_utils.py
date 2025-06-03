@@ -150,7 +150,7 @@ def tensor_step_acc(state, act, state_seq, dt_h, n_dofs: int, integrate_matrix, 
 
 
 @torch.jit.script
-def tensor_step_vel(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix):
+def tensor_step_vel(state, act, state_seq, dt_h, n_dofs: int, integrate_matrix, fd_matrix):
     #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
     
     
@@ -169,7 +169,7 @@ def tensor_step_vel(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_ma
     return state_seq
 
 @torch.jit.script 
-def tensor_step_pos(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_matrix):
+def tensor_step_pos(state, act, state_seq, dt_h, n_dofs : int, integrate_matrix, fd_matrix):
     #  (Tensor, Tensor, Tensor, Tensor, int, Tensor, Tensor) -> Tensor
     
     
@@ -181,7 +181,6 @@ def tensor_step_pos(state, act, state_seq, dt_h, n_dofs, integrate_matrix, fd_ma
     q = state[:, :n_dofs].unsqueeze(0).expand(state_seq.shape[0],-1,-1)
     #print(q.shape, q_new.shape)
     q = q_new #torch.cat((q, q_new), dim=1)
-
     
     #qd_new = act
     # integrate velocities:

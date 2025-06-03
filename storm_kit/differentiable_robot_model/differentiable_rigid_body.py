@@ -79,6 +79,7 @@ class DifferentiableRigidBody(torch.nn.Module):
         self.device = tensor_args['device']
         self.joint_id = rigid_body_params["joint_id"]
         self.name = rigid_body_params["link_name"]
+        self.joint_name = rigid_body_params['joint_name']
 
         # dynamics parameters
         self.mass = rigid_body_params["mass"]
@@ -128,8 +129,7 @@ class DifferentiableRigidBody(torch.nn.Module):
         self.joint_ang_acc = torch.zeros((1, 3), **self.tensor_args)
 
         self.update_joint_state(torch.zeros((1, 1), **self.tensor_args), torch.zeros((1, 1), **self.tensor_args))
-
-
+        # print("denbug initi ... ")
         # self.update_joint_acc(torch.zeros(1, 1).to(self.device, dtype=self.float_dtype))
         self.update_joint_acc(torch.zeros((1, 1), **self.tensor_args))
 
@@ -165,22 +165,19 @@ class DifferentiableRigidBody(torch.nn.Module):
             
         # when we update the joint angle, we also need to update the transformation
 
-        if self.joint_type == "revolute":
-            rot = self.axis_rot_fn(q.squeeze(1))
-            self.joint_pose.set_rotation(self._batch_rot @ rot)
-            self.joint_pose.set_translation(self._batch_trans)
-        elif self.joint_type == "prismatic":
+        # print(self.joint_type)
+        if self.joint_type == "prismatic":
             delta_trans = q * self.joint_axis    # shape: [B, 3]
             self.joint_pose.set_translation(self._batch_trans + delta_trans)
             self.joint_pose.set_rotation(self._batch_rot)
+        else: 
 
-
-        # self.joint_pose.set_translation(self._batch_trans)#
-        # #self.joint_pose.set_translation(torch.reshape(self.trans, (1, 3)))
-        # #print(q.shape)
-        # rot = self.axis_rot_fn(q.squeeze(1))
-        
-        # self.joint_pose.set_rotation(self._batch_rot @ rot)
+            self.joint_pose.set_translation(self._batch_trans)#
+            #self.joint_pose.set_translation(torch.reshape(self.trans, (1, 3)))
+            #print(q.shape)
+            rot = self.axis_rot_fn(q.squeeze(1))
+            
+            self.joint_pose.set_rotation(self._batch_rot @ rot)
         return
 
     def update_joint_acc(self, qdd):

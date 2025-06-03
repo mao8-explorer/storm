@@ -11,8 +11,8 @@ list = ['Speed', 'Distance', 'Manipulation1', 'Manipulation2']
 for i in range(len(list)):
     last = time.time()
     ik_solver = TracIKSolver(
-            'content/assets/urdf/genie_description/A2D.urdf',
-            'base_link_l',
+            'content/assets/urdf/genie_description/A2DWithFixBase.urdf',
+            'base_link',
             'ee_link',
             timeout=0.10,
             solve_type=list[i]

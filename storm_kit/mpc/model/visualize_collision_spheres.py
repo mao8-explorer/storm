@@ -17,6 +17,7 @@ from storm_kit.util_file import (
 )
 from storm_kit.mpc.task.reacher_task import ReacherTask
 
+from typing import List, Optional
 
 
 # === 配置文件路径 ===
@@ -45,30 +46,48 @@ goal_pos = np.array([0.1, 0.1, 0.1])
 goal_quat = np.array([1.0, 0.0, 0.0, 0.0])
 mpc.update_params(goal_ee_pos=goal_pos, goal_ee_quat=goal_quat)
 ndof = mpc.controller.rollout_fn.dynamics_model.n_dofs
+internal_joint_names = mpc.controller.rollout_fn.dynamics_model.internal_joint_names
+urdfpy_robot = URDF.load(urdf_path)
 
+_robot_mesh_cache = {}
 
-# === 渲染函数 ===
-def get_robot_meshes(urdf_path, mesh_dir, q):
-    robot = URDF.load(urdf_path)
-    joint_names = [j.name for j in robot.actuated_joints]
-    joint_dict = dict(zip(joint_names, q))
+def get_robot_meshes(mesh_dir, q):
+    joint_dict = dict(zip(internal_joint_names, q))
+    fk = urdfpy_robot.link_fk(cfg=joint_dict)
     meshes = []
-    fk = robot.link_fk(cfg=joint_dict)
-    for link in robot.links:
+
+    for link in urdfpy_robot.links:
         for visual in link.visuals:
             if visual.geometry.mesh is None:
                 continue
-            mesh_path = join_path(mesh_dir, visual.geometry.mesh.filename)
-            try:
-                m = o3d.io.read_triangle_mesh(mesh_path)
-                m.compute_vertex_normals()
-                m.transform(fk[link])
-                m.paint_uniform_color([0.6, 0.6, 0.6])
-                meshes.append(m)
-            except:
-                pass
+            mesh_file = visual.geometry.mesh.filename
+            mesh_path = join_path(mesh_dir, mesh_file)
+
+            # === 缓存机制：只加载一次 mesh 模板 ===
+            if mesh_path not in _robot_mesh_cache:
+                try:
+                    base_mesh = o3d.io.read_triangle_mesh(mesh_path)
+                    base_mesh.compute_vertex_normals()
+                    _robot_mesh_cache[mesh_path] = base_mesh
+                except:
+                    continue
+
+            # === 克隆 + 变换 ===
+            mesh = copy.deepcopy(_robot_mesh_cache[mesh_path])
+            mesh.transform(fk[link])
+            mesh.paint_uniform_color([0.6, 0.6, 0.6])
+            meshes.append(mesh)
+
     return meshes
 
+
+# Sphere 模板缓存：radius → mesh
+_sphere_cache = {}
+
+def make_translation_matrix(x, y, z):
+    T = np.eye(4)
+    T[:3, 3] = [x, y, z]
+    return T
 
 def get_collision_spheres(q):
     state = {
@@ -80,33 +99,38 @@ def get_collision_spheres(q):
     state_tensor = torch.as_tensor(state_arr, **tensor_args).unsqueeze(0)
     mpc.controller.rollout_fn.current_cost(state_tensor)
 
-    pos_seq = copy.deepcopy(mpc.controller.rollout_fn.link_pos_seq)
-    rot_seq = copy.deepcopy(mpc.controller.rollout_fn.link_rot_seq)
+    pos_seq = mpc.controller.rollout_fn.link_pos_seq
+    rot_seq = mpc.controller.rollout_fn.link_rot_seq
 
     distcheck_spheres = mpc.controller.rollout_fn.robot_self_collision_cost.distance
     dist_spheres = distcheck_spheres(pos_seq, rot_seq)[0].cpu().numpy() # shape : (1,)
 
     spheres = [s.numpy() for s in mpc.controller.rollout_fn.robot_self_collision_cost.coll.w_batch_link_spheres]
 
-    # distcheck_nn = mpc.controller.rollout_fn.robot_self_collision_cost.coll.check_self_collisions_nn
-    # dist_nn = distcheck_nn(torch.tensor(q, device='cpu', dtype=torch.float32)).cpu().numpy()
-    dist_nn = np.array([0])
+    distcheck_nn = mpc.controller.rollout_fn.robot_self_collision_cost.coll.check_self_collisions_nn
+    dist_nn = distcheck_nn(torch.tensor(q, device='cpu', dtype=torch.float32)).cpu().numpy()
+
+    # dist_nn = np.array([0.0])
     error = abs(dist_spheres.item() - dist_nn.item())
-    # print(f"Ground truth: {dist_spheres.item():.4f}, Prediction: {dist_nn.item():.4f}, Absolute error: {error:.4f}")
+    print(f"Ground truth: {dist_spheres.item():.4f}, Prediction: {dist_nn.item():.4f}, Absolute error: {error:.4f}")
 
 
 
     meshes = []
     for sphere in spheres:
         for x, y, z, r in sphere[0]:
-            m = o3d.geometry.TriangleMesh.create_sphere(radius=r)
-            m.translate([x, y, z])
-            m.paint_uniform_color([1, 0, 0])
-            m.compute_vertex_normals()
-            meshes.append(m)
+            if r not in _sphere_cache:
+                m = o3d.geometry.TriangleMesh.create_sphere(radius=r, resolution=10)
+                m.compute_vertex_normals()
+                m.paint_uniform_color([1, 0, 0])  # 只设置一次颜色
+                _sphere_cache[r] = m
+
+            mesh = copy.deepcopy(_sphere_cache[r])
+            T = make_translation_matrix(x, y, z)
+            mesh.transform(T)
+            meshes.append(mesh)
+
     return meshes, dist_spheres, dist_nn
-
-
 
 # === Open3D GUI 应用 ===
 class RobotGUI:
@@ -223,7 +247,7 @@ class RobotGUI:
 
     def update_scene(self):      
         self.scene.scene.clear_geometry()
-        robot = get_robot_meshes(urdf_path, mesh_dir, self.q)
+        robot = get_robot_meshes(mesh_dir, self.q)
         spheres, dist_spheres, dist_nn = get_collision_spheres(self.q)
         self.dist_label.text = f"Self-collision dist (GT): {dist_spheres.item():.8f}"
         self.dist_nn_label.text = f"Self-collision dist (NN): {dist_nn.item():.8f}"

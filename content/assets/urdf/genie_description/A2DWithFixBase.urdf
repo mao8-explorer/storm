@@ -76,12 +76,12 @@
   </link>
 
   <!-- 升降关节：控制机器人整体高度，可上升30cm -->
-  <joint name="joint_lift_body" type="prismatic">
+  <joint name="joint_lift_body" type="fixed">
     <origin xyz="0 0 0.3485" rpy="0 0 0"/>  <!-- 从底盘上方34.85cm处开始 -->
     <parent link="base_link"/>
     <child link="link-up-down_body"/>
     <axis xyz="0 0 1"/>                      <!-- 沿Z轴方向运动 -->
-    <limit lower="0" upper="0.555" effort="100" velocity="0.1"/>  <!-- 升降范围0-55.5cm -->
+    <limit lower="0" upper="0.40" effort="100" velocity="0.1"/>  <!-- 升降范围0-55.5cm -->
   </joint>
 
   <!-- 身体俯仰link：可前后倾斜的躯干部分 -->
@@ -119,7 +119,7 @@
   </link>
 
   <!-- 身体俯仰关节：控制机器人俯仰，可俯仰90度 -->
-  <joint name="joint_body_pitch" type="revolute">
+  <joint name="joint_body_pitch" type="fixed">
     <origin xyz="0.131 0 0" rpy="1.5708 -1.5708 0"/>  <!-- 从升降机构前方13.1cm处 -->
     <parent link="link-up-down_body"/>
     <child link="link-pitch_body"/>
@@ -724,9 +724,9 @@
       xyz="0 0 0" />
   </joint>
 
-  <link name="ee_link"/>
+  <link name="ee_link_l"/>
   <joint
-    name="Joint_hand_damp"
+    name="Joint_hand_damp_l"
     type="fixed">
     <origin
       xyz="0 0 0.08"
@@ -734,7 +734,7 @@
     <parent
       link="Link_hand_l" />
     <child
-      link="ee_link" />
+      link="ee_link_l" />
     <axis
       xyz="0 0 0" />
   </joint>
@@ -818,7 +818,7 @@
   </link>
   <joint
     name="Joint1_r"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 0 0.188"
       rpy="0 0 0" />
@@ -879,7 +879,7 @@
   </link>
   <joint
     name="Joint2_r"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 0 0"
       rpy="-1.5708 0 -1.5708" />
@@ -934,7 +934,7 @@
   </link>
   <joint
     name="Joint3_r"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 -0.305 0"
       rpy="1.5708 -1.5708 0" />
@@ -995,7 +995,7 @@
   </link>
   <joint
     name="Joint4_r"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 0 0"
       rpy="-1.5708 0 -3.1416" />
@@ -1050,7 +1050,7 @@
   </link>
   <joint
     name="Joint5_r"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 -0.1975 0"
       rpy="-1.5708 0 3.1416" />
@@ -1111,7 +1111,7 @@
   </link>
   <joint
     name="Joint6_r"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 0 0"
       rpy="-1.5708 0 0" />
@@ -1166,7 +1166,7 @@
   </link>
   <joint
     name="Joint7_r"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 -0.1805 0"
       rpy="1.5708 0 0" />
@@ -1235,6 +1235,21 @@
       link="Link7_r" />
     <child
       link="Link_hand_r" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+
+  <link name="ee_link_r"/>
+  <joint
+    name="Joint_hand_damp_r"
+    type="fixed">
+    <origin
+      xyz="0 0 0.08"
+      rpy="0 0 0" /> <!-- 30度 -->
+    <parent
+      link="Link_hand_r" />
+    <child
+      link="ee_link_r" />
     <axis
       xyz="0 0 0" />
   </joint>
