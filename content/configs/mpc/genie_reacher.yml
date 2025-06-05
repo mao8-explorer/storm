@@ -77,7 +77,7 @@ model:
 cost:
   joint_l2:
     # vec_weight: 
-    weight: 30.0
+    weight: 20.0
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
 
   Jnq_sparse_reward:
