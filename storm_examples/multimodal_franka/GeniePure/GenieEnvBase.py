@@ -184,6 +184,7 @@ class GenieEnvBase(object):
         谁控制了target_body_handle 谁控制了MPC_Policy_Goal 不管是通过Gym还是通过代码的方式 都可以
         检测 gym目标变化情况, 一旦变化， 更新MPC 目标
         """
+        # 单臂
         pose_w = copy.deepcopy(self.world_instance.get_pose(self.l_target_body_handle))
         # self.gym.set_rigid_transform(self.env_ptr, self.target_base_handle, pose_w)
         pose = self.w_T_r.inverse() * pose_w #将world坐标系下的目标点转到robot坐标系下
@@ -196,7 +197,51 @@ class GenieEnvBase(object):
             self.g_q[2] = pose.r.y
             self.g_q[3] = pose.r.z
             self.g_q[0] = pose.r.w
-            self.mpc_control.update_params(goal_ee_pos=self.g_pos,goal_ee_quat=self.g_q)
+            self.mpc_control.dual_update_params(l_goal_ee_pos=self.g_pos, l_goal_ee_quat=self.g_q)
+
+
+    def dual_monitorMPCGoalupdate(self):
+        """
+        检测双臂目标在 world 中的位置是否发生变化，并更新 MPC 中的目标姿态。
+        """
+
+        # === 1. 获取左右臂的目标姿态（world 坐标系）
+        l_pose_w = copy.deepcopy(self.world_instance.get_pose(self.l_target_body_handle))
+        r_pose_w = copy.deepcopy(self.world_instance.get_pose(self.r_target_body_handle))
+
+        # === 2. 转换到 robot 坐标系
+        l_pose = self.w_T_r.inverse() * l_pose_w
+        r_pose = self.w_T_r.inverse() * r_pose_w
+
+        # === 3. 提取目标位置和四元数
+        l_pos = np.array([l_pose.p.x, l_pose.p.y, l_pose.p.z])
+        l_quat = np.array([l_pose.r.w, l_pose.r.x, l_pose.r.y, l_pose.r.z])
+        r_pos = np.array([r_pose.p.x, r_pose.p.y, r_pose.p.z])
+        r_quat = np.array([r_pose.r.w, r_pose.r.x, r_pose.r.y, r_pose.r.z])
+
+        # === 4. 若目标姿态有变化，则更新 MPC 参数
+        pos_diff_thresh = 1e-5
+        quat_diff_thresh = 1e-6
+
+        if (
+            np.linalg.norm(self.g_l_pos - l_pos) > pos_diff_thresh or
+            np.linalg.norm(self.g_l_quat - l_quat) > quat_diff_thresh or
+            np.linalg.norm(self.g_r_pos - r_pos) > pos_diff_thresh or
+            np.linalg.norm(self.g_r_quat - r_quat) > quat_diff_thresh
+        ):
+            # 更新缓存
+            self.g_l_pos[:] = l_pos
+            self.g_l_quat[:] = l_quat
+            self.g_r_pos[:] = r_pos
+            self.g_r_quat[:] = r_quat
+
+            # 更新 MPC 目标
+            self.mpc_control.dual_update_params(
+                l_goal_ee_pos=l_pos,
+                l_goal_ee_quat=l_quat,
+                r_goal_ee_pos=r_pos,
+                r_goal_ee_quat=r_quat
+            )
 
 
     def update_goal_state(self):
@@ -520,8 +565,9 @@ class GenieEnvBase(object):
         z = self.z_radius * np.cos(t_scaled) + self.base_height_z
         y = self.y_radius * np.sin(t_scaled) + self.base_height_y
         # x 保持不变
-        self.goal_state = [self.x, z, y]
-        self.update_goal_state()
+        self.goal_state_l = [self.x, z, y]
+        self.goal_state_r = [self.x, z, -y]
+        self.dual_update_goal_state()
         # 如果需要在此可视化轨迹，可调用对应函数
         # self.visual_top_trajs_ingym()
 

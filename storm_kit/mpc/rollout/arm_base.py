@@ -67,6 +67,8 @@ class ArmBase(RolloutBase):
                                                  horizon=dynamics_horizon,
                                                  tensor_args=self.tensor_args,
                                                  ee_link_name=exp_params['model']['ee_link_name'],
+                                                 ee_link_l = exp_params['model']['left_ee_link_name'],
+                                                 ee_link_r = exp_params['model']['right_ee_link_name'],
                                                  link_names=all_links,
                                                  dt_traj_params=exp_params['model']['dt_traj_params'],
                                                  control_space=exp_params['control_space'],
@@ -228,13 +230,48 @@ class ArmBase(RolloutBase):
         sim_trajs = dict(
             actions=act_seq,#.clone(),
             costs=cost_seq,#clone(),
-            ee_pos_seq=state_dict['ee_pos_seq'],#.clone(),
+            l_ee_pos_seq=state_dict['l_ee_pos_seq'],#.clone(),
             #link_pos_seq=link_pos_seq,
             #link_rot_seq=link_rot_seq,
             rollout_time=0.0
         )
         
         return sim_trajs
+
+    def dual_rollout_fn(self, start_state, act_seq):
+        """
+        Return sequence of costs and states encountered
+        by simulating a batch of action sequences
+
+        Parameters
+        ----------
+        action_seq: torch.Tensor [num_particles, horizon, d_act]
+        """
+        # rollout_start_time = time.time()
+        #print("computing rollout")
+        #print(act_seq)
+        #print('step...')
+        # fk_time = time.time()
+        # state_dict = self.dynamics_model.rollout_open_loop(start_state, act_seq)
+        state_dict = self.dynamics_model.dual_rollout_open_loop(start_state, act_seq)
+        # self.fk_time_sum += time.time() - fk_time
+
+        # cost_time = time.time()
+        cost_seq = self.dual_cost_fn(state_dict, act_seq)
+        # self.cost_time_sum += time.time() - cost_time
+
+        sim_trajs = dict(
+            actions=act_seq,#.clone(),
+            costs=cost_seq,#clone(),
+            l_ee_pos_seq=state_dict['l_ee_pos_seq'],#.clone(),
+            r_ee_pos_seq=state_dict['r_ee_pos_seq'],#.clone(),
+            #link_pos_seq=link_pos_seq,
+            #link_rot_seq=link_rot_seq,
+            rollout_time=0.0
+        )
+        
+        return sim_trajs
+
 
     def update_params(self, retract_state=None):
         """
@@ -248,7 +285,8 @@ class ArmBase(RolloutBase):
         return True
     
     def __call__(self, start_state, act_seq):
-        return self.rollout_fn(start_state, act_seq)
+        # return self.rollout_fn(start_state, act_seq)
+        return self.dual_rollout_fn(start_state, act_seq)
     
     def get_ee_pose(self, current_state):
         current_state = current_state.to(**self.tensor_args)

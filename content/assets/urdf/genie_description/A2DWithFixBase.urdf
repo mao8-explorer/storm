@@ -155,7 +155,7 @@
   </link>
 
   <!-- 头部偏航关节：控制头部左右转动，每边90度 -->
-  <joint name="joint_head_yaw" type="revolute">
+  <joint name="joint_head_yaw" type="fixed">
     <origin xyz="0.441 0 0" rpy="1.5708 0 1.5708"/>  <!-- 从躯干前方44.1cm处 -->
     <parent link="link-pitch_body"/>
     <child link="link-yaw_head"/>
@@ -192,7 +192,7 @@
   </link>
 
   <!-- 头部俯仰关节：控制头部上下点头，每边45度 -->
-  <joint name="joint_head_pitch" type="revolute">
+  <joint name="joint_head_pitch" type="fixed">
     <origin xyz="-0.050238 0 0.060065" rpy="1.5708 0 0"/>
     <parent link="link-yaw_head"/>
     <child link="link-pitch_head"/>

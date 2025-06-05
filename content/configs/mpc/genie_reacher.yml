@@ -25,7 +25,7 @@
 use_cuda: True
 cuda_device_num: 0
 
-control_dt: 0.07   # 0.02 0.05
+control_dt: 0.05   # 0.02 0.05
 run_open_loop: False
 control_space: 'acc'
 float_dtype: 'float32'
@@ -37,14 +37,14 @@ model:
   learnable_rigid_body_config:
     learnable_links: []
   max_acc: 0.50
-  dt: 0.07
+  dt: 0.05
   dt_traj_params:
-    base_dt: 0.07
-    base_ratio: 0.5
+    base_dt: 0.05
+    base_ratio: 0.7
     max_dt: 0.1
   #control_freq: 10
   #sim_freq: 100
-  ee_link_name: "ee_link"
+  ee_link_name: "ee_link_l"
   left_ee_link_name: "ee_link_l"
   right_ee_link_name: "ee_link_r"
   # init_state: [0.0, -0.36, -0.2, -2.0, 0.0, 1.64, 0.68]
@@ -77,17 +77,17 @@ model:
 cost:
   joint_l2:
     # vec_weight: 
-    weight: 40.0
+    weight: 30.0
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
 
   Jnq_sparse_reward:
     # vec_weight:
-    weight: 100.0
+    weight: 0.0
     sigma : 0.05
 
   PoseCost_Reward:
-    pose_weight: 30.0
-    reward_weight: 100.0
+    pose_weight: 1.0
+    reward_weight: 0.0
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     sigma : 0.05
     
@@ -100,19 +100,19 @@ cost:
 
     
   stop_cost:
-    weight: 300.0 #100.0
+    weight: 0.0 #100.0
     max_nlimit: 0.40 #0.2
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':1.0}
 
   zero_vel:
-    weight: 100.0
+    weight: 0.0
     hinge_val: 0.175 # 10/180*pi 
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
 
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     # weight: [10.0, 30.0]
-    weight: 5 # weight[0] = 0 : CartGoal constraint None rot | pos
+    weight: 0 # weight[0] = 0 : CartGoal constraint None rot | pos
     rotposweight: [1.0, 1.0]
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
@@ -139,7 +139,7 @@ cost:
     
   robot_self_collision:
     weight: 0.0
-    distance_threshold: 0.05
+    distance_threshold: 0.03
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
   null_space:
@@ -181,7 +181,7 @@ cost:
     order: 1
     
   state_bound:
-    weight: 1000.0 
+    weight: 500.0 
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
     bound_thresh: 0.05
 

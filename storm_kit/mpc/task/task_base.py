@@ -54,6 +54,12 @@ class BaseTask():
         # self.control_process.update_params(**kwargs)
         return True
 
+    
+    def dual_update_params(self, **kwargs):
+        self.controller.rollout_fn.dual_update_params(**kwargs)
+        # self.control_process.update_params(**kwargs)
+        return True
+
 
     def get_multimodal_command(self, t_step, curr_state, control_dt):
 

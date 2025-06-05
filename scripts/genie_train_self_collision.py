@@ -212,6 +212,7 @@ def train_self_collision(robot_name, args):
         exp_params = yaml.load(f, Loader=yaml.FullLoader)
     exp_params['robot_params'] = exp_params['model']
     exp_params['cost']['primitive_collision']['weight'] = 0.0
+    exp_params['cost']['robot_self_collision']['weight'] = 1.0
     exp_params['control_space'] = 'pos'
     exp_params['mppi']['horizon'] = 2
     exp_params['mppi']['num_particles'] = num_particles

@@ -3,6 +3,7 @@
 from GenieEnvBase import GenieEnvBase
 from storm_examples.multimodal_franka.FilterPointCloud import FilterPointCloud
 from storm_examples.multimodal_franka.utils import LimitedQueue , IKProc
+from tracikpy import TracIKSolver
 import torch
 import numpy as np
 np.int = int
@@ -11,32 +12,197 @@ np.bool = bool
 
 
 from storm_kit.gym.core import Gym
-from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml
+from storm_kit.util_file import get_gym_configs_path, join_path, load_yaml, get_assets_path
 from storm_kit.mpc.task.reacher_task import ReacherTask
 import queue
 import time
 
 from typing import List, Optional
 
-class IKSolve:
-    def __init__(self):
-        self.num_proc = 1
-        self.maxsize = 5
-        self.output_queue = LimitedQueue(self.maxsize)
-        self.ik_procs = []
-        for _ in range(self.num_proc):
-            self.ik_procs.append(
-                IKProc(
-                    self.output_queue,
-                    input_queue_maxsize=self.maxsize,
-                    urdf_path='content/assets/urdf/genie_description/A2DWithFixBase.urdf',
-                    base_link='base_link',
-                    end_link='ee_link'
-                )
-            )
-            self.ik_procs[-1].daemon = True #守护进程 主进程结束 IKProc进程随之结束
-            self.ik_procs[-1].start()       
+import logging
 
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        logging.DEBUG: "\033[36m",    # Cyan
+        logging.INFO: "\033[32m",     # Green
+        logging.WARNING: "\033[33m",  # Yellow
+        logging.ERROR: "\033[31m",    # Red
+        logging.CRITICAL: "\033[41m", # Red background
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelno, self.RESET)
+        msg = super().format(record)
+        return f"{color}{msg}{self.RESET}"
+
+def setup_logger(name="IKSolve", level=logging.INFO):
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    if not logger.hasHandlers():
+        ch = logging.StreamHandler()
+        ch.setLevel(level)
+        formatter = ColorFormatter('[%(levelname)s] %(name)s: %(message)s')
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+    return logger
+
+logger = setup_logger("IKSolve", level=logging.INFO)
+
+class IKSolve:
+    def __init__(self, rollout_fn, internal_joint_names):
+        """
+        Initialize the IKSolve class, which manages dual TRAC-IK solvers for left and right end-effectors.
+        """
+        self.maxsize = 5
+        self.ik_procs = []
+
+        # ── (1) Construct two TRAC-IK solvers ─────────────────────────
+        urdf_path = join_path(get_assets_path(), 'urdf/genie_description/A2DWithFixBase.urdf')
+        base_link = "base_link"
+        left_ee = "ee_link_l"
+        right_ee = "ee_link_r"
+
+        # Left IK solver
+        self.l_output_queue = LimitedQueue(self.maxsize)
+        self.ik_solver_l = IKProc(
+            self.l_output_queue,
+            input_queue_maxsize=self.maxsize,
+            urdf_path=urdf_path,
+            base_link=base_link,
+            end_link=left_ee
+        )
+
+        # Right IK solver
+        self.r_output_queue = LimitedQueue(self.maxsize)
+        self.ik_solver_r = IKProc(
+            self.r_output_queue,
+            input_queue_maxsize=self.maxsize,
+            urdf_path=urdf_path,
+            base_link=base_link,
+            end_link=right_ee
+        )
+
+        # Add solvers to the process list and start them
+        self.ik_procs.extend([self.ik_solver_l, self.ik_solver_r])
+
+        self.rollout_fn = rollout_fn
+        self.internal_joint_names = internal_joint_names
+        
+        self.goal_jnq = None
+        self.jnq_mask = None  # shape: (n_dof,)
+
+    def start_solvers(self):
+        """
+        真正启动 IK 多进程，同时初始化映射器。
+        """
+        for ik_proc in self.ik_procs:
+            # ─── (A) 用与子进程完全相同的参数，在父进程里新建一个 TracIKSolver 只为读取信息 ───
+            try:
+                temp_solver = TracIKSolver(
+                    ik_proc.urdf_path,
+                    ik_proc.base_link,
+                    ik_proc.end_link
+                )
+                # 读取并打印 joint_names 与 joint_limits
+                ik_proc.joint_names = temp_solver.joint_names
+                ik_proc.joint_limits = temp_solver.joint_limits
+
+            except Exception as e:
+                print(f"[WARNING] 无法在父进程里临时构造 IK solver 来读取关节信息：{e}")
+
+            # ─── (B) 真正启动子进程，子进程会在自己的 run() 中创建 ik_solver ───
+            ik_proc.daemon = True
+            ik_proc.start()
+        
+        # ik initialize
+        self.l_goal_ee_transform = np.eye(4)
+        self.r_goal_ee_transform = np.eye(4)
+
+        # 来自 IK 解算器（可能是部分子集）
+        # ik_joint_names = list(self.ik_mSolve.ik_procs[0].ik_solver.joint_names)
+        self.ik_joint_names_l = list(self.ik_solver_l.joint_names)
+        self.ik_joint_names_r = list(self.ik_solver_r.joint_names)
+
+        self.ik_mapper_l = JointNameMapper(self.ik_joint_names_l, self.internal_joint_names)
+        self.ik_mapper_r = JointNameMapper(self.ik_joint_names_r, self.internal_joint_names)
+        self.interToik_mapper_l = JointNameMapper(self.internal_joint_names, self.ik_joint_names_l)
+        self.interToik_mapper_r = JointNameMapper(self.internal_joint_names, self.ik_joint_names_r)
+
+        self.mask_indices_l = [i for i in self.ik_mapper_l._src_to_dst_index if i != -1]
+        self.mask_indices_r = [i for i in self.ik_mapper_r._src_to_dst_index if i != -1]
+
+
+    def print_ik_joint_limits(self, ik_solver):
+        
+        print(f"IK Solver: {ik_solver.__class__.__name__}")
+        names = ik_solver.joint_names
+        lower, upper = ik_solver.joint_limits
+
+        header = f"{'Idx':>3s} | {'Joint Name':<20s} | {'Limit Low':>10s} | {'Limit Up':>10s}"
+        separator = "-" * len(header)
+        print(header)
+        print(separator)
+        for i, (name, l, u) in enumerate(zip(names, lower, upper)):
+            print(f"{i:3d} | {name:<20s} | {l:10.3f} | {u:10.3f}")
+
+
+
+    def query_dual_ik(self, q_internal, t_step):
+
+        # --- Target poses ---
+        self.l_goal_ee_transform[:3,3] = self.rollout_fn.l_goal_ee_pos.cpu().numpy()
+        self.l_goal_ee_transform[:3,:3] = self.rollout_fn.l_goal_ee_rot.cpu().numpy()
+
+        self.r_goal_ee_transform[:3,3] = self.rollout_fn.r_goal_ee_pos.cpu().numpy()
+        self.r_goal_ee_transform[:3,:3] = self.rollout_fn.r_goal_ee_rot.cpu().numpy()
+        # 逆解获取请求发布 input_queue
+        seed_l = self.interToik_mapper_l.forward(q_internal) # shape is (7,)
+        seed_r = self.interToik_mapper_r.forward(q_internal) # shape is (7,)
+        self.ik_solver_l.ik(self.l_goal_ee_transform , seed_l , ind = t_step)
+        self.ik_solver_r.ik(self.r_goal_ee_transform , seed_r , ind = t_step)
+
+
+    def merge_dual_ik(self, q_des):
+        try:
+            sol_l = self.ik_solver_l.output_queue.get()[1]
+            sol_r = self.ik_solver_r.output_queue.get()[1]
+
+            q_merged = q_des.copy()
+            mask = np.zeros_like(q_des, dtype=bool)
+            solved = []
+
+            if sol_l is not None:
+                q_merged = self.ik_mapper_l.forward(sol_l, fallback=q_merged)
+                mask[self.mask_indices_l] = True
+                solved.append("L")
+
+            if sol_r is not None:
+                q_merged = self.ik_mapper_r.forward(sol_r, fallback=q_merged)
+                mask[self.mask_indices_r] = True
+                solved.append("R")
+
+            self.goal_jnq = q_merged
+            self.jnq_mask = mask
+
+            # if solved:
+            #     logger.info(f"IK solved: {', '.join(solved)} arm(s).")
+
+            # else:
+            #     logger.warning("IK failed: both arms. Fallback to q_des.")
+
+            # logger.info(f"IK solved arms: {', '.join(solved) if solved else 'None'}")
+            # logger.info(f"L mask indices: {self.mask_indices_l}")
+            # logger.info(f"R mask indices: {self.mask_indices_r}")
+            logger.info(f"IK mask: {mask.astype(int).tolist()}")
+
+            return q_merged
+
+        except queue.Empty:
+            logger.error("IK output queue empty. Using fallback q_des.")
+            self.goal_jnq = q_des
+            self.jnq_mask = np.zeros_like(q_des, dtype=bool)
+            return q_des
 
 
 class JointNameMapper:
@@ -57,8 +223,11 @@ class JointNameMapper:
 
         # 名称 → 索引映射（src 侧）
         self._src_name_to_idx = {name: i for i, name in enumerate(src_names)}
+        self._dst_name_to_idx = {name: i for i, name in enumerate(dst_names)}
         # 每个 dst_name 对应的 src_q 中索引，若缺失则为 -1
         self._reorder_indices = [self._src_name_to_idx.get(name, -1) for name in dst_names]
+        self._src_to_dst_index = [self._dst_name_to_idx.get(name, -1) for name in src_names]
+
 
     def forward(
         self,
@@ -101,67 +270,58 @@ class JointNameMapper:
 
 
 class MPCRobotController(GenieEnvBase):
-    def __init__(self, gym_instance , ik_mSolve):
+    def __init__(self, gym_instance):
         super().__init__(gym_instance = gym_instance)
-        self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args )
+        self.mpc_control = ReacherTask( self.mpc_config, self.world_description, self.tensor_args)
         self._environment_init()
         self.envpc_filter = FilterPointCloud(self.robot_sim.camObsHandle.cam_pose) #sceneCollisionNet 句柄 现在只是用来获取点云
 
         # 实验一: 半椭圆跟踪 （验证动态性能）
-        self.trac_target_velscale = 0.5
-        self.base_height_y = -0.50
+        self.trac_target_velscale = 0.1
+        self.base_height_y = -0.30
         self.base_height_z = 0.70
-        self.z_radius = 0.4
-        self.y_radius = 0.4
+        self.z_radius = 0.30
+        self.y_radius = 0.3
         self.x = 0.60
         z = self.z_radius * np.cos(0.0) + self.base_height_z
         y = self.y_radius * np.sin(0.0) + self.base_height_y
-        self.goal_state =  [self.x,z,y]
-        
+        # self.goal_state =  [self.x,z,y]
+        self.goal_state_l = [self.x, z, y]
+        self.goal_state_r = [self.x, z, -y]
 
-        # 实验二：动态障碍物往复运动
-        self.task_leftright = False
-        self.coll_dt_scale = 0.01 # up and down
-        # self.goal_list = [ # 两个目标点位置
-        #     [0.45, 0.190,  0.42],
-        #     [0.45, 0.190,  -0.42]]
-        self.goal_list = [ # 两个目标点位置
-            [0.60, 0.80,   -0.56],
-            [0.45, 0.19,  -0.52],
-            [0.707,0.50, 0.05]]
-        self.coll_movebound_leftright = [-0.40,0.40] # 左右实验的位置边界 [-0.4,0.4]测试一次
-        self.coll_movebound_updown = [0.10,0.40] # 上下实验的位置边界
 
-        self.uporient = -1.0
         self.init_coll_pos = [-6.30,0.25,0.0]
-        self.goal_state = self.goal_list[-1]
-        self.update_goal_state()
+        self.dual_update_goal_state()
         self.update_collision_state(self.init_coll_pos)
         self.rollout_fn = self.mpc_control.controller.rollout_fn
-        self.goal_ee_transform = np.eye(4)
+        self.l_goal_ee_transform = np.eye(4)
+        self.r_goal_ee_transform = np.eye(4)
         # 暂行多进程方案是通过传参的方式 引导ik_proc句柄 保证ik_proc在主进程启动 避免无法共享内存的问题
-        self.ik_mSolve = ik_mSolve
 
         # === 统一提取 joint name 列表 ===
         # 来自 URDF 模型内部控制顺序（标准顺序）
         internal_joint_names = self.rollout_fn.dynamics_model.internal_joint_names
+
+        # ik 引导 唤起
+        self.ik_mSolve = IKSolve(self.rollout_fn, internal_joint_names)
+
         # 来自 Gym 仿真接口的关节顺序
         gym_joint_names = self.robot_sim.joint_names
-        # 来自 IK 解算器（可能是部分子集）
-        ik_joint_names = list(self.ik_mSolve.ik_procs[0].ik_solver.joint_names)
-
         self.gym_mapper = JointNameMapper(gym_joint_names, internal_joint_names)
-        self.ik_mapper = JointNameMapper(ik_joint_names, internal_joint_names)
-        self.interToik_mapper = JointNameMapper(internal_joint_names, ik_joint_names)
         self.interTogym_mapper = JointNameMapper(internal_joint_names, gym_joint_names)
+        # self.ik_mapper = JointNameMapper(ik_joint_names, internal_joint_names)
+        # self.interToik_mapper = JointNameMapper(internal_joint_names, ik_joint_names)
+
 
 
         # update goal_joint_space:
         init_joint_state = self.robot_sim.init_robot_state
         franka_bl_state = np.concatenate([self.gym_mapper.forward(init_joint_state['pos']), self.gym_mapper.forward(init_joint_state['vel'])], axis=0)
-        self.mpc_control.update_params(goal_state=franka_bl_state)
-        self.g_pos = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_pos.cpu().numpy())
-        self.g_q = np.ravel(self.mpc_control.controller.rollout_fn.goal_ee_quat.cpu().numpy())
+        self.mpc_control.dual_update_params(goal_state=franka_bl_state)
+        self.g_l_pos = np.ravel(self.mpc_control.controller.rollout_fn.l_goal_ee_pos.cpu().numpy())
+        self.g_l_quat = np.ravel(self.mpc_control.controller.rollout_fn.l_goal_ee_quat.cpu().numpy())
+        self.g_r_pos = np.ravel(self.mpc_control.controller.rollout_fn.r_goal_ee_pos.cpu().numpy())
+        self.g_r_quat = np.ravel(self.mpc_control.controller.rollout_fn.r_goal_ee_quat.cpu().numpy())
 
         #  visual 控件
         self.gradient_visual_rviz = False
@@ -181,7 +341,7 @@ class MPCRobotController(GenieEnvBase):
         self.goal_flagi = -1 # 调控目标点
         t_step = gym_instance.get_sim_time()
         obs = {}
-        self.jnq_des = np.zeros(7)
+        # self.jnq_des = np.zeros(7)
         last = time.time()
         env_time_sum = 0
         opt_step_count = 0 
@@ -215,18 +375,23 @@ class MPCRobotController(GenieEnvBase):
 
                 ### --- 规划模块 ---###
                 # monitor ee_pose_gym and update goal_param_mpc
-                self.monitorMPCGoalupdate()
+                self.dual_monitorMPCGoalupdate()
                 # seed goal to MPC_Policy _ get Command
                 t_step += self.sim_dt
                 self.current_robot_state = self.robot_sim.get_state(self.env_ptr, self.robot_ptr) # "dict: pos | vel | acc"
                 self.current_robot_state['position'] = self.gym_mapper.forward(self.current_robot_state['position'])
                 self.current_robot_state['velocity'] = self.gym_mapper.forward(self.current_robot_state['velocity'])                     
 
-                self.goal_ee_transform[:3,3] = self.rollout_fn.goal_ee_pos.cpu().numpy()
-                self.goal_ee_transform[:3,:3] = self.rollout_fn.goal_ee_rot.cpu().numpy()
+                # self.l_goal_ee_transform[:3,3] = self.rollout_fn.l_goal_ee_pos.cpu().numpy()
+                # self.l_goal_ee_transform[:3,:3] = self.rollout_fn.l_goal_ee_rot.cpu().numpy()
+
+                # self.r_goal_ee_transform[:3,3] = self.rollout_fn.r_goal_ee_pos.cpu().numpy()
+                # self.r_goal_ee_transform[:3,:3] = self.rollout_fn.r_goal_ee_rot.cpu().numpy()
                 # 逆解获取请求发布 input_queue
-                qinit = self.interToik_mapper.forward(self.current_robot_state['position']) # shape is (7,)
-                self.ik_mSolve.ik_procs[-1].ik(self.goal_ee_transform , qinit , ind = t_step)
+                # qinit = self.interToik_mapper.forward(self.current_robot_state['position']) # shape is (7,)
+                # self.ik_mSolve.ik_procs[-1].ik(self.l_goal_ee_transform , qinit , ind = t_step)
+                self.ik_mSolve.query_dual_ik(self.current_robot_state['position'], t_step)
+
                 opt_time_last = time.time()
                 opt_step_count += 1
                 command = self.mpc_control.get_command(self.current_robot_state)
@@ -241,14 +406,14 @@ class MPCRobotController(GenieEnvBase):
                 self.curr_state_tensor = torch.as_tensor(np.hstack((q_des,qd_des,qdd_des)), **self.tensor_args).unsqueeze(0) # "1 x 3*n_dof"
                 # trans ee_pose in robot_coordinate to world coordinate
                 # self.dual_updateGymVisual_GymGoalUpdate()
-                self._dynamic_goal_track(t_step)
 
-                self.visual_top_trajs_ingym()
                 # Command_Robot_State include keyboard control : SPACE For Pause | ESCAPE For Exit 
                 successed = self.robot_sim.command_robot_state(self.interTogym_mapper.forward(q_des), self.interTogym_mapper.forward(qd_des), self.env_ptr, self.robot_ptr)
                 if not successed : break 
 
-                # # curr_coll max
+                self.dual_dynamic_goal_track(t_step)
+                self.visual_top_trajs_ingym()
+                # curr_coll max
                 # curr_coll = self.mpc_control.controller.rollout_fn.primitive_collision_cost.current_state_collision
                 # if (curr_coll > 0.90).any() : 
                 #     self.curr_collision += 1
@@ -256,10 +421,15 @@ class MPCRobotController(GenieEnvBase):
                 #     collision_info = "Collision Count: {}, Collisions: {}".format(self.curr_collision, torch.nonzero(curr_coll > 0.90).flatten().cpu().numpy())
                 #     print(collision_info)
 
-                if self.task_leftright:
-                    self._dynamic_object_moveDesign_leftright()
-                else :
-                    self._dynamic_object_moveDesign_updown()
+                if self.rollout_fn.exp_params['cost']['robot_self_collision']['weight'] != 0:
+                    curr_coll = self.mpc_control.controller.rollout_fn.robot_self_collision_cost.current_state_collision
+                    curr_coll_val = curr_coll.detach().item()
+
+                    # 记录是否发生碰撞
+                    if curr_coll_val > 0.0:
+                        self.collision_hanppend = True
+                    # 打印碰撞信息
+                    log_collision_info(curr_coll_val)
 
                 if self.goal_flagi > -1 :
                     self.traj_append()
@@ -267,20 +437,9 @@ class MPCRobotController(GenieEnvBase):
                 simVisual_time_sum += time.time() - simVisual_time_last
 
 
-                # 逆解获取查询 output_queue
-                try :
-                    output = self.ik_mSolve.output_queue.get()
-                    if output[1] is not None: # 无解
-                        self.rollout_fn.goal_jnq = torch.as_tensor(self.ik_mapper.forward(output[1], q_des), **self.tensor_args).unsqueeze(0) # 1 x n_dof
-                        self.jnq_des = output[1]
-                        print("------------iksolve")
-                    else : 
-                        self.rollout_fn.goal_jnq = None
-                        self.jnq_des = np.zeros(7)
-                        print("warning: no iksolve")
-                except queue.Empty:
-                    "针对 output_queue队列为空的问题 会出现queue.Empty的情况发生"
-                    continue
+                self.ik_mSolve.merge_dual_ik(q_des)
+                self.rollout_fn.goal_jnq = torch.tensor(self.ik_mSolve.goal_jnq, **self.tensor_args).unsqueeze(0)
+                self.rollout_fn.jnq_mask = torch.tensor(self.ik_mSolve.jnq_mask, dtype=torch.bool, device=self.tensor_args['device']).unsqueeze(0)  # shape: (1, n_dof)
 
         except KeyboardInterrupt:
             print("KeyboardInterrupt detected. Exiting cleanly...")
@@ -310,29 +469,18 @@ class MPCRobotController(GenieEnvBase):
         print("mpc_close...")
 
 
-def print_ik_joint_limits(ik_solver):
-    
-    print(f"IK Solver: {ik_solver.__class__.__name__}")
-    names = ik_solver.joint_names
-    lower, upper = ik_solver.joint_limits
 
-    header = f"{'Idx':>3s} | {'Joint Name':<20s} | {'Limit Low':>10s} | {'Limit Up':>10s}"
-    separator = "-" * len(header)
-    print(header)
-    print(separator)
-    for i, (name, l, u) in enumerate(zip(names, lower, upper)):
-        print(f"{i:3d} | {name:<20s} | {l:10.3f} | {u:10.3f}")
+def log_collision_info(value):
+    status = "YES" if value > 0.0 else "NO"
+    color = "\033[91m" if value > 0.0 else "\033[92m"
+    end = "\033[0m"
+    print(f"[Self-Collision Check] Distance: {value:.6f} m | Collision: {color}{status}{end}")
 
 
 if __name__ == '__main__':
 
-
-    ik_mSolve = IKSolve() # 多进程的问题 （应该是没有正确的解决 含有糊弄的成分 主要就像要让 IKProc在主进程启动 同时 在spawn之前启动）
-    ik_single_solver = ik_mSolve.ik_procs[0].ik_solver
-    print_ik_joint_limits(ik_single_solver)
-
     torch.multiprocessing.set_start_method('spawn', force=True)
-    torch.set_num_threads(8)
+    torch.set_num_threads(16)
     torch.backends.cudnn.benchmark = False
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -340,6 +488,6 @@ if __name__ == '__main__':
     sim_params['headless'] = False
     gym_instance = Gym(**sim_params)
 
-    controller = MPCRobotController(gym_instance , ik_mSolve)
-    
+    controller = MPCRobotController(gym_instance)
+    controller.ik_mSolve.start_solvers()  # 💥在显式时机启动多进程
     controller.run()

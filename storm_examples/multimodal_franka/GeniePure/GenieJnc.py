@@ -31,7 +31,7 @@ class IKSolve:
                     input_queue_maxsize=self.maxsize,
                     urdf_path='content/assets/urdf/genie_description/A2DWithFixBase.urdf',
                     base_link='base_link',
-                    end_link='ee_link'
+                    end_link='ee_link_l'
                 )
             )
             self.ik_procs[-1].daemon = True #守护进程 主进程结束 IKProc进程随之结束

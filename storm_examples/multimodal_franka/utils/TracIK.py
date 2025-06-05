@@ -47,13 +47,13 @@ class IKProc(mp.Process):
         self.solve_types = ['Speed', 'Distance', 'Manipulation1', 'Manipulation2'] 
         self.output_queue = output_queue
         self.input_queue = LimitedQueue(input_queue_maxsize)
-        self.ik_solver = TracIKSolver(
-            urdf_path,
-            base_link,
-            end_link,
-            timeout=0.05,
-            solve_type= self.solve_types[1],
-        )
+
+        self.urdf_path = urdf_path
+        self.base_link = base_link
+        self.end_link = end_link
+        
+        self.joint_limits = None
+        self.joint_names = None
 
     def _ik(self, ee_pose, qinit):
         qout = self.ik_solver.ik(
@@ -65,6 +65,14 @@ class IKProc(mp.Process):
         """
         the main function of each path collector process.
         """
+        self.ik_solver = TracIKSolver(
+            self.urdf_path,
+            self.base_link,
+            self.end_link,
+            timeout=0.05,
+            solve_type= self.solve_types[1],
+        )
+        
         while True:
             try:
                 request = self.input_queue.get()
@@ -81,7 +89,6 @@ class IKProc(mp.Process):
     def ik(self, grasp, init_q, ind=None):
         self.input_queue.put(("ik", grasp, init_q, ind))
         # print(self.input_queue.queue.qsize())
-
 
 class MPPI:
     def __init__(self , num_proc = 1):

@@ -31,7 +31,9 @@ from .integration_utils import build_int_matrix, build_fd_matrix, build_fd_matri
 
 class URDFKinematicModel(DynamicsModelBase):
     def __init__(self, urdf_path, dt, batch_size=1000, horizon=5,
-                 tensor_args={'device':'cpu','dtype':torch.float32}, ee_link_name='ee_link', link_names=[], dt_traj_params=None, vel_scale=0.5, control_space='acc'):
+                 tensor_args={'device':'cpu','dtype':torch.float32}, ee_link_name='ee_link_l', 
+                 ee_link_l = 'ee_link_l', ee_link_r = 'ee_link_r', 
+                 link_names=[], dt_traj_params=None, vel_scale=0.5, control_space='acc'):
         self.urdf_path = urdf_path
         self.device = tensor_args['device']
 
@@ -39,6 +41,8 @@ class URDFKinematicModel(DynamicsModelBase):
         self.tensor_args = tensor_args
         self.dt = dt
         self.ee_link_name = ee_link_name
+        self.ee_link_name_l = ee_link_l
+        self.ee_link_name_r = ee_link_r
         self.batch_size = batch_size
         self.horizon = horizon
         self.num_traj_points = int(round(horizon / dt))
@@ -232,11 +236,64 @@ class URDFKinematicModel(DynamicsModelBase):
         ee_pos_seq = ee_pos_seq.view((curr_batch_size, num_traj_points, 3))
         ee_rot_seq = ee_rot_seq.view((curr_batch_size, num_traj_points, 3, 3))
         state_dict = {'state_seq':state_seq.to(inp_device),
-                      'ee_pos_seq': ee_pos_seq.to(inp_device),
-                      'ee_rot_seq': ee_rot_seq.to(inp_device),
+                      'l_ee_pos_seq': ee_pos_seq.to(inp_device),
+                      'l_ee_rot_seq': ee_rot_seq.to(inp_device),
                       'link_pos_seq':link_pos_seq.to(inp_device),
                       'link_rot_seq':link_rot_seq.to(inp_device)}
         return state_dict
+    
+    def dual_rollout_open_loop(self, start_state: torch.Tensor, act_seq: torch.Tensor) -> Dict[str, torch.Tensor]:
+        # 获取输入设备
+        inp_device = start_state.device
+        start_state = start_state.to(self.device, dtype=self.float_dtype)
+        act_seq = act_seq.to(self.device, dtype=self.float_dtype)
+
+        # 初始化序列变量
+        state_seq = self.state_seq
+        # ee_pos_seq = self.ee_pos_seq       # （暂时保留，但实际不会在单臂中使用）
+        # ee_rot_seq = self.ee_rot_seq       # （同上）
+        curr_batch_size = self.batch_size
+        num_traj_points = self.num_traj_points
+        link_pos_seq = self.link_pos_seq
+        link_rot_seq = self.link_rot_seq
+
+        # 1. 按照时间步展开状态
+        state_seq = self.tensor_step(start_state, act_seq, state_seq)
+
+        # 2. 计算双臂的前向运动学
+        shape_tup = (curr_batch_size * num_traj_points, self.n_dofs)
+        (l_ee_pos_flat, l_ee_rot_flat), (r_ee_pos_flat, r_ee_rot_flat) = \
+            self.robot_model.compute_dual_fk_PosRot(
+                state_seq[:, : , :self.n_dofs].view(shape_tup),
+                state_seq[:, : , self.n_dofs:2 * self.n_dofs].view(shape_tup),
+                l_link_name=self.ee_link_name_l,
+                r_link_name=self.ee_link_name_r
+            )
+
+        # 3. 将双臂末端的平移和旋转从“(batch * T, …)”重塑回“(batch, T, …)”
+        l_ee_pos_seq = l_ee_pos_flat.view((curr_batch_size, num_traj_points, 3))
+        l_ee_rot_seq = l_ee_rot_flat.view((curr_batch_size, num_traj_points, 3, 3))
+        r_ee_pos_seq = r_ee_pos_flat.view((curr_batch_size, num_traj_points, 3))
+        r_ee_rot_seq = r_ee_rot_flat.view((curr_batch_size, num_traj_points, 3, 3))
+
+        # 4. 计算其他链接的位姿（与单臂版本一致）
+        for ki, k in enumerate(self.link_names):
+            link_pos, link_rot = self.robot_model.get_link_pose(k)
+            link_pos_seq[:, :, ki, :] = link_pos.view((curr_batch_size, num_traj_points, 3))
+            link_rot_seq[:, :, ki, :, :] = link_rot.view((curr_batch_size, num_traj_points, 3, 3))
+
+        # 5. 构造返回字典：包含 state_seq、双臂末端位姿以及所有链接位姿
+        state_dict = {
+            'state_seq': state_seq.to(inp_device),
+            'l_ee_pos_seq': l_ee_pos_seq.to(inp_device),
+            'l_ee_rot_seq': l_ee_rot_seq.to(inp_device),
+            'r_ee_pos_seq': r_ee_pos_seq.to(inp_device),
+            'r_ee_rot_seq': r_ee_rot_seq.to(inp_device),
+            'link_pos_seq': link_pos_seq.to(inp_device),
+            'link_rot_seq': link_rot_seq.to(inp_device)
+        }
+        return state_dict
+
 
 
     def enforce_bounds(self, state_batch):

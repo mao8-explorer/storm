@@ -63,6 +63,9 @@ class RobotSelfCollisionCost(nn.Module):
         self.res = None
         self.t_mat = None
 
+
+        self.current_state_collision =None
+
     def distance(self, link_pos_seq, link_rot_seq):
         batch_size = link_pos_seq.shape[0]
         horizon = link_pos_seq.shape[1]
@@ -92,8 +95,19 @@ class RobotSelfCollisionCost(nn.Module):
         res = res.view(batch_size, horizon) # res 是缩放后的 true value （偏向认为是有物理意义的 ：m）
         # res += self.distance_threshold 这个在self-collision net下 是无意义的
         # 自碰撞是有问题的 这样设置 这种是连续的吗？ 1. 阈值是怎么确定的 2. 连续性的碰撞值是否合理 需要验证 怎么验证
-        res[res <= 0.0] = 0.0
-        res[res >= 0.0] = 0.5  # 貌似无意义 
-        cost = self.weight * self.proj_gaussian(res)
+        # res[res <= 0.0] = 0.0
+        # res[res >= 0.0] = 0.5  # 貌似无意义 
+        
+        # 方式一：ReLU平方代价（推荐用于 MPC/MPPI）
+        res = torch.relu(res - self.distance_threshold)  # 添加软边界（如 -0.01m）
+
+        self.current_state_collision = res[-1,0] #mean_traj index
+        # cost = self.weight * res ** 2
+
+        # 方式二（可选）：Softplus 平滑惩罚
+        # res = F.softplus(res - self.distance_threshold)  # 全程可微
+        cost = self.weight * res ** 2
+        
+        # cost = self.weight * self.proj_gaussian(res ** 2)
         return cost
     

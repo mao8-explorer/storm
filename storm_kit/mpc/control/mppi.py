@@ -119,7 +119,8 @@ class MPPI(OLGaussianMPC):
 
         """
         costs = trajectories["costs"].to(**self.tensor_args)
-        vis_seq = trajectories[self.visual_traj].to(**self.tensor_args)
+        l_vis_seq = trajectories['l_ee_pos_seq'].to(**self.tensor_args)
+        r_vis_seq = trajectories['r_ee_pos_seq'].to(**self.tensor_args)
         actions = trajectories["actions"].to(**self.tensor_args)
         w = self._exp_util(costs, actions)
         
@@ -135,7 +136,9 @@ class MPPI(OLGaussianMPC):
         self.top_values = top_values
         self.top_idx = torch.cat((good_idx, bad_idx), dim=0)
         # self.top_idx = good_idx
-        self.top_trajs = torch.index_select(vis_seq, 0, self.top_idx).squeeze(0)
+        self.l_top_trajs = torch.index_select(l_vis_seq, 0, self.top_idx).squeeze(0)
+        self.r_top_trajs = torch.index_select(r_vis_seq, 0, self.top_idx).squeeze(0)
+        self.top_trajs = torch.cat((self.l_top_trajs, self.r_top_trajs), dim=0)
         #print(self.top_traj.shape)
         #print(self.best_traj.shape, best_idx, w.shape)
         #self.best_trajs = torch.index_select(
@@ -197,6 +200,95 @@ class MPPI(OLGaussianMPC):
             # self.scale_tril = torch.cholesky(self.cov_action)
         # print(torch.norm(self.cov_action))
 
+
+    def _update_distribution(self, trajectories):
+        """
+           Update moments in the direction using sampled
+           trajectories
+
+
+        """
+        costs = trajectories["costs"].to(**self.tensor_args)
+        l_vis_seq = trajectories['l_ee_pos_seq'].to(**self.tensor_args)
+        r_vis_seq = trajectories['r_ee_pos_seq'].to(**self.tensor_args)
+        actions = trajectories["actions"].to(**self.tensor_args)
+        w = self._exp_util(costs, actions)
+        
+        #Update best action
+        best_idx = torch.argmax(w)
+        self.best_idx = best_idx
+        self.best_traj = torch.index_select(actions, 0, best_idx).squeeze(0)
+        
+        # 5条好的轨迹  10条最差轨迹 ； 5条好的轨迹基本扭结在一起 10条差轨迹扩散较为明显
+        top_values, good_idx = torch.topk(self.total_costs, k=5, largest=False)
+        top_values, bad_idx = torch.topk(self.total_costs, k=15) # Returns the k largest elements of the given input tensor along a given dimension. 
+        #print(ee_pos_seq.shape, top_idx)
+        self.top_values = top_values
+        self.top_idx = torch.cat((good_idx, bad_idx), dim=0)
+        # self.top_idx = good_idx
+        self.l_top_trajs = torch.index_select(l_vis_seq, 0, self.top_idx).squeeze(0)
+        self.r_top_trajs = torch.index_select(r_vis_seq, 0, self.top_idx).squeeze(0)
+        self.top_trajs = torch.cat((self.l_top_trajs, self.r_top_trajs), dim=0)
+        #print(self.top_traj.shape)
+        #print(self.best_traj.shape, best_idx, w.shape)
+        #self.best_trajs = torch.index_select(
+        # self.bad_traj = torch.index_select(actions,0,bad_idx).squeeze(0)
+
+        weighted_seq = w.T * actions.T
+        sum_seq = torch.sum(weighted_seq.T, dim=0)
+        new_mean = sum_seq
+        self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
+            self.step_size_mean * new_mean
+        delta = actions - self.mean_action.unsqueeze(0)  
+
+        # self.mean_action = (1.0 - self.step_size_mean) * self.mean_action +\
+        #     self.step_size_mean * new_mean
+        
+        # self.mean_action 放的位置 对delta有影响
+        #Update Covariance
+        if self.update_cov:
+            if self.cov_type == 'sigma_I':
+                #weighted_delta = w * (delta ** 2).T
+                #cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0))
+                #print(cov_update.shape, self.cov_action)
+                raise NotImplementedError('Need to implement covariance update of form sigma*I')
+            
+            elif self.cov_type == 'diag_AxA':
+                #Diagonal covariance of size AxA
+                weighted_delta = w * (delta ** 2).T
+                # cov_update = torch.diag(torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0))
+                cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
+            elif self.cov_type == 'diag_HxH':
+                raise NotImplementedError
+            elif self.cov_type == 'full_AxA':
+                #Full Covariance of size AxA
+                weighted_delta = torch.sqrt(w) * (delta).T
+                weighted_delta = weighted_delta.T.reshape((self.horizon * self.num_particles, self.d_action))
+                cov_update = torch.matmul(weighted_delta.T, weighted_delta) / self.horizon
+            elif self.cov_type == 'full_HAxHA':# and self.sample_type != 'stomp':
+                weighted_delta = torch.sqrt(w) * delta.view(delta.shape[0], delta.shape[1] * delta.shape[2]).T #.unsqueeze(-1)
+                cov_update = torch.matmul(weighted_delta, weighted_delta.T)
+                
+                # weighted_cov = w * (torch.matmul(delta_new, delta_new.transpose(-2,-1))).T
+                # weighted_cov = w * cov.T
+                # cov_update = torch.sum(weighted_cov.T,dim=0)
+                #
+            #elif self.sample_type == 'stomp':
+            #    weighted_delta = w * (delta ** 2).T
+            #    cov_update = torch.mean(torch.sum(weighted_delta.T, dim=0), dim=0)
+            #    self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
+            #        self.step_size_cov * cov_update
+            #    #self.scale_tril = torch.sqrt(self.cov_action)
+            #    return
+            else:
+                raise ValueError('Unidentified covariance type in update_distribution')
+            
+            self.cov_action = (1.0 - self.step_size_cov) * self.cov_action +\
+                self.step_size_cov * cov_update
+            #if(cov_update == 'diag_AxA'):
+            #    self.scale_tril = torch.sqrt(self.cov_action)
+            # self.scale_tril = torch.cholesky(self.cov_action)
+        # print(torch.norm(self.cov_action))
 
     def _multimodal_update_distribution(self, trajectories):
         """
