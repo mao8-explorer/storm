@@ -143,7 +143,7 @@
         <mesh filename="meshes/link-yaw_head.STL"/>
       </geometry>
       <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1"/>
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 0.752941176470588"/>
       </material>
     </visual>
     <collision>
@@ -179,7 +179,7 @@
         <mesh filename="meshes/link-pitch_head.STL"/>
       </geometry>
       <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1"/>
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 0.752941176470588"/>
       </material>
     </visual>
     

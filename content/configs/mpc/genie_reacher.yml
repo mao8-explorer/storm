@@ -25,7 +25,7 @@
 use_cuda: True
 cuda_device_num: 0
 
-control_dt: 0.05   # 0.02 0.05
+control_dt: 0.07   # 0.02 0.05
 run_open_loop: False
 control_space: 'acc'
 float_dtype: 'float32'
@@ -37,10 +37,10 @@ model:
   learnable_rigid_body_config:
     learnable_links: []
   max_acc: 0.50
-  dt: 0.05
+  dt: 0.07
   dt_traj_params:
-    base_dt: 0.05
-    base_ratio: 0.7
+    base_dt: 0.07
+    base_ratio: 0.5
     max_dt: 0.1
   #control_freq: 10
   #sim_freq: 100
@@ -77,17 +77,17 @@ model:
 cost:
   joint_l2:
     # vec_weight: 
-    weight: 20.0
+    weight: 30.0
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':5.0}
 
   Jnq_sparse_reward:
     # vec_weight:
-    weight: 0.0
+    weight: 100.0
     sigma : 0.05
 
   PoseCost_Reward:
-    pose_weight: 1.0
-    reward_weight: 0.0
+    pose_weight: 30.0
+    reward_weight: 100.0
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     sigma : 0.05
     
@@ -100,19 +100,19 @@ cost:
 
     
   stop_cost:
-    weight: 0.0 #100.0
+    weight: 100.0 #100.0
     max_nlimit: 0.40 #0.2
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':1.0}
 
   zero_vel:
-    weight: 0.0
+    weight: 100.0
     hinge_val: 0.175 # 10/180*pi 
     gaussian_params: {'n':0, 'c':0.2, 's':0, 'r':1.0}
 
   goal_pose:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     # weight: [10.0, 30.0]
-    weight: 0 # weight[0] = 0 : CartGoal constraint None rot | pos
+    weight: 10.0 # weight[0] = 0 : CartGoal constraint None rot | pos
     rotposweight: [1.0, 1.0]
     position_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
     orientation_gaussian_params: {'n':0, 'c':0.0, 's':0.0, 'r':10.0}
@@ -120,7 +120,7 @@ cost:
     convergence_val: [0.0, 0.0] # orientation, position
 
   # Cart_sparse_reward:
-  #   weight: 0.0
+    #   weight: 0.0
   #   sigma : 0.046
 
   stop_cost_acc:
@@ -138,8 +138,8 @@ cost:
     gaussian_params: {'n':0, 'c':0.5, 's':0, 'r':5.0}
     
   robot_self_collision:
-    weight: 0.0
-    distance_threshold: 0.03
+    weight: 1000.0
+    distance_threshold: 0.01
     gaussian_params: {'n':0, 'c':0.0, 's':0, 'r':10.0}
 
   null_space:

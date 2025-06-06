@@ -37,10 +37,17 @@ class DistCost(nn.Module):
         else:
             self.vec_weight = 1.0
         self.proj_gaussian = GaussianProjection(gaussian_params=gaussian_params)
-    
+
     def forward(self, disp_vec):
         inp_device = disp_vec.device
         disp_vec = self.vec_weight * disp_vec.to(self.device)
-        dist = torch.norm(disp_vec, p=2, dim=-1,keepdim=False)
+        dist = torch.norm(disp_vec, p=2, dim=-1, keepdim=False)
         cost = self.weight * self.proj_gaussian(dist)
         return cost.to(inp_device)
+
+
+
+
+
+
+

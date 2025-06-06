@@ -139,44 +139,23 @@ Todo:
             l_goal_pq_cost + l_cart_goal_cost + l_sparse_reward +
             r_goal_pq_cost + r_cart_goal_cost + r_sparse_reward
         )
-
-        # ===================================
-        # === 可选：Joint Space 目标 & 稳态项
-        # ===================================
-        # if self.goal_jnq is not None:
-        #     disp_vec = state_batch[:, :, 0:self.n_dofs] - self.goal_jnq[:, 0:self.n_dofs]
-
-        #     if self.exp_params['cost']['joint_l2']['weight'] > 0.0:
-        #         cost += self.dist_cost.forward(disp_vec)
-        #     if self.exp_params['cost']['Jnq_sparse_reward']['weight'] > 0:
-        #         cost += self.jnq_sparse_reward.forward(disp_vec)
-
-        #     if self.exp_params['cost']['zero_vel']['weight'] > 0:
-        #         cost += self.zero_vel_cost.forward(
-        #             state_batch[:, :, self.n_dofs:2 * self.n_dofs],
-        #             goal_dist=disp_vec
-        #         )
-
         # todo: 优化 if , 将if去除
-        if self.goal_jnq is not None:
-            disp_vec = state_batch[:, :, 0:self.n_dofs] - self.goal_jnq[:, 0:self.n_dofs]
+        # todo: 理清disp_vec本身的逻辑，速度限制下会怎么样？
+        # todo: 理清如果goal_jnq为None时，整体的 cost_fn逻辑
+        # if self.goal_jnq is not None:
+        disp_vec = state_batch[:, :, 0:self.n_dofs] - self.goal_jnq[:, 0:self.n_dofs]
+        disp_vec = disp_vec * self.jnq_mask  # 应用掩码
 
-            if  self.jnq_mask is not None:
-                # mask shape: (1, n_dof) → broadcast to (T, B, n_dof)
-                jnq_mask = self.jnq_mask[:, None, :]  # (1, 1, n_dof)
-                disp_vec = disp_vec * jnq_mask  # 只 penalize 有 IK 解的维度
+        if self.exp_params['cost']['joint_l2']['weight'] > 0.0:
+            cost += self.dist_cost.forward(disp_vec)
 
-            if self.exp_params['cost']['joint_l2']['weight'] > 0.0:
-                cost += self.dist_cost.forward(disp_vec)
+        if self.exp_params['cost']['Jnq_sparse_reward']['weight'] > 0:
+            cost += self.jnq_sparse_reward.forward(disp_vec)
 
-            if self.exp_params['cost']['Jnq_sparse_reward']['weight'] > 0:
-                cost += self.jnq_sparse_reward.forward(disp_vec)
-
-            if self.exp_params['cost']['zero_vel']['weight'] > 0:
-                cost += self.zero_vel_cost.forward(
-                    state_batch[:, :, self.n_dofs:2 * self.n_dofs],
-                    goal_dist=disp_vec
-                )
+        if self.exp_params['cost']['zero_vel']['weight'] > 0:
+            cost += self.zero_vel_cost.forward(
+                state_batch[:, :, self.n_dofs:2 * self.n_dofs],
+                goal_dist=disp_vec, mask=self.jnq_mask)
 
         return cost
 

@@ -38,7 +38,8 @@ class ZeroCost(nn.Module):
         self.max_vel = max_vel
 
         self.zero = torch.tensor(0.0,device=self.device, dtype=self.float_dtype)
-    def forward(self, vels, goal_dist):
+
+    def forward(self, vels, goal_dist, mask=None):
         inp_device = vels.device
         vel_err = torch.abs(vels.to(self.device))
         goal_dist = goal_dist.to(self.device)
@@ -47,8 +48,10 @@ class ZeroCost(nn.Module):
         # vel_err[vel_err < self.max_vel] = 0.0
 
         # vel_err = torch.where(goal_dist <= self.hinge_val, vel_err, 0.0 * vel_err / goal_dist) #soft hinge
-        vel_err = torch.where(goal_dist <= self.hinge_val, vel_err,self.zero)
+
+        vel_err = torch.where(goal_dist <= self.hinge_val, vel_err, self.zero)
+        if mask is not None:
+            vel_err = vel_err * mask.to(self.device)
         cost = self.weight * self.proj_gaussian((torch.sum(torch.square(vel_err), dim=-1)))
 
-        
         return cost.to(inp_device)
